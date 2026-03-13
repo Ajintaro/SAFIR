@@ -1,0 +1,12 @@
+fastapi==0.135.1
+uvicorn==0.41.0
+httpx==0.28.1
+Jinja2==3.1.6
+numpy==2.2.6
+psutil==7.2.2
+python-docx==1.2.0
+websockets==16.0
+faster-whisper>=1.1.0
+pyannote.audio>=3.3.0
+torch>=2.4.0
+torchaudio>=2.4.0

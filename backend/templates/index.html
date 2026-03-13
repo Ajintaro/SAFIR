@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAFIR Leitstelle — Rettungskette</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', 'Segoe UI', sans-serif; background: #0a0e17; color: #e0e0e0; }
+        .header {
+            background: linear-gradient(135deg, #1a1f2e 0%, #0a0e17 100%);
+            border-bottom: 2px solid #E11937;
+            padding: 16px 24px;
+            display: flex; align-items: center; gap: 16px;
+        }
+        .header h1 { font-size: 20px; color: #fff; }
+        .header .cgi { color: #E11937; font-weight: 700; }
+        .header .subtitle { color: #888; font-size: 13px; margin-left: auto; }
+
+        .chain {
+            display: flex; gap: 0; padding: 24px; overflow-x: auto;
+        }
+        .role-card {
+            flex: 1; min-width: 220px; background: #141924;
+            border: 1px solid #2a3040; border-radius: 8px;
+            position: relative; padding: 16px;
+        }
+        .role-card + .role-card { margin-left: -1px; }
+        .role-card.active { border-color: #E11937; box-shadow: 0 0 20px rgba(225,25,55,0.2); }
+        .role-header {
+            font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+            color: #E11937; margin-bottom: 4px;
+        }
+        .role-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+        .role-desc { font-size: 12px; color: #888; margin-bottom: 16px; }
+        .arrow {
+            width: 32px; display: flex; align-items: center; justify-content: center;
+            color: #E11937; font-size: 24px; flex-shrink: 0;
+        }
+
+        .patient-count {
+            background: #E11937; color: #fff; border-radius: 50%;
+            width: 28px; height: 28px; display: flex; align-items: center;
+            justify-content: center; font-size: 14px; font-weight: 700;
+            position: absolute; top: 12px; right: 12px;
+        }
+
+        .patients-section { padding: 24px; }
+        .patients-section h2 { font-size: 16px; margin-bottom: 16px; color: #fff; }
+        .patient-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+        .patient-card {
+            background: #141924; border: 1px solid #2a3040; border-radius: 8px;
+            padding: 16px; cursor: pointer; transition: border-color 0.2s;
+        }
+        .patient-card:hover { border-color: #E11937; }
+        .patient-name { font-weight: 600; margin-bottom: 4px; }
+        .patient-meta { font-size: 12px; color: #888; }
+        .triage-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 700;
+        }
+        .triage-T1 { background: #ff0000; color: #fff; }
+        .triage-T2 { background: #ff8800; color: #fff; }
+        .triage-T3 { background: #00aa00; color: #fff; }
+        .triage-T4 { background: #444; color: #fff; }
+
+        .status-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: #141924; border-top: 1px solid #2a3040;
+            padding: 8px 24px; display: flex; gap: 24px;
+            font-size: 12px; color: #888;
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            display: inline-block; margin-right: 6px;
+        }
+        .status-dot.online { background: #00cc44; }
+        .status-dot.offline { background: #cc0000; }
+
+        .empty-state {
+            text-align: center; padding: 80px 24px; color: #555;
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><span class="cgi">CGI</span> SAFIR Leitstelle</h1>
+        <span class="subtitle">Rettungskette — KI-gestuetzte Verwaltung</span>
+    </div>
+
+    <div class="chain" id="chain">
+        <div class="role-card" data-role="phase0">
+            <div class="role-header">Phase 0</div>
+            <div class="role-title">Selbst-/Kameradenhilfe</div>
+            <div class="role-desc">Erstversorgung im Feld, Sprachdokumentation via Jetson</div>
+            <div class="patient-count" id="count-phase0">0</div>
+        </div>
+        <div class="arrow">&#10132;</div>
+        <div class="role-card" data-role="role1">
+            <div class="role-header">Role 1</div>
+            <div class="role-title">Rettungsstation</div>
+            <div class="role-desc">Erste aerztliche Behandlung, Vitalfunktionen sichern</div>
+            <div class="patient-count" id="count-role1">0</div>
+        </div>
+        <div class="arrow">&#10132;</div>
+        <div class="role-card" data-role="role2">
+            <div class="role-header">Role 2</div>
+            <div class="role-title">Rettungszentrum</div>
+            <div class="role-desc">Chirurgische Akutversorgung, Intensivueberwachung</div>
+            <div class="patient-count" id="count-role2">0</div>
+        </div>
+        <div class="arrow">&#10132;</div>
+        <div class="role-card" data-role="role3">
+            <div class="role-header">Role 3</div>
+            <div class="role-title">Einsatzlazarett</div>
+            <div class="role-desc">Multidisziplinaere Diagnostik & Therapie</div>
+            <div class="patient-count" id="count-role3">0</div>
+        </div>
+        <div class="arrow">&#10132;</div>
+        <div class="role-card" data-role="role4">
+            <div class="role-header">Role 4</div>
+            <div class="role-title">BW-Krankenhaus</div>
+            <div class="role-desc">Weiterbehandlung & Rehabilitation</div>
+            <div class="patient-count" id="count-role4">0</div>
+        </div>
+    </div>
+
+    <div class="patients-section">
+        <h2>Patienten</h2>
+        <div class="patient-list" id="patientList">
+            <div class="empty-state">
+                <div class="icon">&#9877;</div>
+                <div>Keine Patienten erfasst</div>
+                <div style="margin-top: 8px; font-size: 13px;">Warte auf Daten vom Feldgeraet...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <span><span class="status-dot" id="wsStatus"></span> WebSocket</span>
+        <span><span class="status-dot" id="jetsonStatus"></span> Jetson Feldgeraet</span>
+        <span id="patientTotal">0 Patienten</span>
+        <span style="margin-left: auto;">SAFIR Leitstelle v0.1</span>
+    </div>
+
+    <script>
+    let ws;
+    let patients = {};
+
+    function connectWS() {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${proto}//${location.host}/ws`);
+        ws.onopen = () => {
+            document.getElementById('wsStatus').classList.add('online');
+            document.getElementById('wsStatus').classList.remove('offline');
+        };
+        ws.onclose = () => {
+            document.getElementById('wsStatus').classList.add('offline');
+            document.getElementById('wsStatus').classList.remove('online');
+            setTimeout(connectWS, 3000);
+        };
+        ws.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'patient_update') {
+                patients[msg.patient.patient_id] = msg.patient;
+                renderPatients();
+            }
+        };
+    }
+
+    function renderPatients() {
+        const list = document.getElementById('patientList');
+        const entries = Object.values(patients);
+
+        // Update counts
+        const counts = { phase0: 0, role1: 0, role2: 0, role3: 0, role4: 0 };
+        entries.forEach(p => { counts[p.current_role] = (counts[p.current_role] || 0) + 1; });
+        Object.keys(counts).forEach(role => {
+            const el = document.getElementById(`count-${role}`);
+            if (el) el.textContent = counts[role];
+        });
+
+        document.getElementById('patientTotal').textContent = `${entries.length} Patienten`;
+
+        if (entries.length === 0) return;
+
+        list.innerHTML = entries.map(p => `
+            <div class="patient-card" onclick="showPatient('${p.patient_id}')">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="patient-name">${p.name || 'Unbekannt'} ${p.rank ? '(' + p.rank + ')' : ''}</div>
+                    ${p.triage ? `<span class="triage-badge triage-${p.triage}">${p.triage}</span>` : ''}
+                </div>
+                <div class="patient-meta">
+                    ${p.current_role ? p.current_role.toUpperCase() : ''} &middot;
+                    ${p.injuries && p.injuries.length ? p.injuries.join(', ') : 'Keine Verletzungen erfasst'} &middot;
+                    ${p.transcripts ? p.transcripts.length + ' Transkripte' : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function showPatient(pid) {
+        // TODO: Detail-Ansicht
+        console.log('Patient:', patients[pid]);
+    }
+
+    connectWS();
+    </script>
+</body>
+</html>
