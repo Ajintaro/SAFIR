@@ -32,3 +32,10 @@ nohup.out
 
 # Environment
 .env
+
+# Claude Code
+.claude/
+
+# Backend Runtime Data
+backend/data/
+backend/uploads/

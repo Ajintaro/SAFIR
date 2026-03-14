@@ -1,6 +1,6 @@
 """
-SAFIR — Gemeinsame Datenmodelle fuer Jetson und Backend.
-Definiert die Strukturen, die zwischen den Geraeten ausgetauscht werden.
+SAFIR — Gemeinsame Datenmodelle für Jetson und Backend.
+Definiert die Strukturen, die zwischen den Geräten ausgetauscht werden.
 """
 
 from datetime import datetime
@@ -32,12 +32,48 @@ class PatientStatus(str, Enum):
     DECEASED = "deceased"
 
 
-# --- Patienten-Datensatz (fliegt durch die gesamte Kette) ---
+class PatientFlowStatus(str, Enum):
+    REGISTERED = "registered"       # Ersterfassung am POI
+    INBOUND = "inbound"             # Transport gemeldet
+    ARRIVED = "arrived"             # Eingetroffen an nächster Stufe
+    IN_TREATMENT = "in_treatment"   # In Behandlung
+    STABILIZED = "stabilized"       # Stabilisiert
+    OUTBOUND = "outbound"           # Transport zur nächsten Stufe
+    TRANSFERRED = "transferred"     # Übergeben / verlegt
+
+
+# Flow-Status Labels (deutsch)
+FLOW_STATUS_LABELS = {
+    "registered": "Registriert",
+    "inbound": "Transport",
+    "arrived": "Eingetroffen",
+    "in_treatment": "In Behandlung",
+    "stabilized": "Stabilisiert",
+    "outbound": "Verlegung",
+    "transferred": "Verlegt",
+}
+
+# Triage-Farben
+TRIAGE_COLORS = {
+    "T1": "#FF0000",  # Rot — Sofort
+    "T2": "#FF8800",  # Orange — Dringend
+    "T3": "#00AA00",  # Grün — Aufschiebbar
+    "T4": "#4444AA",  # Blau — Abwartend
+}
+
+
+# --- Patienten-Datensatz (fließt durch die gesamte Kette) ---
 
 PATIENT_SCHEMA = {
     "patient_id": "",           # Eindeutige ID
     "timestamp_created": "",    # Ersterfassung
     "current_role": "phase0",   # Aktuelle Stufe in der Rettungskette
+    "flow_status": "registered",  # PatientFlowStatus
+    "synced": False,            # True wenn erfolgreich an Leitstelle übermittelt
+    "analyzed": False,          # True wenn KI-Analyse durchgeführt
+    "rfid_tag_id": "",          # RFID-Tag Kennung
+    "device_id": "",            # Erfassendes Gerät (z.B. "jetson-01")
+    "created_by": "",           # Erfassender Sanitäter
 
     # Stammdaten
     "name": "",
@@ -54,11 +90,11 @@ PATIENT_SCHEMA = {
         "line2": "",  # Funkfrequenz / Rufzeichen
         "line3": "",  # Patienten nach Dringlichkeit
         "line4": "",  # Sonderausstattung
-        "line5": "",  # Patienten Liegend/Gehfaehig
+        "line5": "",  # Patienten Liegend/Gehfähig
         "line6": "",  # Sicherheitslage
         "line7": "",  # Markierung Landeplatz
-        "line8": "",  # Nationalitaet / Status
-        "line9": "",  # ABC / Gelaende
+        "line8": "",  # Nationalität / Status
+        "line9": "",  # ABC / Gelände
     },
 
     # Medizinische Daten
@@ -73,14 +109,14 @@ PATIENT_SCHEMA = {
         "temp": "",
         "gcs": "",              # Glasgow Coma Scale
     },
-    "treatments": [],           # Durchgefuehrte Massnahmen
+    "treatments": [],           # Durchgeführte Maßnahmen
     "medications": [],          # Verabreichte Medikamente
 
     # Transkripte und Audio
     "transcripts": [],          # [{time, text, speaker, role_level}]
     "audio_files": [],          # Referenzen auf Audiodateien
 
-    # Uebergaben (bei jedem Role-Wechsel)
+    # Übergaben (bei jedem Role-Wechsel)
     "handovers": [],            # [{from_role, to_role, time, summary, personnel}]
 
     # Verlauf
@@ -92,8 +128,12 @@ PATIENT_SCHEMA = {
 
 TRANSFER_SCHEMA = {
     "source_device": "jetson",
+    "device_id": "",
+    "unit_name": "",            # Einheit / Rufzeichen des sendenden BAT
     "timestamp": "",
     "patient": {},              # PATIENT_SCHEMA
+    "flow_status": "",          # Aktueller Flow-Status
+    "rfid_tag_id": "",          # RFID-Tag
     "audio_files": [],          # Base64 oder Dateireferenzen
     "raw_transcripts": [],      # Rohe Transkriptionen
 }

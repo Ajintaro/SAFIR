@@ -3,209 +3,404 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAFIR Leitstelle — Rettungskette</title>
+    <title>SAFIR Leitstelle — Rettungsstation</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', 'Segoe UI', sans-serif; background: #0a0e17; color: #e0e0e0; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        :root {
+            --accent: #E11937;
+            --accent-dark: #B81430;
+            --accent-light: rgba(225,25,55,0.12);
+            --bg: #080C18;
+            --surface: #0E1528;
+            --surface2: #141E38;
+            --elevated: #1A2848;
+            --border: rgba(100,160,255,0.10);
+            --text: #E0E8F5;
+            --text2: #8BA4CC;
+            --dim: #5A7099;
+            --t1: #FF0000; --t2: #FF8800; --t3: #00AA00; --t4: #4444AA;
+            --success: #2ECC71; --warning: #F39C12; --danger: #E74C3C;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+        /* Header */
         .header {
-            background: linear-gradient(135deg, #1a1f2e 0%, #0a0e17 100%);
-            border-bottom: 2px solid #E11937;
-            padding: 16px 24px;
-            display: flex; align-items: center; gap: 16px;
+            display:flex; align-items:center; padding:10px 20px; gap:16px;
+            background:linear-gradient(135deg, var(--surface) 0%, var(--bg) 100%);
+            border-bottom:2px solid var(--accent); flex-shrink:0;
         }
-        .header h1 { font-size: 20px; color: #fff; }
-        .header .cgi { color: #E11937; font-weight: 700; }
-        .header .subtitle { color: #888; font-size: 13px; margin-left: auto; }
+        .header h1 { font-size:18px; font-weight:700; }
+        .header .cgi { color:var(--accent); }
+        .header .role-badge {
+            padding:3px 10px; border-radius:12px; font-size:10px; font-weight:700;
+            background:var(--accent-light); color:var(--accent); letter-spacing:0.5px;
+        }
+        .header .stats { margin-left:auto; display:flex; gap:16px; font-size:11px; color:var(--text2); }
+        .header .stats .val { font-weight:700; color:var(--text); }
+        .header .ws-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px; }
+        .header .ws-dot.on { background:var(--success); }
+        .header .ws-dot.off { background:var(--danger); }
 
-        .chain {
-            display: flex; gap: 0; padding: 24px; overflow-x: auto;
-        }
-        .role-card {
-            flex: 1; min-width: 220px; background: #141924;
-            border: 1px solid #2a3040; border-radius: 8px;
-            position: relative; padding: 16px;
-        }
-        .role-card + .role-card { margin-left: -1px; }
-        .role-card.active { border-color: #E11937; box-shadow: 0 0 20px rgba(225,25,55,0.2); }
-        .role-header {
-            font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
-            color: #E11937; margin-bottom: 4px;
-        }
-        .role-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
-        .role-desc { font-size: 12px; color: #888; margin-bottom: 16px; }
-        .arrow {
-            width: 32px; display: flex; align-items: center; justify-content: center;
-            color: #E11937; font-size: 24px; flex-shrink: 0;
-        }
+        /* Main Layout */
+        .main { display:grid; grid-template-columns:1fr 420px; flex:1; min-height:0; }
 
-        .patient-count {
-            background: #E11937; color: #fff; border-radius: 50%;
-            width: 28px; height: 28px; display: flex; align-items: center;
-            justify-content: center; font-size: 14px; font-weight: 700;
-            position: absolute; top: 12px; right: 12px;
-        }
+        /* Map */
+        #map { width:100%; height:100%; }
+        .leaflet-container { background:var(--bg) !important; }
 
-        .patients-section { padding: 24px; }
-        .patients-section h2 { font-size: 16px; margin-bottom: 16px; color: #fff; }
-        .patient-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-        .patient-card {
-            background: #141924; border: 1px solid #2a3040; border-radius: 8px;
-            padding: 16px; cursor: pointer; transition: border-color 0.2s;
+        /* Right Panel */
+        .panel { display:flex; flex-direction:column; border-left:1px solid var(--border); min-height:0; }
+        .panel-header {
+            padding:10px 16px; border-bottom:1px solid var(--border); flex-shrink:0;
+            font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+            color:var(--accent); display:flex; align-items:center; gap:8px;
         }
-        .patient-card:hover { border-color: #E11937; }
-        .patient-name { font-weight: 600; margin-bottom: 4px; }
-        .patient-meta { font-size: 12px; color: #888; }
-        .triage-badge {
-            display: inline-block; padding: 2px 8px; border-radius: 4px;
-            font-size: 11px; font-weight: 700;
-        }
-        .triage-T1 { background: #ff0000; color: #fff; }
-        .triage-T2 { background: #ff8800; color: #fff; }
-        .triage-T3 { background: #00aa00; color: #fff; }
-        .triage-T4 { background: #444; color: #fff; }
+        .panel-header::before { content:''; width:3px; height:14px; background:var(--accent); border-radius:2px; }
 
-        .status-bar {
-            position: fixed; bottom: 0; left: 0; right: 0;
-            background: #141924; border-top: 1px solid #2a3040;
-            padding: 8px 24px; display: flex; gap: 24px;
-            font-size: 12px; color: #888;
+        /* Triage Bar */
+        .triage-bar {
+            display:flex; gap:0; padding:8px 16px; border-bottom:1px solid var(--border); flex-shrink:0;
         }
-        .status-dot {
-            width: 8px; height: 8px; border-radius: 50%;
-            display: inline-block; margin-right: 6px;
+        .triage-bar .tc {
+            flex:1; text-align:center; padding:6px 4px; font-size:11px; font-weight:700;
         }
-        .status-dot.online { background: #00cc44; }
-        .status-dot.offline { background: #cc0000; }
+        .triage-bar .tc .num { font-size:22px; font-weight:800; display:block; }
 
-        .empty-state {
-            text-align: center; padding: 80px 24px; color: #555;
+        /* Transport List */
+        .transport-list { flex:1; overflow-y:auto; padding:8px; }
+        .transport-card {
+            background:var(--surface); border:1px solid var(--border); border-radius:8px;
+            margin-bottom:8px; overflow:hidden;
         }
-        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+        .transport-header {
+            display:flex; align-items:center; gap:10px; padding:10px 12px;
+            cursor:pointer; user-select:none;
+        }
+        .transport-header .unit-icon {
+            width:32px; height:32px; border-radius:6px; background:var(--elevated);
+            display:flex; align-items:center; justify-content:center; font-size:16px;
+        }
+        .transport-header .unit-name { font-weight:700; font-size:13px; flex:1; }
+        .transport-header .unit-meta { font-size:10px; color:var(--dim); }
+        .transport-header .eta { font-size:11px; font-weight:700; color:var(--warning); }
+        .transport-patients { padding:6px 12px 10px; border-top:1px solid var(--border); }
+        .tp-patient {
+            display:flex; align-items:center; gap:8px; padding:5px 0;
+            border-bottom:1px solid rgba(255,255,255,0.03);
+        }
+        .tp-patient:last-child { border-bottom:none; }
+        .tp-triage {
+            width:22px; height:22px; border-radius:4px; display:flex; align-items:center;
+            justify-content:center; font-size:9px; font-weight:800; color:#fff; flex-shrink:0;
+        }
+        .tp-name { font-size:11px; font-weight:600; flex:1; }
+        .tp-injury { font-size:10px; color:var(--dim); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .tp-patient.t1 { animation: pulse-t1 2s ease-in-out infinite; }
+        @keyframes pulse-t1 { 0%,100% { background:transparent; } 50% { background:rgba(255,0,0,0.06); } }
+
+        /* Event Feed */
+        .event-feed { border-top:1px solid var(--border); flex-shrink:0; max-height:140px; overflow-y:auto; }
+        .event-feed .ef-header {
+            padding:6px 16px; font-size:10px; font-weight:700; text-transform:uppercase;
+            letter-spacing:0.5px; color:var(--dim); border-bottom:1px solid var(--border);
+            position:sticky; top:0; background:var(--surface);
+        }
+        .event-item {
+            display:flex; gap:8px; padding:4px 16px; font-size:10px; color:var(--text2);
+            border-bottom:1px solid rgba(255,255,255,0.02);
+        }
+        .event-item .ev-time { color:var(--dim); flex-shrink:0; width:55px; }
+        .event-item .ev-unit { color:var(--accent); font-weight:600; flex-shrink:0; }
+        .event-item.new-patient { border-left:2px solid var(--accent); }
+
+        /* Empty state */
+        .empty { text-align:center; padding:40px; color:var(--dim); }
+        .empty .icon { font-size:36px; margin-bottom:8px; opacity:0.3; }
+
+        /* Map markers */
+        .bat-marker {
+            background:var(--elevated); border:2px solid var(--accent); border-radius:8px;
+            padding:4px 8px; font-size:10px; font-weight:700; color:var(--text);
+            white-space:nowrap; display:flex; align-items:center; gap:4px;
+            box-shadow:0 2px 8px rgba(0,0,0,0.5);
+        }
+        .bat-marker .bat-count {
+            background:var(--accent); color:#fff; border-radius:10px;
+            padding:0 6px; font-size:9px; min-width:18px; text-align:center;
+        }
+        .station-marker {
+            background:var(--accent); color:#fff; border-radius:50%; width:32px; height:32px;
+            display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:800;
+            box-shadow:0 0 20px rgba(225,25,55,0.4);
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h1><span class="cgi">CGI</span> SAFIR Leitstelle</h1>
-        <span class="subtitle">Rettungskette — KI-gestuetzte Verwaltung</span>
-    </div>
-
-    <div class="chain" id="chain">
-        <div class="role-card" data-role="phase0">
-            <div class="role-header">Phase 0</div>
-            <div class="role-title">Selbst-/Kameradenhilfe</div>
-            <div class="role-desc">Erstversorgung im Feld, Sprachdokumentation via Jetson</div>
-            <div class="patient-count" id="count-phase0">0</div>
-        </div>
-        <div class="arrow">&#10132;</div>
-        <div class="role-card" data-role="role1">
-            <div class="role-header">Role 1</div>
-            <div class="role-title">Rettungsstation</div>
-            <div class="role-desc">Erste aerztliche Behandlung, Vitalfunktionen sichern</div>
-            <div class="patient-count" id="count-role1">0</div>
-        </div>
-        <div class="arrow">&#10132;</div>
-        <div class="role-card" data-role="role2">
-            <div class="role-header">Role 2</div>
-            <div class="role-title">Rettungszentrum</div>
-            <div class="role-desc">Chirurgische Akutversorgung, Intensivueberwachung</div>
-            <div class="patient-count" id="count-role2">0</div>
-        </div>
-        <div class="arrow">&#10132;</div>
-        <div class="role-card" data-role="role3">
-            <div class="role-header">Role 3</div>
-            <div class="role-title">Einsatzlazarett</div>
-            <div class="role-desc">Multidisziplinaere Diagnostik & Therapie</div>
-            <div class="patient-count" id="count-role3">0</div>
-        </div>
-        <div class="arrow">&#10132;</div>
-        <div class="role-card" data-role="role4">
-            <div class="role-header">Role 4</div>
-            <div class="role-title">BW-Krankenhaus</div>
-            <div class="role-desc">Weiterbehandlung & Rehabilitation</div>
-            <div class="patient-count" id="count-role4">0</div>
+        <span class="role-badge">ROLE 1 — RETTUNGSSTATION</span>
+        <div class="stats">
+            <span><span class="ws-dot off" id="ws-dot"></span> <span id="ws-status">Getrennt</span></span>
+            <span>Patienten: <span class="val" id="stat-patients">0</span></span>
+            <span>Transporte: <span class="val" id="stat-transports">0</span></span>
         </div>
     </div>
 
-    <div class="patients-section">
-        <h2>Patienten</h2>
-        <div class="patient-list" id="patientList">
-            <div class="empty-state">
-                <div class="icon">&#9877;</div>
-                <div>Keine Patienten erfasst</div>
-                <div style="margin-top: 8px; font-size: 13px;">Warte auf Daten vom Feldgeraet...</div>
+    <div class="main">
+        <!-- Taktische Karte -->
+        <div id="map"></div>
+
+        <!-- Rechtes Panel -->
+        <div class="panel">
+            <div class="panel-header">Eingehende Transporte</div>
+
+            <!-- Triage-Übersicht -->
+            <div class="triage-bar">
+                <div class="tc" style="color:var(--t1)"><span class="num" id="tc-t1">0</span>T1 Sofort</div>
+                <div class="tc" style="color:var(--t2)"><span class="num" id="tc-t2">0</span>T2 Dringend</div>
+                <div class="tc" style="color:var(--t3)"><span class="num" id="tc-t3">0</span>T3 Aufschub</div>
+                <div class="tc" style="color:var(--t4)"><span class="num" id="tc-t4">0</span>T4 Abwartend</div>
+            </div>
+
+            <!-- Transport-Liste -->
+            <div class="transport-list" id="transport-list">
+                <div class="empty">
+                    <div class="icon">&#9877;</div>
+                    <div>Warte auf Meldungen von Feldgeräten...</div>
+                    <div style="margin-top:8px;font-size:11px">BATs senden Verwundete über SAFIR Phase 0</div>
+                </div>
+            </div>
+
+            <!-- Event Feed -->
+            <div class="event-feed" id="event-feed">
+                <div class="ef-header">Live-Ticker</div>
             </div>
         </div>
     </div>
 
-    <div class="status-bar">
-        <span><span class="status-dot" id="wsStatus"></span> WebSocket</span>
-        <span><span class="status-dot" id="jetsonStatus"></span> Jetson Feldgeraet</span>
-        <span id="patientTotal">0 Patienten</span>
-        <span style="margin-left: auto;">SAFIR Leitstelle v0.1</span>
-    </div>
+<script>
+// ============================================================
+// State
+// ============================================================
+let patients = {};
+let transports = {};
+let positions = {};
+let mapMarkers = {};
+let ws = null;
 
-    <script>
-    let ws;
-    let patients = {};
+const TRIAGE_COLORS = {T1:'#FF0000', T2:'#FF8800', T3:'#00AA00', T4:'#4444AA'};
 
-    function connectWS() {
-        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(`${proto}//${location.host}/ws`);
-        ws.onopen = () => {
-            document.getElementById('wsStatus').classList.add('online');
-            document.getElementById('wsStatus').classList.remove('offline');
-        };
-        ws.onclose = () => {
-            document.getElementById('wsStatus').classList.add('offline');
-            document.getElementById('wsStatus').classList.remove('online');
-            setTimeout(connectWS, 3000);
-        };
-        ws.onmessage = (e) => {
-            const msg = JSON.parse(e.data);
-            if (msg.type === 'patient_update') {
+// ============================================================
+// Map (Leaflet + OpenStreetMap)
+// ============================================================
+// Zentrum: Bonn (AFCEA Standort)
+const map = L.map('map', {zoomControl:false}).setView([50.7350, 7.0980], 13);
+
+// Dunkle Kacheln für taktische Optik
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution:'&copy; OpenStreetMap &copy; CartoDB',
+    maxZoom:19,
+}).addTo(map);
+
+L.control.zoom({position:'bottomleft'}).addTo(map);
+
+// Rettungsstation Marker (feste Position — für Demo: Bonn Zentrum)
+const stationPos = [50.7350, 7.0980];
+const stationIcon = L.divIcon({className:'', html:'<div class="station-marker">★</div>', iconSize:[32,32], iconAnchor:[16,16]});
+L.marker(stationPos, {icon:stationIcon}).addTo(map).bindTooltip('Rettungsstation (Role 1)', {permanent:false});
+
+function updateMapMarker(unitName, pos, patientCount) {
+    const latLng = [pos.lat, pos.lon];
+    const html = `<div class="bat-marker">&#9764; ${unitName}<span class="bat-count">${patientCount}</span></div>`;
+    const icon = L.divIcon({className:'', html:html, iconSize:[null,null], iconAnchor:[12,12]});
+
+    if (mapMarkers[unitName]) {
+        mapMarkers[unitName].setLatLng(latLng);
+        mapMarkers[unitName].setIcon(icon);
+    } else {
+        mapMarkers[unitName] = L.marker(latLng, {icon:icon}).addTo(map);
+        // Beim ersten Marker: Karte zoomen um alle zu sehen
+        const bounds = L.latLngBounds([stationPos]);
+        Object.values(mapMarkers).forEach(m => bounds.extend(m.getLatLng()));
+        map.fitBounds(bounds.pad(0.3));
+    }
+}
+
+// ============================================================
+// Render
+// ============================================================
+function renderTransports() {
+    const list = document.getElementById('transport-list');
+    const units = Object.keys(transports);
+
+    if (units.length === 0) {
+        list.innerHTML = '<div class="empty"><div class="icon">&#9877;</div><div>Warte auf Meldungen von Feldgeräten...</div></div>';
+        return;
+    }
+
+    list.innerHTML = units.map(unitName => {
+        const t = transports[unitName];
+        const patientIds = t.patient_ids || [];
+        const pos = positions[unitName];
+        const patientList = patientIds.map(pid => patients[pid]).filter(Boolean);
+
+        // Triage-Zusammenfassung
+        const triageSummary = {};
+        patientList.forEach(p => { const tr = p.triage || '?'; triageSummary[tr] = (triageSummary[tr]||0)+1; });
+        const triageStr = Object.entries(triageSummary).map(([k,v]) => `${v}×${k}`).join(' ');
+
+        // ETA (Platzhalter — wird später berechnet)
+        const etaStr = pos ? 'Position bekannt' : 'Position unbekannt';
+
+        const patientsHtml = patientList.map(p => {
+            const color = TRIAGE_COLORS[p.triage] || '#444';
+            const injuries = (p.injuries || []).join(', ') || 'Keine Angabe';
+            const isT1 = p.triage === 'T1';
+            return `
+                <div class="tp-patient ${isT1?'t1':''}">
+                    <div class="tp-triage" style="background:${color}">${p.triage||'--'}</div>
+                    <span class="tp-name">${p.name||'Unbekannt'}${p.rank?' ('+p.rank+')':''}</span>
+                    <span class="tp-injury">${injuries}</span>
+                </div>`;
+        }).join('');
+
+        return `
+            <div class="transport-card">
+                <div class="transport-header" onclick="this.parentElement.classList.toggle('open')">
+                    <div class="unit-icon">&#128666;</div>
+                    <div>
+                        <div class="unit-name">${unitName}</div>
+                        <div class="unit-meta">${patientList.length} Verwundete · ${triageStr}</div>
+                    </div>
+                    <div class="eta">${etaStr}</div>
+                </div>
+                <div class="transport-patients">${patientsHtml}</div>
+            </div>`;
+    }).join('');
+}
+
+function updateTriageCounts() {
+    const counts = {T1:0, T2:0, T3:0, T4:0};
+    Object.values(patients).forEach(p => {
+        const t = p.triage || '';
+        if (counts[t] !== undefined) counts[t]++;
+    });
+    document.getElementById('tc-t1').textContent = counts.T1;
+    document.getElementById('tc-t2').textContent = counts.T2;
+    document.getElementById('tc-t3').textContent = counts.T3;
+    document.getElementById('tc-t4').textContent = counts.T4;
+    document.getElementById('stat-patients').textContent = Object.keys(patients).length;
+    document.getElementById('stat-transports').textContent = Object.keys(transports).length;
+}
+
+function addEventToFeed(event) {
+    const feed = document.getElementById('event-feed');
+    const time = new Date(event.time).toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const isNew = event.type === 'patient_ingest';
+    const el = document.createElement('div');
+    el.className = 'event-item' + (isNew ? ' new-patient' : '');
+    el.innerHTML = `<span class="ev-time">${time}</span><span class="ev-unit">${event.unit||''}</span><span>${event.details}</span>`;
+    // Nach dem Header einfügen
+    const header = feed.querySelector('.ef-header');
+    if (header && header.nextSibling) {
+        feed.insertBefore(el, header.nextSibling);
+    } else {
+        feed.appendChild(el);
+    }
+    // Max 30 Events im DOM
+    const items = feed.querySelectorAll('.event-item');
+    if (items.length > 30) items[items.length-1].remove();
+}
+
+// ============================================================
+// WebSocket
+// ============================================================
+function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+    ws.onopen = () => {
+        document.getElementById('ws-dot').className = 'ws-dot on';
+        document.getElementById('ws-status').textContent = 'Verbunden';
+    };
+    ws.onclose = () => {
+        document.getElementById('ws-dot').className = 'ws-dot off';
+        document.getElementById('ws-status').textContent = 'Getrennt';
+        setTimeout(connectWS, 3000);
+    };
+    ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        handleMessage(msg);
+    };
+}
+
+function handleMessage(msg) {
+    switch(msg.type) {
+        case 'init':
+            // Initiale Daten laden
+            (msg.patients || []).forEach(p => { patients[p.patient_id] = p; });
+            transports = msg.transports || {};
+            positions = msg.positions || {};
+            (msg.events || []).forEach(ev => addEventToFeed(ev));
+            updateTriageCounts();
+            renderTransports();
+            // Positionen auf Karte
+            Object.entries(positions).forEach(([unit, pos]) => {
+                const t = transports[unit];
+                const count = t ? (t.patient_ids || []).length : 0;
+                updateMapMarker(unit, pos, count);
+            });
+            break;
+
+        case 'patient_new':
+        case 'patient_update':
+            if (msg.patient) {
                 patients[msg.patient.patient_id] = msg.patient;
-                renderPatients();
+                // Transport aktualisieren
+                if (msg.unit_name && transports[msg.unit_name]) {
+                    const t = transports[msg.unit_name];
+                    if (!t.patient_ids.includes(msg.patient.patient_id)) {
+                        t.patient_ids.push(msg.patient.patient_id);
+                    }
+                } else if (msg.unit_name) {
+                    transports[msg.unit_name] = {
+                        unit_name: msg.unit_name,
+                        patient_ids: [msg.patient.patient_id],
+                        last_update: new Date().toISOString(),
+                    };
+                }
+                updateTriageCounts();
+                renderTransports();
             }
-        };
+            if (msg.event) addEventToFeed(msg.event);
+            break;
+
+        case 'position_update':
+            if (msg.position) {
+                const p = msg.position;
+                positions[p.unit_name] = p;
+                const t = transports[p.unit_name];
+                const count = t ? (t.patient_ids || []).length : 0;
+                updateMapMarker(p.unit_name, p, count);
+            }
+            break;
     }
+}
 
-    function renderPatients() {
-        const list = document.getElementById('patientList');
-        const entries = Object.values(patients);
+// ============================================================
+// Init
+// ============================================================
+connectWS();
 
-        // Update counts
-        const counts = { phase0: 0, role1: 0, role2: 0, role3: 0, role4: 0 };
-        entries.forEach(p => { counts[p.current_role] = (counts[p.current_role] || 0) + 1; });
-        Object.keys(counts).forEach(role => {
-            const el = document.getElementById(`count-${role}`);
-            if (el) el.textContent = counts[role];
-        });
-
-        document.getElementById('patientTotal').textContent = `${entries.length} Patienten`;
-
-        if (entries.length === 0) return;
-
-        list.innerHTML = entries.map(p => `
-            <div class="patient-card" onclick="showPatient('${p.patient_id}')">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div class="patient-name">${p.name || 'Unbekannt'} ${p.rank ? '(' + p.rank + ')' : ''}</div>
-                    ${p.triage ? `<span class="triage-badge triage-${p.triage}">${p.triage}</span>` : ''}
-                </div>
-                <div class="patient-meta">
-                    ${p.current_role ? p.current_role.toUpperCase() : ''} &middot;
-                    ${p.injuries && p.injuries.length ? p.injuries.join(', ') : 'Keine Verletzungen erfasst'} &middot;
-                    ${p.transcripts ? p.transcripts.length + ' Transkripte' : ''}
-                </div>
-            </div>
-        `).join('');
+// Ping keepalive
+setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({type:'ping'}));
     }
-
-    function showPatient(pid) {
-        // TODO: Detail-Ansicht
-        console.log('Patient:', patients[pid]);
-    }
-
-    connectWS();
-    </script>
+}, 15000);
+</script>
 </body>
 </html>

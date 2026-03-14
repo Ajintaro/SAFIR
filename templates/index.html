@@ -1,0 +1,2934 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAFIR | CGI Deutschland</title>
+    <style>
+        /* ============================================================
+           CGI Corporate Design — SAFIR Dashboard
+           Primary: #E11937 (CGI Red)
+           ============================================================ */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --accent: #E11937;
+            --accent-dark: #B81430;
+            --accent-light: rgba(225, 25, 55, 0.12);
+            --accent-glow: rgba(225, 25, 55, 0.25);
+            --cgi-red: #E11937;
+            --cgi-red-dark: #B81430;
+            --cgi-red-light: rgba(225, 25, 55, 0.12);
+            --cgi-red-glow: rgba(225, 25, 55, 0.25);
+            --success: #2ECC71;
+            --warning: #F39C12;
+            --danger: #E74C3C;
+            --info: #5DADE2;
+            --radius: 8px;
+            --radius-lg: 12px;
+            --sidebar-width: 56px;
+            --sidebar-width-expanded: 200px;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #0D0D1A;
+            --bg-surface: #141428;
+            --bg-surface2: #1C1C36;
+            --bg-elevated: #242445;
+            --border: rgba(255,255,255,0.08);
+            --border-light: rgba(255,255,255,0.12);
+            --text-primary: #F0F0F5;
+            --text-secondary: #9595B2;
+            --text-dim: #6B6B8A;
+            --logo-color: #E11937;
+            --accent: #E11937;
+            --accent-dark: #B81430;
+            --accent-light: rgba(225, 25, 55, 0.12);
+            --accent-glow: rgba(225, 25, 55, 0.25);
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #F2F3F5;
+            --bg-surface: #FFFFFF;
+            --bg-surface2: #F7F7FA;
+            --bg-elevated: #ECECF2;
+            --border: rgba(0,0,0,0.08);
+            --border-light: rgba(0,0,0,0.12);
+            --text-primary: #1A1A2E;
+            --text-secondary: #555580;
+            --text-dim: #8888AA;
+            --logo-color: #E11937;
+            --accent: #E11937;
+            --accent-dark: #B81430;
+            --accent-light: rgba(225, 25, 55, 0.12);
+            --accent-glow: rgba(225, 25, 55, 0.25);
+        }
+
+        [data-theme="saphir"] {
+            --bg-primary: #080C18;
+            --bg-surface: #0E1528;
+            --bg-surface2: #141E38;
+            --bg-elevated: #1A2848;
+            --border: rgba(100,160,255,0.12);
+            --border-light: rgba(100,160,255,0.18);
+            --text-primary: #E0E8F5;
+            --text-secondary: #8BA4CC;
+            --text-dim: #5A7099;
+            --logo-color: #3B82F6;
+            --accent: #3B82F6;
+            --accent-dark: #2563EB;
+            --accent-light: rgba(59, 130, 246, 0.15);
+            --accent-glow: rgba(59, 130, 246, 0.30);
+            --cgi-red: #3B82F6;
+            --cgi-red-dark: #2563EB;
+            --cgi-red-light: rgba(59, 130, 246, 0.15);
+            --cgi-red-glow: rgba(59, 130, 246, 0.30);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border);
+            gap: 12px;
+            flex-wrap: wrap;
+            z-index: 100;
+        }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .cgi-logo { display: flex; align-items: center; }
+        .cgi-wordmark {
+            font-size: 28px; font-weight: 700; letter-spacing: 4px;
+            color: var(--logo-color);
+        }
+        .header-divider { width: 1px; height: 28px; background: var(--border-light); }
+        .app-title .name { font-size: 18px; font-weight: 700; letter-spacing: 2px; color: var(--cgi-red); }
+        .app-title .acronym { display: block; font-size: 9px; color: var(--text-dim); letter-spacing: 0.5px; margin-top: 1px; }
+        .header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+        /* Badges */
+        .badge {
+            padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600;
+            letter-spacing: 0.3px; white-space: nowrap;
+        }
+        .badge-ok { background: rgba(46,204,113,0.15); color: #2ECC71; }
+        .badge-err { background: rgba(231,76,60,0.15); color: #E74C3C; }
+        .badge-warn { background: rgba(243,156,18,0.15); color: #F39C12; }
+        .badge-cgi { background: var(--cgi-red-light); color: var(--cgi-red); }
+
+        /* Vosk indicator */
+        .vosk-indicator {
+            display: flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .vosk-indicator.active {
+            background: rgba(46,204,113,0.15); color: #2ECC71;
+        }
+        .vosk-indicator.inactive {
+            background: var(--bg-elevated); color: var(--text-dim);
+        }
+        .vosk-indicator .mic-icon { font-size: 13px; }
+        .vosk-indicator.active .mic-icon { animation: pulse-mic 2s ease-in-out infinite; }
+        @keyframes pulse-mic {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .theme-toggle, .hw-toggle {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            color: var(--text-secondary); border-radius: 6px; padding: 5px 8px;
+            cursor: pointer; display: flex; align-items: center; gap: 4px;
+        }
+        .theme-toggle:hover, .hw-toggle:hover { border-color: var(--cgi-red); }
+        .hw-toggle.active { border-color: var(--cgi-red); color: var(--cgi-red); }
+
+        /* Hardware Overlay */
+        .hw-overlay {
+            display: none; position: fixed; top: 52px; right: 12px;
+            width: 300px; max-height: calc(100vh - 70px); overflow-y: auto;
+            background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            z-index: 1000; padding: 16px;
+        }
+        .hw-overlay.open { display: block; }
+        .hw-overlay-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+            cursor: grab; user-select: none;
+        }
+        .hw-overlay-header:active { cursor: grabbing; }
+        .hw-overlay-header h3 { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 0; }
+        .hw-overlay-header span { font-size: 10px; color: var(--text-dim); }
+        .hw-overlay-close {
+            background: none; border: none; color: var(--text-dim); cursor: pointer;
+            font-size: 18px; padding: 0 4px; line-height: 1;
+        }
+        .hw-overlay-close:hover { color: var(--text-primary); }
+
+        /* WS-Status Dot */
+        .ws-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: currentColor; display: inline-block;
+            margin-right: 2px; vertical-align: middle;
+        }
+
+        /* ============================================================
+           Sidebar Navigation
+           ============================================================ */
+        .app-layout {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            transition: width 0.2s ease;
+            overflow: hidden;
+            flex-shrink: 0;
+            z-index: 50;
+        }
+        .sidebar:hover {
+            width: var(--sidebar-width-expanded);
+        }
+
+        .sidebar-nav {
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .nav-item:hover {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+        }
+        .nav-item.active {
+            background: var(--cgi-red-light);
+            color: var(--cgi-red);
+            font-weight: 600;
+        }
+        .nav-icon {
+            font-size: 18px;
+            width: 24px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .nav-label {
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .sidebar:hover .nav-label {
+            opacity: 1;
+        }
+
+        .sidebar-footer {
+            padding: 8px;
+            border-top: 1px solid var(--border);
+            font-size: 9px;
+            color: var(--text-dim);
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        /* ============================================================
+           Page Container
+           ============================================================ */
+        .page-container {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+
+        .page {
+            display: none;
+            height: 100%;
+        }
+        .page.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ============================================================
+           Dashboard Grid (bestehendes Layout)
+           ============================================================ */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            grid-template-rows: auto 1fr;
+            gap: 10px;
+            padding: 10px;
+            flex: 1;
+            min-height: 0;
+        }
+        .control-panel { grid-column: 1; grid-row: 1; }
+        .transcript-panel { grid-column: 1; grid-row: 2; overflow-y: auto; min-height: 0; }
+        .right-panel {
+            grid-column: 2; grid-row: 1 / 3;
+            display: flex; flex-direction: column; gap: 10px;
+            overflow-y: auto; min-height: 0;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+        .card-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .card-header h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+        .card-accent { width: 3px; height: 14px; background: var(--cgi-red); border-radius: 2px; display: inline-block; }
+        .card-body { padding: 12px 16px; }
+
+        /* Metrics */
+        .metric { margin-bottom: 12px; }
+        .metric-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .metric-label { font-size: 11px; font-weight: 500; color: var(--text-secondary); }
+        .metric-value { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+        .unit { font-size: 10px; color: var(--text-dim); }
+        .bar { height: 4px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+        .temp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 6px; }
+        .temp-chip { background: var(--bg-surface2); padding: 4px 6px; border-radius: 4px; font-size: 10px; display: flex; justify-content: space-between; }
+        .temp-chip .val { font-weight: 600; }
+
+        /* Config */
+        .config-section { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+        .field { margin-bottom: 10px; }
+        .field label { display: block; font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .field input, .field select, .field textarea {
+            width: 100%; padding: 6px 10px; border: 1px solid var(--border);
+            border-radius: var(--radius); background: var(--bg-surface2);
+            color: var(--text-primary); font-size: 12px; font-family: inherit;
+        }
+        .field textarea { resize: vertical; min-height: 50px; }
+        .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--cgi-red); }
+
+        /* Buttons */
+        .btn {
+            padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+            background: var(--bg-elevated); color: var(--text-primary); font-size: 11px;
+            font-weight: 500; cursor: pointer; transition: all 0.15s;
+        }
+        .btn:hover { border-color: var(--cgi-red); }
+        .btn-cgi { background: var(--cgi-red); border-color: var(--cgi-red); color: #fff; }
+        .btn-cgi:hover { background: var(--cgi-red-dark); }
+        .btn-export { background: var(--success); border-color: var(--success); color: #fff; }
+        .btn-group { display: flex; gap: 6px; margin-top: 8px; }
+
+        /* Record Button */
+        .record-btn {
+            width: 100%; padding: 14px; border: 2px solid var(--cgi-red);
+            border-radius: var(--radius-lg); background: var(--cgi-red-light);
+            color: var(--cgi-red); font-size: 14px; font-weight: 700;
+            cursor: pointer; transition: all 0.2s; display: flex; align-items: center;
+            justify-content: center; gap: 8px;
+        }
+        .record-btn:hover { background: var(--cgi-red); color: #fff; }
+        .record-btn.recording {
+            background: var(--cgi-red); color: #fff;
+            animation: pulse-record 1.5s ease-in-out infinite;
+        }
+        .record-btn.transcribing {
+            background: var(--bg-elevated); border-color: var(--warning);
+            color: var(--warning); cursor: not-allowed;
+        }
+        @keyframes pulse-record {
+            0%, 100% { box-shadow: 0 0 0 0 var(--cgi-red-glow); }
+            50% { box-shadow: 0 0 0 12px rgba(225,25,55,0); }
+        }
+        .rec-indicator { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        /* Audio Meter */
+        .audio-meter {
+            height: 20px; background: var(--bg-elevated); border-radius: 4px;
+            overflow: hidden; margin-top: 8px; position: relative;
+        }
+        .audio-meter-fill { height: 100%; background: var(--cgi-red); transition: width 0.15s; width: 0%; }
+        .audio-meter-text {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 600; color: var(--text-secondary);
+        }
+
+        /* Transcript */
+        .transcript-list { padding: 8px 12px; overflow-y: auto; max-height: 100%; }
+        .transcript-entry {
+            padding: 8px 10px; margin-bottom: 6px; border-left: 3px solid var(--cgi-red);
+            background: var(--bg-surface2); border-radius: 0 var(--radius) var(--radius) 0;
+            position: relative;
+        }
+        .transcript-time { font-size: 10px; font-weight: 600; color: var(--cgi-red); margin-bottom: 4px; }
+        .transcript-text { font-size: 13px; line-height: 1.5; color: var(--text-primary); }
+        .transcript-meta { font-size: 9px; color: var(--text-dim); margin-top: 4px; display: flex; gap: 10px; }
+        .transcript-delete {
+            position: absolute; top: 4px; right: 6px; background: none; border: none;
+            color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 2px 4px;
+        }
+        .transcript-delete:hover { color: var(--danger); }
+
+        .empty { text-align: center; padding: 30px 16px; color: var(--text-dim); font-size: 12px; }
+        .empty .icon { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
+
+        /* Session */
+        .session-active-info .stat-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+        .stat-label { color: var(--text-secondary); font-weight: 500; }
+        .stat-val { color: var(--text-primary); font-weight: 600; }
+        .session-item {
+            display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+            border-radius: var(--radius); cursor: pointer; transition: background 0.15s;
+            margin-bottom: 2px;
+        }
+        .session-item:hover { background: var(--bg-elevated); }
+        .session-item.active { background: var(--cgi-red-light); }
+        .session-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+        .session-item.active .dot { background: var(--cgi-red); }
+        .session-item .name { font-size: 12px; font-weight: 500; }
+        .session-item .meta { font-size: 10px; color: var(--text-dim); }
+
+        /* Template Selector */
+        .template-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px;
+        }
+        .template-card {
+            padding: 8px; border: 2px solid var(--border); border-radius: var(--radius);
+            cursor: pointer; transition: all 0.15s; text-align: center;
+        }
+        .template-card:hover { border-color: var(--cgi-red); background: var(--cgi-red-light); }
+        .template-card.selected { border-color: var(--cgi-red); background: var(--cgi-red-light); }
+        .template-card .tpl-icon { font-size: 20px; margin-bottom: 2px; }
+        .template-card .tpl-name { font-size: 11px; font-weight: 600; color: var(--text-primary); }
+        .template-card .tpl-desc { font-size: 9px; color: var(--text-dim); }
+
+        /* Template Fields */
+        .template-fields { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
+        .template-section-title {
+            font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--cgi-red); margin: 8px 0 6px; display: flex; align-items: center; gap: 4px;
+        }
+        .template-section-title::before { content: ''; width: 3px; height: 10px; background: var(--cgi-red); border-radius: 1px; }
+        .tpl-field { margin-bottom: 6px; }
+        .tpl-field label { display: block; font-size: 9px; font-weight: 600; color: var(--text-secondary); margin-bottom: 2px; }
+        .tpl-field input, .tpl-field select, .tpl-field textarea {
+            width: 100%; padding: 5px 8px; border: 1px solid var(--border);
+            border-radius: var(--radius); background: var(--bg-surface2);
+            color: var(--text-primary); font-size: 11px; font-family: inherit;
+        }
+        .tpl-field textarea { resize: vertical; min-height: 40px; }
+        .tpl-field input:focus, .tpl-field select:focus, .tpl-field textarea:focus { outline: none; border-color: var(--cgi-red); }
+
+        /* Multiselect checkboxes */
+        .multiselect-group { display: flex; flex-wrap: wrap; gap: 3px; }
+        .multiselect-chip {
+            padding: 2px 8px; border: 1px solid var(--border); border-radius: 12px;
+            font-size: 10px; cursor: pointer; transition: all 0.15s;
+            color: var(--text-secondary); background: var(--bg-surface2);
+        }
+        .multiselect-chip.selected {
+            border-color: var(--cgi-red); background: var(--cgi-red-light); color: var(--cgi-red); font-weight: 600;
+        }
+
+        /* File list */
+        .file-list { max-height: 200px; overflow-y: auto; }
+        .file-item {
+            display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+            border-bottom: 1px solid var(--border); font-size: 11px;
+        }
+        .file-icon {
+            background: var(--cgi-red-light); color: var(--cgi-red); padding: 2px 6px;
+            border-radius: 3px; font-size: 8px; font-weight: 700;
+        }
+        .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-size { color: var(--text-dim); font-size: 10px; }
+        .file-actions { display: flex; gap: 4px; }
+        .file-btn {
+            background: none; border: 1px solid var(--border); color: var(--text-secondary);
+            border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 11px;
+        }
+        .file-btn:hover { border-color: var(--cgi-red); color: var(--cgi-red); }
+
+        /* Toast */
+        .toast-container { position: fixed; top: 60px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 6px; }
+        .toast {
+            padding: 10px 16px; border-radius: var(--radius); font-size: 12px; font-weight: 500;
+            background: var(--bg-surface); border: 1px solid var(--border);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: toast-in 0.3s ease;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .toast.voice { border-left: 3px solid var(--success); }
+        .toast .toast-icon { font-size: 16px; }
+        @keyframes toast-in { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: translateX(0); } }
+
+        .footer-badge {
+            text-align: center; padding: 6px; font-size: 9px; color: var(--text-dim);
+            border-top: 1px solid var(--border); background: var(--bg-surface);
+        }
+
+        /* ============================================================
+           Settings Page
+           ============================================================ */
+        .settings-layout {
+            display: flex;
+            flex: 1;
+            gap: 0;
+            min-height: 0;
+        }
+
+        .settings-sidebar {
+            width: 220px;
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border);
+            padding: 12px 8px;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .settings-nav-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; border-radius: var(--radius);
+            cursor: pointer; transition: all 0.15s;
+            font-size: 12px; font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 2px;
+        }
+        .settings-nav-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
+        .settings-nav-item.active { background: var(--cgi-red-light); color: var(--cgi-red); font-weight: 600; }
+        .settings-nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+        .settings-content {
+            flex: 1;
+            padding: 20px 28px;
+            overflow-y: auto;
+            max-width: 800px;
+        }
+
+        .settings-section {
+            display: none;
+        }
+        .settings-section.active {
+            display: block;
+        }
+
+        .settings-title {
+            font-size: 18px; font-weight: 700; color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .settings-desc {
+            font-size: 12px; color: var(--text-dim); margin-bottom: 20px;
+        }
+
+        .settings-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 16px 20px;
+            margin-bottom: 16px;
+        }
+        .settings-card-title {
+            font-size: 13px; font-weight: 600; color: var(--text-primary);
+            margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+        }
+        .settings-card-title::before {
+            content: ''; width: 3px; height: 14px; background: var(--cgi-red); border-radius: 2px;
+        }
+
+        /* Trigger-Wörter Editor */
+        .trigger-group {
+            margin-bottom: 16px;
+            padding: 12px;
+            background: var(--bg-surface2);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+        }
+        .trigger-group-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 8px;
+        }
+        .trigger-group-label {
+            font-size: 12px; font-weight: 600; color: var(--cgi-red);
+        }
+        .trigger-group-action {
+            font-size: 10px; color: var(--text-dim);
+            background: var(--bg-elevated); padding: 2px 8px; border-radius: 10px;
+        }
+        .trigger-list {
+            display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;
+        }
+        .trigger-tag {
+            display: flex; align-items: center; gap: 4px;
+            padding: 4px 10px; background: var(--bg-elevated);
+            border: 1px solid var(--border); border-radius: 16px;
+            font-size: 11px; color: var(--text-primary);
+        }
+        .trigger-tag .remove-trigger {
+            cursor: pointer; color: var(--text-dim); font-size: 14px;
+            line-height: 1; transition: color 0.15s;
+        }
+        .trigger-tag .remove-trigger:hover { color: var(--danger); }
+        .trigger-add {
+            display: flex; gap: 6px;
+        }
+        .trigger-add input {
+            flex: 1; padding: 5px 10px; border: 1px solid var(--border);
+            border-radius: var(--radius); background: var(--bg-primary);
+            color: var(--text-primary); font-size: 11px; font-family: inherit;
+        }
+        .trigger-add input:focus { outline: none; border-color: var(--cgi-red); }
+        .trigger-add button {
+            padding: 5px 12px; border: 1px solid var(--cgi-red);
+            border-radius: var(--radius); background: var(--cgi-red-light);
+            color: var(--cgi-red); font-size: 11px; font-weight: 600;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .trigger-add button:hover { background: var(--cgi-red); color: #fff; }
+
+        /* ============================================================
+           Welcome / Home Page
+           ============================================================ */
+        .welcome-page {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 100%; padding: 40px;
+            text-align: center;
+        }
+        .welcome-logo {
+            font-size: 56px; font-weight: 800; letter-spacing: 12px;
+            color: var(--cgi-red); margin-bottom: 4px;
+            text-shadow: 0 0 40px var(--cgi-red-glow);
+        }
+        .welcome-full-name {
+            font-size: 13px; font-weight: 400; color: var(--text-secondary);
+            letter-spacing: 2px; margin-bottom: 28px;
+        }
+
+        /* Sidebar separator */
+        .nav-separator {
+            padding: 10px 12px 4px;
+            font-size: 9px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 1px;
+            color: var(--text-dim);
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .nav-separator-line {
+            height: 1px; background: var(--border);
+            margin: 4px 12px 0;
+        }
+        .nav-separator-label {
+            opacity: 0; transition: opacity 0.15s;
+        }
+        .sidebar:hover .nav-separator-label {
+            opacity: 1;
+        }
+
+        .nav-item .nav-subtitle {
+            display: none;
+            font-size: 9px; font-weight: 400; color: var(--text-dim);
+            margin-top: 1px;
+        }
+        .sidebar:hover .nav-subtitle {
+            display: block;
+        }
+
+        /* Platzhalter-Seiten */
+        .placeholder-page {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 100%; color: var(--text-dim);
+            padding: 40px; text-align: center;
+        }
+        .placeholder-page .ph-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; }
+        .placeholder-page .ph-title { font-size: 18px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+        .placeholder-page .ph-desc { font-size: 12px; max-width: 400px; line-height: 1.6; }
+        .placeholder-page .ph-badge {
+            margin-top: 12px; padding: 4px 12px; border-radius: 12px;
+            font-size: 10px; font-weight: 600; background: var(--bg-surface);
+            border: 1px solid var(--border); color: var(--text-dim);
+        }
+
+        @media (max-width: 1100px) {
+            .dashboard { grid-template-columns: 1fr; grid-template-rows: auto; }
+            .right-panel { grid-row: auto; }
+            .control-panel, .transcript-panel { grid-column: auto; }
+            .sidebar { width: var(--sidebar-width); }
+            .sidebar:hover { width: var(--sidebar-width); }
+            .settings-sidebar { width: 180px; }
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Aufklappbare Patienten-Karten */
+        .patient-card-details {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+        .patient-card-details[open] { border-color: var(--border-light); }
+        .patient-card-details.active-patient { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-light); }
+        .patient-card-details summary {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; cursor: pointer; user-select: none;
+            font-size: 12px; list-style: none;
+        }
+        .patient-card-details summary::-webkit-details-marker { display: none; }
+        .patient-card-details summary .triage-dot {
+            width: 26px; height: 26px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 800; color: #fff; flex-shrink: 0;
+        }
+        .patient-card-details summary .p-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .patient-card-details summary .p-badges { display: flex; gap: 3px; flex-shrink: 0; }
+        .badge-sm { font-size: 8px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+        .patient-card-body {
+            padding: 6px 12px 10px; border-top: 1px solid var(--border);
+            font-size: 11px; line-height: 1.5;
+        }
+        .patient-card-body .pt-entry {
+            padding: 4px 8px; margin-bottom: 3px;
+            border-left: 2px solid var(--accent); border-radius: 0 4px 4px 0;
+            background: var(--bg-surface2);
+        }
+        .patient-card-body .pt-entry .pt-time { font-size: 9px; color: var(--accent); font-weight: 600; }
+        .patient-card-body .pt-entry .pt-text { font-size: 11px; color: var(--text-primary); }
+        .patient-card-body .pt-meta { font-size: 10px; color: var(--text-dim); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+        .patient-card-body .pt-meta span { background: var(--bg-elevated); padding: 1px 6px; border-radius: 6px; }
+        .patient-card-chevron { font-size: 10px; color: var(--text-dim); transition: transform 0.15s; }
+        .patient-card-details[open] .patient-card-chevron { transform: rotate(90deg); }
+
+        /* Dashboard Grid */
+        .dashboard {
+            grid-template-columns: 1fr 340px;
+            grid-template-rows: 1fr;
+        }
+        .dashboard > div:first-child {
+            grid-column: 1; grid-row: 1;
+        }
+    </style>
+</head>
+<body data-theme="dark">
+
+<!-- HEADER -->
+<div class="header">
+    <div class="header-left">
+        <div class="cgi-logo"><span class="cgi-wordmark">CGI</span></div>
+        <div class="header-divider"></div>
+        <div class="app-title">
+            <span class="name"><svg width="16" height="16" viewBox="0 0 100 100" style="vertical-align:-1px;margin-right:3px;filter:drop-shadow(0 0 4px var(--accent-glow))"><polygon points="50,8 82,32 50,45 18,32" fill="var(--accent)" opacity="0.8"/><polygon points="18,32 50,45 50,92" fill="var(--accent-dark)"/><polygon points="82,32 50,45 50,92" fill="var(--accent)" opacity="0.6"/></svg>SAFIR</span>
+            <span class="acronym">Sprachgestützte Assistenz für Informationserfassung in der Rettungskette</span>
+            <span class="acronym" id="header-unit-name" style="color:var(--accent);font-weight:600;font-size:10px;letter-spacing:0.3px"></span>
+        </div>
+    </div>
+    <div class="header-right">
+        <div class="vosk-indicator inactive" id="vosk-indicator" onclick="toggleVosk()" title="Sprachsteuerung ein/aus">
+            <span class="mic-icon">&#127908;</span>
+            <span id="vosk-label">Sprache aus</span>
+        </div>
+        <span class="badge badge-err" id="badge-status" style="display:none"></span>
+        <span class="badge" id="badge-backend" style="display:none" title="Leitstelle-Verbindung">
+            <span class="ws-dot" id="backend-dot" style="background:#cc0000"></span>
+            <span id="backend-label">Leitstelle</span>
+        </span>
+        <span class="badge badge-ok" id="badge-ws"><span class="ws-dot" id="ws-dot"></span> Server verbunden</span>
+        <button class="hw-toggle" id="hw-toggle" onclick="toggleHwOverlay()" title="Hardware-Monitor">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="4" y="4" width="16" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/>
+                <line x1="8" y1="9" x2="8" y2="12"/><line x1="12" y1="7" x2="12" y2="12"/><line x1="16" y1="10" x2="16" y2="12"/>
+            </svg>
+        </button>
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Theme wechseln">
+            <span id="theme-icon" style="font-size:14px">&#127761;</span>
+        </button>
+    </div>
+</div>
+
+<!-- HARDWARE OVERLAY -->
+<div class="hw-overlay" id="hw-overlay">
+    <div class="hw-overlay-header">
+        <div>
+            <h3><span class="card-accent"></span>Hardware Monitor</h3>
+            <span>Jetson Orin Nano</span>
+        </div>
+        <button class="hw-overlay-close" onclick="toggleHwOverlay()">&times;</button>
+    </div>
+    <div class="metric">
+        <div class="metric-head">
+            <span class="metric-label">CPU</span>
+            <span class="metric-value"><span id="cpu-percent">0</span>% <span class="unit" id="cpu-freq"></span></span>
+        </div>
+        <div class="bar"><div class="bar-fill" id="cpu-bar" style="width:0%;background:var(--success)"></div></div>
+    </div>
+    <div class="metric">
+        <div class="metric-head">
+            <span class="metric-label">RAM</span>
+            <span class="metric-value"><span id="ram-used">0</span> / <span id="ram-total">0</span> <span class="unit">MB</span></span>
+        </div>
+        <div class="bar"><div class="bar-fill" id="ram-bar" style="width:0%;background:var(--success)"></div></div>
+        <div style="text-align:right;margin-top:3px"><span style="font-size:10px;color:var(--text-dim)" id="ram-percent">0</span><span style="font-size:10px;color:var(--text-dim)">%</span></div>
+    </div>
+    <div class="metric">
+        <div class="metric-head">
+            <span class="metric-label">GPU</span>
+            <span class="metric-value" id="gpu-usage">N/A</span>
+        </div>
+        <div class="bar"><div class="bar-fill" id="gpu-bar" style="width:0%;background:var(--cgi-red)"></div></div>
+    </div>
+    <div class="metric">
+        <div class="metric-head">
+            <span class="metric-label">NVMe SSD</span>
+            <span class="metric-value"><span id="disk-used">0</span> / <span id="disk-total">0</span> <span class="unit">GB</span></span>
+        </div>
+        <div class="bar"><div class="bar-fill" id="disk-bar" style="width:0%;background:var(--info)"></div></div>
+        <div style="text-align:right;margin-top:3px"><span style="font-size:10px;color:var(--text-dim)" id="disk-percent">0</span><span style="font-size:10px;color:var(--text-dim)">%</span></div>
+    </div>
+    <div class="metric">
+        <span class="metric-label">Temperaturen</span>
+        <div class="temp-grid" id="temps"></div>
+    </div>
+    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+        <div class="config-section">
+            <div class="field">
+                <label>Whisper Modell</label>
+                <select id="model-select" onchange="loadModel(this.value)"></select>
+                <div id="model-status" style="margin-top:6px;font-size:11px">
+                    <span style="color:var(--text-dim)">Nicht geladen</span>
+                </div>
+                <button class="btn" onclick="unloadModel()" style="margin-top:6px;padding:4px 10px;font-size:10px;width:100%">Modell entladen (RAM freigeben)</button>
+            </div>
+            <div class="field">
+                <label>Audio-Eingang</label>
+                <select id="device-select" onchange="selectDevice(this.value)"></select>
+            </div>
+            <div class="field">
+                <label>Mikrofon-Test</label>
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+                    <button class="btn" id="mic-test-btn" onclick="toggleMicTest()" style="padding:5px 12px;font-size:11px;flex-shrink:0">&#127908; Test starten</button>
+                    <span id="mic-test-status" style="font-size:10px;color:var(--text-dim)">Inaktiv</span>
+                </div>
+                <div style="height:16px;background:var(--bg-elevated);border-radius:4px;overflow:hidden;position:relative">
+                    <div id="mic-test-bar" style="height:100%;width:0%;background:var(--success);transition:width 0.1s;border-radius:4px"></div>
+                    <div id="mic-test-db" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--text-secondary)">-- dB</div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:3px">
+                    <span style="font-size:8px;color:var(--text-dim)">Leise</span>
+                    <span style="font-size:8px;color:var(--text-dim)">Peak: <span id="mic-test-peak">0</span>%</span>
+                    <span style="font-size:8px;color:var(--text-dim)">Laut</span>
+                </div>
+            </div>
+            <div class="field">
+                <label>Sprache</label>
+                <select id="lang-select" onchange="setLanguage(this.value)">
+                    <option value="de" selected>Deutsch</option>
+                    <option value="en">English</option>
+                    <option value="fr">Francais</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- APP LAYOUT: Sidebar + Pages -->
+<div class="app-layout">
+
+    <!-- SIDEBAR NAVIGATION -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-nav" id="sidebar-nav">
+            <!-- Wird dynamisch aus config.json geladen -->
+        </div>
+        <div class="sidebar-footer">
+            <span class="nav-label">v2.1</span>
+        </div>
+    </nav>
+
+    <!-- PAGE CONTAINER -->
+    <div class="page-container" id="page-container">
+
+        <!-- ======================================================
+             PAGE: Home / Willkommen
+             ====================================================== -->
+        <div class="page active" id="page-home">
+            <div class="welcome-page">
+                <!-- Saphir-Edelstein SVG -->
+                <svg class="safir-gem" width="80" height="80" viewBox="0 0 100 100" style="margin-bottom:12px;filter:drop-shadow(0 0 20px var(--accent-glow))">
+                    <defs>
+                        <linearGradient id="gem-top" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:var(--accent);stop-opacity:0.9"/>
+                            <stop offset="100%" style="stop-color:var(--accent-dark);stop-opacity:1"/>
+                        </linearGradient>
+                        <linearGradient id="gem-left" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:var(--accent-dark);stop-opacity:0.95"/>
+                            <stop offset="100%" style="stop-color:#0a1628;stop-opacity:1"/>
+                        </linearGradient>
+                        <linearGradient id="gem-right" x1="100%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" style="stop-color:var(--accent);stop-opacity:0.7"/>
+                            <stop offset="100%" style="stop-color:var(--accent-dark);stop-opacity:0.9"/>
+                        </linearGradient>
+                        <linearGradient id="gem-shine" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#fff;stop-opacity:0.4"/>
+                            <stop offset="100%" style="stop-color:#fff;stop-opacity:0"/>
+                        </linearGradient>
+                    </defs>
+                    <!-- Edelstein-Körper: Oberteil (Krone) -->
+                    <polygon points="50,8 82,32 68,32 50,18 32,32 18,32" fill="url(#gem-shine)" opacity="0.6"/>
+                    <polygon points="18,32 50,18 50,45 18,32" fill="url(#gem-top)"/>
+                    <polygon points="82,32 50,18 50,45 82,32" fill="url(#gem-right)" opacity="0.85"/>
+                    <!-- Mittellinie -->
+                    <polygon points="18,32 82,32 50,45" fill="url(#gem-top)" opacity="0.7"/>
+                    <!-- Unterteil (Pavillon) -->
+                    <polygon points="18,32 50,45 50,92" fill="url(#gem-left)"/>
+                    <polygon points="82,32 50,45 50,92" fill="url(#gem-right)"/>
+                    <!-- Glanzlinie -->
+                    <line x1="50" y1="18" x2="50" y2="45" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
+                    <line x1="50" y1="45" x2="50" y2="92" stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/>
+                </svg>
+                <div class="welcome-logo">SAFIR</div>
+                <div class="welcome-full-name">Sprachgestützte Assistenz für Informationserfassung in der Rettungskette</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Phase 0 — Feld-Modus (Voice-First) + Fahrzeug-Modus
+             ====================================================== -->
+        <div class="page" id="page-recording">
+
+            <!-- Modus-Umschalter -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg-surface);border-bottom:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <span style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">Modus</span>
+                    <button class="btn btn-cgi" id="btn-mode-feld" onclick="setMode('feld')" style="padding:5px 16px;font-size:12px">Feld</button>
+                    <button class="btn" id="btn-mode-fahrzeug" onclick="setMode('fahrzeug')" style="padding:5px 16px;font-size:12px">Fahrzeug</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px">
+                    <span id="patient-count-badge" style="font-size:11px;color:var(--text-dim)">0 Patienten</span>
+                    <span id="tts-indicator" style="font-size:10px;color:var(--text-dim);cursor:pointer" onclick="toggleTTS()" title="Sprachausgabe ein/aus">&#128264; TTS an</span>
+                </div>
+            </div>
+
+            <!-- ============ FELD-MODUS ============ -->
+            <div id="mode-feld" style="display:flex;flex-direction:column;height:100%;padding:12px;gap:10px">
+
+                <!-- Aktiver Patient — kompakte Zeile -->
+                <div id="active-patient-card" style="display:none;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:10px 16px">
+                    <div style="display:flex;align-items:center;gap:12px">
+                        <div id="patient-triage-badge" style="width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;background:#444">--</div>
+                        <div style="flex:1">
+                            <div style="font-size:18px;font-weight:700" id="active-patient-name">Kein Patient</div>
+                            <div style="font-size:10px;color:var(--text-dim);margin-top:2px">
+                                <span id="active-patient-flow-badge" style="font-weight:600;color:var(--text-secondary)">Registriert</span>
+                            </div>
+                            <span id="active-patient-id" style="display:none"></span>
+                            <span id="active-patient-rfid" style="display:none"></span>
+                        </div>
+                        <div style="text-align:right">
+                            <div style="font-size:10px;color:var(--text-dim)" id="active-patient-time">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grosser Record-Button (Zentrum des Feld-Modus) -->
+                <div style="flex:0 0 auto">
+                    <button class="record-btn" id="record-btn" onclick="toggleRecording()" style="font-size:18px;padding:20px">
+                        Aufnahme starten
+                    </button>
+                    <div class="audio-meter" style="margin-top:10px;height:24px">
+                        <div class="audio-meter-fill" id="audio-meter-fill"></div>
+                        <div class="audio-meter-text" id="audio-meter-text">Kein Signal</div>
+                    </div>
+                </div>
+
+                <!-- Sprachbefehle-Referenz (Feld) -->
+                <!-- Einsatzablauf (aufklappbar) -->
+                <details id="flow-guide" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
+                    <summary style="padding:10px 16px;cursor:pointer;font-size:12px;font-weight:700;color:var(--cgi-red);display:flex;align-items:center;gap:8px;user-select:none">
+                        Einsatzablauf — Sprachbefehle
+                        <span style="margin-left:auto;font-size:9px;color:var(--text-dim);font-weight:400">aufklappen</span>
+                    </summary>
+                    <div style="padding:8px 12px 12px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border)">
+                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
+                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">1</span>
+                            <div><span style="font-size:11px;font-weight:600">Neuen Patienten anlegen</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Neuer Patient"</strong> — SAFIR legt Akte an</span></div>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
+                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">2</span>
+                            <div><span style="font-size:11px;font-weight:600">Befund dokumentieren</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Aufnahme starten"</strong> / <strong>"Aufnahme stoppen"</strong> — frei sprechen</span></div>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
+                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">3</span>
+                            <div><span style="font-size:11px;font-weight:600">Triage zuweisen</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Triage rot / gelb / grün / blau"</strong></span></div>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
+                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">4</span>
+                            <div><span style="font-size:11px;font-weight:600">Patient abschließen</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Patient fertig"</strong> — RFID-Tag scannen &amp; befestigen</span></div>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
+                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">5</span>
+                            <div><span style="font-size:11px;font-weight:600">An Leitstelle melden</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Patient melden"</strong> — Daten übertragen</span></div>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
+                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">6</span>
+                            <div><span style="font-size:11px;font-weight:600">Nächster Patient</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Neuer Patient"</strong> — weiter bei 1 | <strong>"Wie viele Patienten"</strong> zur Kontrolle</span></div>
+                        </div>
+                        <div style="margin-top:4px;padding:6px 10px;background:var(--bg-elevated);border-radius:var(--radius);font-size:9px;color:var(--text-dim)">
+                            Weitere: <strong>"Eintrag löschen"</strong> · <strong>"Export"</strong> · Leertaste = Aufnahme
+                        </div>
+                    </div>
+                </details>
+
+                <!-- Patientenliste (aufklappbare Karten) -->
+                <div id="patient-cards-feld" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+                    <div class="empty" style="padding:30px;text-align:center">
+                        <div class="icon" style="font-size:28px;opacity:0.4">&#127908;</div>
+                        <div style="font-size:12px;color:var(--text-dim)">Sprachbefehl: <strong>"Neuer Patient"</strong> → <strong>"Aufnahme starten"</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ FAHRZEUG-MODUS ============ -->
+            <div id="mode-fahrzeug" style="display:none;height:100%;display:flex;flex-direction:column;padding:12px;gap:10px">
+
+                <!-- Aktions-Leiste oben -->
+                <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
+                    <button class="btn" onclick="voiceNewPatient()" style="padding:8px 14px;font-size:12px;font-weight:700;background:var(--cgi-red);border-color:var(--cgi-red);color:#fff">+ Neuer Patient</button>
+                    <button class="btn" onclick="analyzeSession()" style="padding:8px 14px;font-size:12px" id="btn-analyze">&#129504; Analyse</button>
+                    <button class="btn" onclick="sendToBackend()" style="padding:8px 14px;font-size:12px;background:#2ECC71;border-color:#2ECC71;color:#fff" id="btn-send-backend">&#9889; Alle melden</button>
+                    <button class="btn" onclick="exportDocx()" style="padding:8px 14px;font-size:12px">&#128196; Export</button>
+                    <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                        <button class="btn btn-cgi" onclick="rfidScan()" style="padding:6px 12px;font-size:11px;display:flex;align-items:center;gap:4px" id="rfid-scan-btn"><span style="font-size:14px">&#128179;</span> RFID</button>
+                        <input type="text" id="rfid-input" placeholder="Tag-ID" style="width:120px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:10px;font-family:monospace">
+                    </div>
+                </div>
+
+                <!-- Patientenliste (Hauptbereich) -->
+                <div id="patient-cards-fz" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+                    <div class="empty" style="padding:30px;text-align:center"><div class="icon" style="font-size:24px;opacity:0.4">&#9764;</div><div style="font-size:12px;color:var(--text-dim)">Keine Patienten — "Neuer Patient" klicken oder per Sprache anlegen</div></div>
+                </div>
+            </div>
+
+            <!-- Hidden elements für Kompatibilität -->
+            <div style="display:none">
+                <div id="session-info"><span id="session-patient"></span><span id="session-template"></span><span id="session-records">0</span></div>
+                <div id="session-form"></div>
+                <select id="template-select"><option value="tccc" selected>TCCC</option></select>
+                <input id="medic" value="">
+                <input id="patient-triage" value="">
+                <input id="patient-name" value="">
+                <span id="transcript-count"></span>
+                <div id="transcript-list"></div>
+                <span id="fz-patient-id"></span>
+                <span id="tccc-status"></span>
+                <div id="template-fields-container"></div>
+                <div id="fz-injuries"></div>
+            </div>
+
+        </div>
+
+        <!-- ======================================================
+             PAGE: Patienten
+             ====================================================== -->
+        <div class="page" id="page-patients">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#9764;</div>
+                <div class="ph-title">Patienten-Übersicht</div>
+                <div class="ph-desc">Zentrale Verwaltung aller Patienten entlang der Rettungskette. Triage-Status, 9-Liner, TCCC Cards und Übergabeprotokolle auf einen Blick.</div>
+                <div class="ph-badge">Geplant für Phase 2</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Triage
+             ====================================================== -->
+        <div class="page" id="page-triage">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#9733;</div>
+                <div class="ph-title">Triage-Übersicht</div>
+                <div class="ph-desc">
+                    Visuelle Darstellung aller Patienten nach Triage-Kategorie.<br>
+                    <span style="color:#E74C3C;font-weight:600">T1 Sofort</span> &middot;
+                    <span style="color:#F39C12;font-weight:600">T2 Aufgeschoben</span> &middot;
+                    <span style="color:#2ECC71;font-weight:600">T3 Leicht</span> &middot;
+                    <span style="color:#5DADE2;font-weight:600">T4 Abwartend</span>
+                </div>
+                <div class="ph-badge">Geplant für Phase 2</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Phase 0 — Selbst-/Kameradenhilfe
+             ====================================================== -->
+        <div class="page" id="page-phase0">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#9873;</div>
+                <div class="ph-title">Phase 0 — Selbst- und Kameradenhilfe</div>
+                <div class="ph-desc">Verwundetenversorgung am Ort des Geschehens. Erste Maßnahmen durch Kameraden oder Ersthelfer. TCCC-Dokumentation per Spracheingabe.</div>
+                <div class="ph-badge">Aktiv auf diesem Gerät (Jetson Feldgeraet)</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Role 1 — Rettungsstation
+             ====================================================== -->
+        <div class="page" id="page-role1">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#9769;</div>
+                <div class="ph-title">Role 1 — Rettungsstation</div>
+                <div class="ph-desc">Erste ärztliche Behandlung. Triage, Stabilisierung und Vorbereitung des MEDEVAC-Transports. 9-Liner Erstellung und Übergabe.</div>
+                <div class="ph-badge">Geplant für Phase 2</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Role 2 — Chirurgische Akutversorgung
+             ====================================================== -->
+        <div class="page" id="page-role2">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#9883;</div>
+                <div class="ph-title">Role 2 — Chirurgische Akutversorgung</div>
+                <div class="ph-desc">Rettungszentrum mit chirurgischen Sofortmassnahmen. Übergabeberichte, OP-Vorbereitung und erweiterte Diagnostik.</div>
+                <div class="ph-badge">Geplant für Phase 3</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Role 3 — Einsatzlazarett
+             ====================================================== -->
+        <div class="page" id="page-role3">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#9879;</div>
+                <div class="ph-title">Role 3 — Einsatzlazarett</div>
+                <div class="ph-desc">Erweiterte medizinische Versorgung. Vollstaendige Patientenakte, KI-gestützte Diagnoseunterstuetzung und Langzeitdokumentation.</div>
+                <div class="ph-badge">Geplant für Phase 3</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Role 4 — Krankenhaus
+             ====================================================== -->
+        <div class="page" id="page-role4">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#127973;</div>
+                <div class="ph-title">Role 4 — Bundeswehrkrankenhaus</div>
+                <div class="ph-desc">Endgueltige medizinische Versorgung und Rehabilitation. Statistiken, Auswertung und vollstaendige Aktenfuehrung.</div>
+                <div class="ph-badge">Geplant für Phase 4</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Dokumente
+             ====================================================== -->
+        <div class="page" id="page-documents">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#128196;</div>
+                <div class="ph-title">Dokumente</div>
+                <div class="ph-desc">Exportierte Protokolle, Patientenakten und Übergabeberichte. DOCX- und PDF-Export für die Aktenablage.</div>
+                <div class="ph-badge">Geplant für Phase 2</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Einstellungen
+             ====================================================== -->
+        <div class="page" id="page-settings">
+            <div class="settings-layout">
+                <div class="settings-sidebar">
+                    <div class="settings-nav-item active" onclick="showSettingsSection('voice')" data-settings="voice">
+                        <span class="settings-nav-icon">&#127908;</span>
+                        Sprachbefehle
+                    </div>
+                    <div class="settings-nav-item" onclick="showSettingsSection('recognition')" data-settings="recognition">
+                        <span class="settings-nav-icon">&#127911;</span>
+                        Spracherkennung
+                    </div>
+                    <div class="settings-nav-item" onclick="showSettingsSection('llm')" data-settings="llm">
+                        <span class="settings-nav-icon">&#129504;</span>
+                        KI / LLM
+                    </div>
+                    <div class="settings-nav-item" onclick="showSettingsSection('device')" data-settings="device">
+                        <span class="settings-nav-icon">&#128268;</span>
+                        Gerät &amp; Netzwerk
+                    </div>
+                    <div class="settings-nav-item" onclick="showSettingsSection('display')" data-settings="display">
+                        <span class="settings-nav-icon">&#127912;</span>
+                        Darstellung
+                    </div>
+                    <div class="settings-nav-item" onclick="showSettingsSection('system')" data-settings="system">
+                        <span class="settings-nav-icon">&#9881;</span>
+                        System
+                    </div>
+                </div>
+                <div class="settings-content">
+
+                    <!-- Sprachbefehle -->
+                    <div class="settings-section active" id="settings-voice">
+                        <div class="settings-title">Sprachbefehle</div>
+                        <div class="settings-desc">Konfigurieren Sie die Trigger-Wörter für die Sprachsteuerung. Vosk erkennt diese Wörter und löst die entsprechende Aktion aus.</div>
+                        <div id="voice-commands-editor">
+                            <!-- Wird dynamisch geladen -->
+                        </div>
+                        <div style="margin-top:12px">
+                            <button class="btn btn-cgi" onclick="saveVoiceCommands()">Sprachbefehle speichern</button>
+                            <span id="voice-save-status" style="font-size:11px;color:var(--success);margin-left:8px"></span>
+                        </div>
+                    </div>
+
+                    <!-- Spracherkennung -->
+                    <div class="settings-section" id="settings-recognition">
+                        <div class="settings-title">Spracherkennung</div>
+                        <div class="settings-desc">Whisper- und Vosk-Einstellungen für die Transkription.</div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">Whisper Modell</div>
+                            <div class="field">
+                                <label>Aktives Modell</label>
+                                <select id="settings-whisper-model" onchange="loadModel(this.value)"></select>
+                            </div>
+                            <div class="field">
+                                <label>Sprache</label>
+                                <select id="settings-language" onchange="setLanguage(this.value)">
+                                    <option value="de" selected>Deutsch</option>
+                                    <option value="en">English</option>
+                                    <option value="fr">Francais</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">Vosk Sprachsteuerung</div>
+                            <div style="font-size:12px;color:var(--text-secondary)">
+                                Status: <span id="settings-vosk-status" style="font-weight:600">-</span>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn" onclick="toggleVosk()">Vosk ein/aus</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KI / LLM -->
+                    <div class="settings-section" id="settings-llm">
+                        <div class="settings-title">KI / LLM</div>
+                        <div class="settings-desc">Konfiguration des lokalen LLM für die Feldextraktion.</div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">Ollama</div>
+                            <div class="field">
+                                <label>Server URL</label>
+                                <input type="text" id="settings-ollama-url" placeholder="http://127.0.0.1:11434">
+                            </div>
+                            <div class="field">
+                                <label>Modell</label>
+                                <input type="text" id="settings-ollama-model" placeholder="qwen2.5:1.5b">
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-cgi" onclick="saveLLMSettings()">Speichern</button>
+                                <span id="llm-save-status" style="font-size:11px;color:var(--success);margin-left:8px"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gerät & Netzwerk -->
+                    <div class="settings-section" id="settings-device">
+                        <div class="settings-title">Gerät &amp; Netzwerk</div>
+                        <div class="settings-desc">Einheit, Leitstelle und Audio-Konfiguration.</div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">Eigene Einheit</div>
+                            <div class="field">
+                                <label>Einheit / Rufzeichen</label>
+                                <input type="text" id="settings-unit-name" placeholder="z.B. BAT Alpha, 3./SanRgt 1">
+                            </div>
+                            <div class="field">
+                                <label>Geräte-ID</label>
+                                <input type="text" id="settings-device-id" placeholder="z.B. jetson-01">
+                            </div>
+                            <div class="field">
+                                <label>Sanitäter (Standard)</label>
+                                <input type="text" id="settings-default-medic" placeholder="z.B. OStFw Müller">
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-cgi" onclick="saveUnitSettings()">Speichern</button>
+                                <span id="unit-save-status" style="font-size:11px;color:var(--success);margin-left:8px"></span>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">Leitstelle (Backend)</div>
+                            <div class="field">
+                                <label>Backend-URL</label>
+                                <input type="text" id="settings-backend-url" placeholder="http://192.168.178.100:8080">
+                            </div>
+                            <div class="field">
+                                <label>Auto-Sync</label>
+                                <select id="settings-auto-sync">
+                                    <option value="true">Aktiviert</option>
+                                    <option value="false">Deaktiviert</option>
+                                </select>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-cgi" onclick="saveBackendSettings()">Speichern</button>
+                                <button class="btn" onclick="testBackendConnection()">Verbindung testen</button>
+                                <span id="backend-save-status" style="font-size:11px;margin-left:8px"></span>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">Audio-Eingang</div>
+                            <div class="field">
+                                <label>Eingabegerät</label>
+                                <select id="settings-audio-device" onchange="selectDevice(this.value)"></select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Darstellung -->
+                    <div class="settings-section" id="settings-display">
+                        <div class="settings-title">Darstellung</div>
+                        <div class="settings-desc">Theme und Anzeige-Einstellungen.</div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">Theme</div>
+                            <div class="field">
+                                <label>Farbschema</label>
+                                <select id="settings-theme" onchange="setTheme(this.value)">
+                                    <option value="dark">Dark Mode</option>
+                                    <option value="saphir">Saphir Mode 💎</option>
+                                    <option value="light">Light Mode</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System -->
+                    <div class="settings-section" id="settings-system">
+                        <div class="settings-title">System</div>
+                        <div class="settings-desc">System-Informationen und Verwaltung.</div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">SAFIR Informationen</div>
+                            <div style="font-size:12px;color:var(--text-secondary);line-height:1.8">
+                                <div><strong>Version:</strong> 2.1</div>
+                                <div><strong>Gerät:</strong> NVIDIA Jetson Orin Nano</div>
+                                <div><strong>Projekt:</strong> CGI Deutschland / AFCEA 2026</div>
+                                <div><strong>Zweck:</strong> KI-gestützte Felddokumentation entlang der Bundeswehr-Rettungskette</div>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">Konfiguration exportieren</div>
+                            <div class="btn-group">
+                                <button class="btn" onclick="exportConfig()">config.json herunterladen</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /page-container -->
+</div><!-- /app-layout -->
+
+<div class="footer-badge">SAFIR v2.1 &middot; CGI Deutschland &middot; AFCEA 2026</div>
+
+<script>
+    let ws = null;
+    let isRecording = false;
+    let isTranscribing = false;
+    let activeSession = null;
+    let selectedTemplate = 'freitext';
+    let templateDefs = {};
+    let currentSessionTemplate = null;
+    let voiceCommandsConfig = {};
+
+    // ---- Audio Feedback ----
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playTone(freq, duration, type = 'sine', volume = 0.3) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function beepRecordStart() { playTone(880, 0.12, 'sine', 0.25); setTimeout(() => playTone(1175, 0.18, 'sine', 0.3), 130); }
+    function beepRecordStop() { playTone(1175, 0.12, 'sine', 0.25); setTimeout(() => playTone(880, 0.18, 'sine', 0.3), 130); }
+    function beepTranscribeDone() { playTone(783, 0.1, 'sine', 0.2); setTimeout(() => playTone(987, 0.1, 'sine', 0.2), 120); setTimeout(() => playTone(1175, 0.2, 'sine', 0.25), 240); }
+    function beepError() { playTone(330, 0.3, 'square', 0.15); }
+    function beepVoiceCommand() { playTone(660, 0.08, 'sine', 0.15); setTimeout(() => playTone(880, 0.12, 'sine', 0.2), 100); }
+
+    async function api(url, method = 'GET', body = null) {
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch(url, opts);
+        return res.json();
+    }
+
+    // ---- Toast ----
+    function showToast(text, icon = '', cls = '') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + cls;
+        toast.innerHTML = `${icon ? '<span class="toast-icon">' + icon + '</span>' : ''}<span>${text}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3000);
+    }
+
+    // ============================================================
+    // Navigation
+    // ============================================================
+    function navigateTo(pageId) {
+        // Alle Pages deaktivieren
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+        // Zielseite aktivieren
+        const page = document.getElementById('page-' + pageId);
+        if (page) page.classList.add('active');
+
+        const nav = document.querySelector(`.nav-item[data-page="${pageId}"]`);
+        if (nav) nav.classList.add('active');
+
+        // Einstellungen: Config laden bei Seitenwechsel
+        if (pageId === 'settings') loadSettingsData();
+
+        // URL-Hash setzen
+        location.hash = pageId;
+    }
+
+    function buildSidebar(navItems) {
+        const nav = document.getElementById('sidebar-nav');
+        nav.innerHTML = navItems.map(item => {
+            if (item.type === 'separator') {
+                return `
+                    <div class="nav-separator">
+                        <div class="nav-separator-label">${item.label || ''}</div>
+                        <div class="nav-separator-line"></div>
+                    </div>`;
+            }
+            const subtitle = item.subtitle ? `<div class="nav-subtitle">${item.subtitle}</div>` : '';
+            return `
+                <div class="nav-item ${item.default ? 'active' : ''}" data-page="${item.id}" onclick="navigateTo('${item.id}')">
+                    <span class="nav-icon">${item.icon}</span>
+                    <span class="nav-label">
+                        ${item.label}
+                        ${subtitle}
+                    </span>
+                </div>`;
+        }).join('');
+    }
+
+    // ============================================================
+    // Settings: Sprachbefehle
+    // ============================================================
+    function renderVoiceCommandsEditor(commands) {
+        voiceCommandsConfig = JSON.parse(JSON.stringify(commands));
+        const container = document.getElementById('voice-commands-editor');
+        let html = '';
+        for (const [actionId, actionData] of Object.entries(voiceCommandsConfig)) {
+            const triggers = actionData.triggers || [];
+            html += `
+                <div class="trigger-group" data-action="${actionId}">
+                    <div class="trigger-group-header">
+                        <span class="trigger-group-label">${actionData.label || actionId}</span>
+                        <span class="trigger-group-action">${actionId}</span>
+                    </div>
+                    <div class="trigger-list" id="triggers-${actionId}">
+                        ${triggers.map((t, i) => `
+                            <span class="trigger-tag">
+                                "${t}"
+                                <span class="remove-trigger" onclick="removeTrigger('${actionId}', ${i})">&times;</span>
+                            </span>
+                        `).join('')}
+                    </div>
+                    <div class="trigger-add">
+                        <input type="text" placeholder="Neues Trigger-Wort..." id="new-trigger-${actionId}"
+                               onkeydown="if(event.key==='Enter')addTrigger('${actionId}')">
+                        <button onclick="addTrigger('${actionId}')">+</button>
+                    </div>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+    }
+
+    function addTrigger(actionId) {
+        const input = document.getElementById('new-trigger-' + actionId);
+        const val = input.value.trim().toLowerCase();
+        if (!val) return;
+        if (!voiceCommandsConfig[actionId]) return;
+        if (voiceCommandsConfig[actionId].triggers.includes(val)) {
+            showToast('Trigger-Wort existiert bereits', '&#9888;');
+            return;
+        }
+        voiceCommandsConfig[actionId].triggers.push(val);
+        input.value = '';
+        renderVoiceCommandsEditor(voiceCommandsConfig);
+        saveVoiceCommands();  // Sofort speichern
+    }
+
+    function removeTrigger(actionId, index) {
+        if (!voiceCommandsConfig[actionId]) return;
+        voiceCommandsConfig[actionId].triggers.splice(index, 1);
+        renderVoiceCommandsEditor(voiceCommandsConfig);
+        saveVoiceCommands();  // Sofort speichern
+    }
+
+    async function saveVoiceCommands() {
+        const res = await api('/api/config/voice-commands', 'POST', voiceCommandsConfig);
+        const status = document.getElementById('voice-save-status');
+        if (res.status === 'ok') {
+            status.textContent = 'Gespeichert! (' + res.commands + ' Trigger-Wörter aktiv)';
+            status.style.color = 'var(--success)';
+            setTimeout(() => { status.textContent = ''; }, 3000);
+        } else {
+            status.textContent = 'Fehler beim Speichern';
+            status.style.color = 'var(--danger)';
+        }
+    }
+
+    // ============================================================
+    // Settings: Einheit & Backend
+    // ============================================================
+    async function saveUnitSettings() {
+        const unitName = document.getElementById('settings-unit-name').value;
+        const deviceId = document.getElementById('settings-device-id').value;
+        const medic = document.getElementById('settings-default-medic').value;
+        const res = await api('/api/config', 'POST', {
+            unit_name: unitName,
+            device_id: deviceId,
+            default_medic: medic,
+        });
+        const status = document.getElementById('unit-save-status');
+        if (res.status === 'ok') {
+            status.textContent = 'Gespeichert!';
+            status.style.color = 'var(--success)';
+            setTimeout(() => { status.textContent = ''; }, 3000);
+        }
+    }
+
+    async function saveBackendSettings() {
+        const url = document.getElementById('settings-backend-url').value;
+        const autoSync = document.getElementById('settings-auto-sync').value === 'true';
+        const res = await api('/api/config', 'POST', {
+            backend: { url: url, auto_sync: autoSync },
+        });
+        const status = document.getElementById('backend-save-status');
+        if (res.status === 'ok') {
+            status.textContent = 'Gespeichert!';
+            status.style.color = 'var(--success)';
+            setTimeout(() => { status.textContent = ''; }, 3000);
+        }
+    }
+
+    async function testBackendConnection() {
+        const url = document.getElementById('settings-backend-url').value;
+        const status = document.getElementById('backend-save-status');
+        status.textContent = 'Teste...';
+        status.style.color = 'var(--warning)';
+        try {
+            const res = await fetch(url + '/api/status', {signal: AbortSignal.timeout(5000)});
+            if (res.ok) {
+                status.textContent = 'Verbindung OK ✓';
+                status.style.color = 'var(--success)';
+            } else {
+                status.textContent = 'Fehler: ' + res.status;
+                status.style.color = 'var(--danger)';
+            }
+        } catch(e) {
+            status.textContent = 'Nicht erreichbar';
+            status.style.color = 'var(--danger)';
+        }
+        setTimeout(() => { status.textContent = ''; }, 5000);
+    }
+
+    // ============================================================
+    // Settings: LLM
+    // ============================================================
+    async function saveLLMSettings() {
+        const url = document.getElementById('settings-ollama-url').value;
+        const model = document.getElementById('settings-ollama-model').value;
+        const res = await api('/api/config', 'POST', {
+            ollama: { url: url, model: model }
+        });
+        const status = document.getElementById('llm-save-status');
+        if (res.status === 'ok') {
+            status.textContent = 'Gespeichert!';
+            status.style.color = 'var(--success)';
+            setTimeout(() => { status.textContent = ''; }, 3000);
+        }
+    }
+
+    // ============================================================
+    // Settings: Theme
+    // ============================================================
+    function setTheme(theme) {
+        document.body.setAttribute('data-theme', theme);
+        localStorage.setItem('safir-theme', theme);
+        updateThemeIcon(theme);
+        // Sync mit settings dropdown
+        const sel = document.getElementById('settings-theme');
+        if (sel) sel.value = theme;
+    }
+
+    // ============================================================
+    // Settings: Config Export
+    // ============================================================
+    async function exportConfig() {
+        const cfg = await api('/api/config');
+        const blob = new Blob([JSON.stringify(cfg, null, 4)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'safir-config.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // ============================================================
+    // Settings: Daten laden
+    // ============================================================
+    async function loadSettingsData() {
+        try {
+            const cfg = await api('/api/config');
+
+            // Sprachbefehle
+            if (cfg.voice_commands) {
+                renderVoiceCommandsEditor(cfg.voice_commands);
+            }
+
+            // Einheit
+            document.getElementById('settings-unit-name').value = cfg.unit_name || '';
+            document.getElementById('settings-device-id').value = cfg.device_id || '';
+            document.getElementById('settings-default-medic').value = cfg.default_medic || '';
+
+            // Backend
+            if (cfg.backend) {
+                document.getElementById('settings-backend-url').value = cfg.backend.url || '';
+                document.getElementById('settings-auto-sync').value = cfg.backend.auto_sync !== false ? 'true' : 'false';
+            }
+
+            // Ollama
+            if (cfg.ollama) {
+                document.getElementById('settings-ollama-url').value = cfg.ollama.url || '';
+                document.getElementById('settings-ollama-model').value = cfg.ollama.model || '';
+            }
+
+            // Theme sync
+            const currentTheme = document.body.getAttribute('data-theme') || 'dark';
+            document.getElementById('settings-theme').value = currentTheme;
+
+            // Vosk status
+            const voskRes = await api('/api/vosk/status');
+            const voskEl = document.getElementById('settings-vosk-status');
+            if (voskRes.available) {
+                voskEl.textContent = voskRes.enabled ? 'Aktiv' : 'Deaktiviert';
+                voskEl.style.color = voskRes.enabled ? 'var(--success)' : 'var(--text-dim)';
+            } else {
+                voskEl.textContent = 'Nicht verfügbar';
+                voskEl.style.color = 'var(--danger)';
+            }
+
+            // Whisper Modelle für Settings-Seite
+            const models = await api('/api/models');
+            const sel = document.getElementById('settings-whisper-model');
+            sel.innerHTML = models.models.map(m =>
+                `<option value="${m.name}" ${m.name === models.current ? 'selected' : ''}>${m.name} (${m.size_mb} MB)</option>`
+            ).join('');
+
+            // Audio devices für Settings-Seite
+            const devs = await api('/api/devices');
+            const dsel = document.getElementById('settings-audio-device');
+            dsel.innerHTML = devs.devices.map(d =>
+                `<option value="${d.id}" ${d.default ? 'selected' : ''}>${d.name}</option>`
+            ).join('');
+
+        } catch (e) {
+            console.error('Settings laden fehlgeschlagen:', e);
+        }
+    }
+
+    function showSettingsSection(sectionId) {
+        document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.settings-nav-item').forEach(n => n.classList.remove('active'));
+
+        const section = document.getElementById('settings-' + sectionId);
+        if (section) section.classList.add('active');
+
+        const nav = document.querySelector(`.settings-nav-item[data-settings="${sectionId}"]`);
+        if (nav) nav.classList.add('active');
+    }
+
+    // ---- WebSocket ----
+    function connectWS() {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${proto}//${location.host}/ws`);
+        ws.onopen = () => {
+            const b = document.getElementById('badge-ws');
+            b.className = 'badge badge-ok'; b.innerHTML = '<span class="ws-dot" id="ws-dot"></span> Server verbunden';
+        };
+        ws.onclose = () => {
+            const b = document.getElementById('badge-ws');
+            b.className = 'badge badge-err'; b.innerHTML = '<span class="ws-dot" id="ws-dot"></span> Server getrennt';
+            setTimeout(connectWS, 3000);
+        };
+        ws.onmessage = (event) => handleWSMessage(JSON.parse(event.data));
+    }
+
+    function handleWSMessage(msg) {
+        switch (msg.type) {
+            case 'system_stats':
+                updateSystemStats(msg.stats);
+                break;
+            case 'audio_level': updateAudioMeter(msg.rms, msg.duration); break;
+            case 'recording_started':
+                setRecordingState(true); beepRecordStart(); startRecordTimer(); break;
+            case 'recording_stopped':
+            case 'recording_auto_stop':
+                setRecordingState(false); beepRecordStop(); stopRecordTimer(); break;
+            case 'transcribing':
+                setTranscribingState(true, msg.chunks || 1); break;
+            case 'transcribing_progress':
+                updateTranscribeProgress(msg.chunk, msg.total); break;
+            case 'transcription_partial':
+                showPartialResult(msg.text, msg.chunk, msg.total); break;
+            case 'transcription_result':
+                setTranscribingState(false); clearPartialResults();
+                addTranscriptEntry(msg.record); beepTranscribeDone(); break;
+            case 'transcription_error':
+                setTranscribingState(false); beepError();
+                if (msg.error) showToast('Fehler: ' + msg.error, '&#9888;'); break;
+            case 'model_loading': updateModelBadge(msg.model, 'loading'); break;
+            case 'model_loaded': updateModelBadge(msg.model, 'loaded', msg.ram_mb); break;
+            case 'model_unloaded': updateModelBadge(null, 'unloaded'); break;
+            case 'session_created':
+                showSessionInfo(msg.session); refreshSessions(); break;
+            case 'analyzing':
+                showToast(msg.auto ? 'KI-Analyse gestartet (automatisch)...' : 'KI analysiert Transkripte...', '&#129504;');
+                document.getElementById('btn-analyze').textContent = 'Analysiert...';
+                document.getElementById('btn-analyze').disabled = true;
+                showAnalysisSpinner(true);
+                break;
+            case 'analysis_complete':
+                showAnalysisSpinner(false);
+                showToast(msg.fields_count + ' Felder extrahiert', '&#9989;', 'voice');
+                document.getElementById('btn-analyze').textContent = 'KI-Analyse';
+                document.getElementById('btn-analyze').disabled = false;
+                if (msg.data && currentSessionTemplate) renderTemplateFields(currentSessionTemplate, msg.data);
+                break;
+            case 'analysis_error':
+                showToast('Analyse fehlgeschlagen: ' + (msg.error || ''), '&#9888;');
+                document.getElementById('btn-analyze').textContent = 'KI-Analyse';
+                document.getElementById('btn-analyze').disabled = false;
+                break;
+            case 'voice_command':
+                beepVoiceCommand();
+                const labels = {record_start:'Aufnahme gestartet', record_stop:'Aufnahme gestoppt', new_session:'Neue Session', export_docx:'Export angefordert'};
+                showToast('Sprachbefehl: ' + (labels[msg.action] || msg.action), '&#127908;', 'voice');
+                break;
+            case 'vosk_status':
+                updateVoskIndicator(msg.enabled, msg.listening); break;
+            case 'patient_registered':
+                if (msg.patient) {
+                    patients[msg.patient.patient_id] = msg.patient;
+                    setActivePatient(msg.patient);
+                    renderPatientList();
+                }
+                break;
+            case 'patient_selected':
+                if (msg.patient) setActivePatient(msg.patient);
+                break;
+            case 'patient_update':
+                if (msg.patient && msg.patient.patient_id) {
+                    patients[msg.patient.patient_id] = msg.patient;
+                    if (activePatient && activePatient.patient_id === msg.patient.patient_id) {
+                        setActivePatient(msg.patient);
+                    }
+                    renderPatientList();
+                }
+                break;
+            case 'patient_synced':
+                if (msg.patient) {
+                    patients[msg.patient_id] = msg.patient;
+                    if (activePatient && activePatient.patient_id === msg.patient_id) {
+                        setActivePatient(msg.patient);
+                    }
+                    renderPatientList();
+                }
+                break;
+            case 'sync_complete':
+                updateBackendBadge(msg.backend_reachable);
+                renderPatientList();
+                break;
+            case 'patient_sent':
+                updateBackendBadge(msg.success);
+                break;
+            case 'rfid_scan':
+                if (msg.action === 'found' && msg.patient) {
+                    setActivePatient(msg.patient);
+                } else if (msg.action === 'new') {
+                    const rfidEl = document.getElementById('rfid-input');
+                    if (rfidEl) rfidEl.value = msg.tag_id || '';
+                }
+                break;
+            case 'rfid_prompt':
+                showToast('RFID-Tag scannen und am Patienten befestigen', '&#128179;');
+                break;
+            case 'entry_deleted':
+                // Letztes Transkript aus aktiver Patienten-Hülle entfernen
+                if (activePatient) {
+                    const pts = patientTranscripts[activePatient.patient_id];
+                    if (pts && pts.length) pts.pop();
+                    renderPatientCards();
+                }
+                break;
+            case 'init':
+                if (msg.model) updateModelBadge(msg.model, 'loaded');
+                if (msg.vosk_enabled !== undefined) updateVoskIndicator(msg.vosk_enabled, msg.vosk_listening);
+                if (msg.session_data) {
+                    showSessionInfo(msg.session_data);
+                    msg.session_data.records.forEach(r => addTranscriptEntry(r));
+                }
+                if (msg.patients) {
+                    msg.patients.forEach(p => { patients[p.patient_id] = p; });
+                    renderPatientList();
+                }
+                if (msg.active_patient && patients[msg.active_patient]) {
+                    setActivePatient(patients[msg.active_patient]);
+                }
+                if (msg.backend_reachable !== undefined) {
+                    updateBackendBadge(msg.backend_reachable || null);
+                }
+                break;
+        }
+    }
+
+    // ---- System Stats ----
+    function updateSystemStats(s) {
+        const el = (id) => document.getElementById(id);
+        if (!el('cpu-percent')) return;
+        el('cpu-percent').textContent = s.cpu_percent;
+        el('cpu-freq').textContent = s.cpu_freq_mhz + ' MHz';
+        setBar('cpu-bar', s.cpu_percent);
+        el('ram-used').textContent = s.ram_used_mb;
+        el('ram-total').textContent = s.ram_total_mb;
+        el('ram-percent').textContent = s.ram_percent;
+        setBar('ram-bar', s.ram_percent);
+        const gpuVal = s.gpu_usage !== 'N/A' ? s.gpu_usage + '%' : 'Shared Memory';
+        el('gpu-usage').textContent = gpuVal;
+        if (s.gpu_usage !== 'N/A') setBar('gpu-bar', parseFloat(s.gpu_usage));
+        el('disk-used').textContent = s.disk_used_gb;
+        el('disk-total').textContent = s.disk_total_gb;
+        el('disk-percent').textContent = s.disk_percent;
+        setBar('disk-bar', s.disk_percent);
+        const tempsDiv = el('temps');
+        let html = '';
+        for (const [name, val] of Object.entries(s.temperatures)) {
+            if (['cpu-thermal','gpu-thermal','tj-thermal','soc0-thermal','soc1-thermal','soc2-thermal'].includes(name)) {
+                const color = val > 70 ? 'var(--danger)' : val > 50 ? 'var(--warning)' : 'var(--success)';
+                const label = name.replace('-thermal','').toUpperCase();
+                html += `<div class="temp-chip"><span>${label}</span><span class="val" style="color:${color}">${val}&deg;C</span></div>`;
+            }
+        }
+        tempsDiv.innerHTML = html || '<div class="temp-chip">Keine Daten</div>';
+    }
+
+    function setBar(id, percent) {
+        const bar = document.getElementById(id);
+        if (!bar) return;
+        bar.style.width = Math.min(percent, 100) + '%';
+        if (id !== 'gpu-bar' && id !== 'disk-bar') {
+            bar.style.backgroundColor = percent > 80 ? 'var(--danger)' : percent > 60 ? 'var(--warning)' : 'var(--success)';
+        }
+    }
+
+    function updateAudioMeter(rms, duration) {
+        const pct = Math.min(rms * 1000, 100);
+        document.getElementById('audio-meter-fill').style.width = pct + '%';
+        document.getElementById('audio-meter-text').textContent = duration.toFixed(1) + 's';
+    }
+
+    // ---- Recording ----
+    async function toggleRecording() {
+        if (isTranscribing) return;
+        if (!isRecording) {
+            const res = await api('/api/record/start', 'POST');
+            if (res.error) showToast(res.error, '&#9888;');
+        } else {
+            const res = await api('/api/record/stop', 'POST');
+            if (res.error && res.error !== 'Aufnahme zu kurz') showToast(res.error, '&#9888;');
+        }
+    }
+
+    let recordTimerInterval = null;
+    let recordStartTime = 0;
+    const MAX_RECORD_SECONDS = 300;
+
+    function startRecordTimer() {
+        recordStartTime = Date.now();
+        recordTimerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+            const min = Math.floor(elapsed / 60);
+            const sec = elapsed % 60;
+            const timeStr = `${min}:${sec.toString().padStart(2, '0')}`;
+            const maxStr = `${Math.floor(MAX_RECORD_SECONDS/60)}:00`;
+            document.getElementById('audio-meter-text').textContent = `${timeStr} / ${maxStr}`;
+            const remaining = MAX_RECORD_SECONDS - elapsed;
+            if (remaining < 60) {
+                document.getElementById('audio-meter-fill').style.width = ((elapsed/MAX_RECORD_SECONDS)*100) + '%';
+            }
+        }, 500);
+    }
+
+    function stopRecordTimer() { if (recordTimerInterval) { clearInterval(recordTimerInterval); recordTimerInterval = null; } }
+
+    function setRecordingState(recording) {
+        isRecording = recording;
+        const btn = document.getElementById('record-btn');
+        const badge = document.getElementById('badge-status');
+        if (recording) {
+            btn.className = 'record-btn recording';
+            btn.innerHTML = '<span class="rec-indicator"></span> Aufnahme aktiv &mdash; Klick zum Stoppen';
+            badge.className = 'badge badge-err'; badge.textContent = 'Aufnahme laeuft'; badge.style.display = '';
+        } else {
+            btn.className = 'record-btn'; btn.innerHTML = 'Aufnahme starten';
+            document.getElementById('audio-meter-fill').style.width = '0%';
+            document.getElementById('audio-meter-text').textContent = 'Kein Signal';
+            badge.style.display = 'none';
+        }
+    }
+
+    function setTranscribingState(transcribing, chunks) {
+        isTranscribing = transcribing;
+        const btn = document.getElementById('record-btn');
+        const badge = document.getElementById('badge-status');
+        if (transcribing) {
+            btn.className = 'record-btn transcribing';
+            const ci = chunks > 1 ? ` (${chunks} Segmente)` : '';
+            btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31 31"/></svg> Transkription${ci}...`;
+            badge.className = 'badge badge-warn'; badge.textContent = 'Transkription'; badge.style.display = '';
+        } else {
+            btn.className = 'record-btn'; btn.innerHTML = 'Aufnahme starten';
+            badge.style.display = 'none';
+        }
+    }
+
+    function updateTranscribeProgress(chunk, total) {
+        const btn = document.getElementById('record-btn');
+        btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31 31"/></svg> Segment ${chunk}/${total}...`;
+        document.getElementById('audio-meter-fill').style.width = ((chunk / total) * 100) + '%';
+        document.getElementById('audio-meter-text').textContent = `Segment ${chunk} von ${total}`;
+    }
+
+    function showPartialResult(text, chunk, total) {
+        if (!activePatient) return;
+        const pid = activePatient.patient_id;
+        // In aktiver Patienten-Hülle anzeigen
+        const container = document.querySelector(`#patient-cards-feld .patient-transcripts[data-pid="${pid}"]`);
+        if (!container) return;
+        let partial = document.getElementById('partial-result');
+        if (!partial) {
+            partial = document.createElement('div');
+            partial.id = 'partial-result';
+            partial.className = 'pt-entry';
+            partial.style.borderLeftColor = 'var(--warning)';
+            partial.style.opacity = '0.85';
+            container.appendChild(partial);
+        }
+        const existing = partial.getAttribute('data-texts') || '';
+        const allTexts = existing ? existing + ' ' + text : text;
+        partial.setAttribute('data-texts', allTexts);
+        partial.innerHTML = `<div class="pt-time" style="color:var(--warning)">Live (${chunk}/${total})</div><div class="pt-text">${allTexts}</div>`;
+        container.closest('details').open = true;
+    }
+
+    function clearPartialResults() { const p = document.getElementById('partial-result'); if (p) p.remove(); }
+
+    // ---- Transcript ----
+    function addTranscriptEntry(record, pid) {
+        // Zuordnung zum aktiven Patienten
+        const patientId = pid || (activePatient ? activePatient.patient_id : null);
+        if (!patientId) return;
+
+        // In patientTranscripts speichern
+        if (!patientTranscripts[patientId]) patientTranscripts[patientId] = [];
+        patientTranscripts[patientId].push(record);
+
+        // Direkt in DOM einfügen (ohne kompletten Re-Render)
+        ['patient-cards-feld', 'patient-cards-fz'].forEach(cid => {
+            const container = document.querySelector(`#${cid} .patient-transcripts[data-pid="${patientId}"]`);
+            if (!container) return;
+            // "Keine Aufnahmen" Platzhalter entfernen
+            const placeholder = container.querySelector('div[style*="color:var(--text-dim)"]');
+            if (placeholder && placeholder.textContent.includes('Keine Aufnahmen')) placeholder.remove();
+
+            const entry = document.createElement('div');
+            entry.className = 'pt-entry';
+            entry.innerHTML = `<div class="pt-time">${record.time}</div><div class="pt-text">${record.text}</div>`;
+            container.appendChild(entry);
+
+            // Details öffnen und scrollen
+            const details = container.closest('details');
+            if (details) { details.open = true; details.scrollIntoView({behavior:'smooth', block:'nearest'}); }
+        });
+    }
+
+    async function deleteRecord(idx, btn) {
+        if (!confirm('Eintrag löschen?')) return;
+        const res = await api('/api/record/delete', 'POST', { index: idx });
+        if (res.status === 'ok') {
+            btn.closest('.transcript-entry').remove();
+            document.querySelectorAll('.transcript-delete').forEach((b, i) => b.setAttribute('onclick', `deleteRecord(${i}, this)`));
+        }
+    }
+
+    // ---- Templates ----
+    function renderTemplateGrid(templates) {
+        const grid = document.getElementById('template-grid');
+        grid.innerHTML = templates.map(t => `
+            <div class="template-card ${t.id === selectedTemplate ? 'selected' : ''}" onclick="selectTemplate('${t.id}')" data-tpl="${t.id}">
+                <div class="tpl-icon">${t.icon}</div>
+                <div class="tpl-name">${t.name}</div>
+                <div class="tpl-desc">${t.description}</div>
+            </div>
+        `).join('');
+    }
+
+    function selectTemplate(id) {
+        selectedTemplate = id;
+        document.querySelectorAll('.template-card').forEach(c => c.classList.toggle('selected', c.dataset.tpl === id));
+    }
+
+    function renderTemplateFields(templateId, existingData) {
+        const container = document.getElementById('template-fields-container');
+        const tpl = templateDefs[templateId];
+        if (!tpl || !tpl.sections || tpl.sections.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        const data = existingData || {};
+        let html = '<div class="template-fields">';
+        for (const section of tpl.sections) {
+            html += `<div class="template-section-title">${section.title}</div>`;
+            for (const field of section.fields) {
+                const val = data[field.key] || field.default || '';
+                html += `<div class="tpl-field">`;
+                html += `<label>${field.label}</label>`;
+                if (field.type === 'select') {
+                    html += `<select data-tpl-key="${field.key}" onchange="saveTemplateField(this)">`;
+                    html += `<option value="">-- Waehlen --</option>`;
+                    for (const opt of field.options) {
+                        html += `<option value="${opt}" ${val === opt ? 'selected' : ''}>${opt}</option>`;
+                    }
+                    html += `</select>`;
+                } else if (field.type === 'textarea') {
+                    html += `<textarea data-tpl-key="${field.key}" onblur="saveTemplateField(this)">${val}</textarea>`;
+                } else if (field.type === 'multiselect') {
+                    const selected = Array.isArray(val) ? val : (val ? val.split(',').map(s=>s.trim()) : []);
+                    html += `<div class="multiselect-group" data-tpl-key="${field.key}">`;
+                    for (const opt of field.options) {
+                        html += `<span class="multiselect-chip ${selected.includes(opt) ? 'selected' : ''}" onclick="toggleMultiselect(this, '${field.key}')">${opt}</span>`;
+                    }
+                    html += `</div>`;
+                } else {
+                    html += `<input type="text" data-tpl-key="${field.key}" value="${val}" onblur="saveTemplateField(this)">`;
+                }
+                html += `</div>`;
+            }
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    function saveTemplateField(el) {
+        const key = el.dataset.tplKey;
+        const val = el.value;
+        api('/api/session/template-data', 'POST', { data: { [key]: val } });
+    }
+
+    function toggleMultiselect(chip, key) {
+        chip.classList.toggle('selected');
+        const group = chip.parentElement;
+        const selected = Array.from(group.querySelectorAll('.selected')).map(c => c.textContent);
+        api('/api/session/template-data', 'POST', { data: { [key]: selected } });
+    }
+
+    // ---- Session ----
+    async function createSession() {
+        const name = document.getElementById('patient-name').value || 'Unbekannt';
+        const medic = document.getElementById('medic').value || '';
+        const templateId = document.getElementById('template-select') ? document.getElementById('template-select').value : selectedTemplate;
+        await api('/api/session/create', 'POST', { patient_name: name, location: 'Feld', medic, template_id: templateId });
+        renderPatientCards();
+        document.getElementById('transcript-count').textContent = '0 Eintraege';
+    }
+
+    function showSessionInfo(session) {
+        const sessionForm = document.getElementById('session-form');
+        if (sessionForm) sessionForm.style.display = 'none';
+        const sessionInfo = document.getElementById('session-info');
+        if (sessionInfo) sessionInfo.style.display = 'block';
+        const spEl = document.getElementById('session-patient');
+        if (spEl) spEl.textContent = session.patient_name;
+        const srEl = document.getElementById('session-records');
+        if (srEl) srEl.textContent = (session.records || []).length;
+        activeSession = session.id;
+        currentSessionTemplate = session.template_id || 'freitext';
+        const tpl = templateDefs[currentSessionTemplate];
+        const stEl = document.getElementById('session-template');
+        if (stEl) stEl.textContent = tpl ? tpl.name : currentSessionTemplate;
+        renderTemplateFields(currentSessionTemplate, session.template_data);
+    }
+
+    function showSessionForm() {
+        const sessionForm = document.getElementById('session-form');
+        if (sessionForm) sessionForm.style.display = 'block';
+        const sessionInfo = document.getElementById('session-info');
+        if (sessionInfo) sessionInfo.style.display = 'none';
+    }
+
+    async function refreshSessions() {
+        const res = await api('/api/sessions');
+        const list = document.getElementById('session-list');
+        if (!res.sessions || res.sessions.length === 0) {
+            list.innerHTML = '<div class="empty" style="padding:16px"><div class="icon">&#9673;</div>Keine Sessions</div>';
+            return;
+        }
+        list.innerHTML = res.sessions.map(s => {
+            const tpl = templateDefs[s.template_id] || {};
+            return `
+            <div class="session-item ${s.id === activeSession ? 'active' : ''}" onclick="switchSession('${s.id}')">
+                <div class="dot"></div>
+                <div class="info">
+                    <div class="name">${s.patient_name} <span style="font-size:9px;color:var(--text-dim)">${tpl.name || ''}</span></div>
+                    <div class="meta">${s.date} &middot; ${s.records.length} Eintraege</div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async function switchSession(sid) {
+        await api('/api/session/select', 'POST', { session_id: sid });
+        const res = await api('/api/sessions');
+        const session = res.sessions.find(s => s.id === sid);
+        if (session) {
+            showSessionInfo(session);
+            // Records dem aktiven Patienten zuordnen
+            if (activePatient) {
+                patientTranscripts[activePatient.patient_id] = [];
+                session.records.forEach(r => addTranscriptEntry(r, activePatient.patient_id));
+            }
+        }
+        renderPatientCards();
+    }
+
+    // ---- KI-Analyse ----
+    async function analyzeSession() {
+        if (!activeSession) { showToast('Keine aktive Session', '&#9888;'); return; }
+        const res = await api('/api/session/analyze', 'POST', { session_id: activeSession });
+        if (res.error) showToast(res.error, '&#9888;');
+    }
+
+    // ---- Export ----
+    async function exportDocx() {
+        const res = await fetch('/api/export/docx', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: activeSession }),
+        });
+        if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const cd = res.headers.get('content-disposition');
+            a.download = cd ? cd.split('filename=')[1]?.replace(/"/g, '') : 'akte.docx';
+            a.click();
+            URL.revokeObjectURL(url);
+            setTimeout(refreshFiles, 1000);
+        } else {
+            const err = await res.json();
+            showToast(err.error || 'Export fehlgeschlagen', '&#9888;');
+        }
+    }
+
+    // ---- Model Management ----
+    let currentModelRamMb = 0;
+
+    function updateModelBadge(model, status, ramMb) {
+        const statusEl = document.getElementById('model-status');
+        if (status === 'loading') {
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--warning)">' + model.toUpperCase() + ' wird geladen...</span>';
+        } else if (status === 'loaded') {
+            currentModelRamMb = ramMb || 0;
+            if (statusEl) statusEl.innerHTML = `<span style="color:var(--success)">${model.toUpperCase()} geladen</span> <span style="color:var(--text-dim)">(${currentModelRamMb} MB)</span>`;
+        } else {
+            currentModelRamMb = 0;
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">Nicht geladen</span>';
+        }
+    }
+
+    async function loadModel(name) { const res = await api('/api/models/load', 'POST', { model: name }); if (res.error) showToast(res.error, '&#9888;'); }
+    async function unloadModel() { if (!confirm('Modell entladen? GPU-Speicher wird freigegeben.')) return; await api('/api/models/unload', 'POST'); }
+    async function selectDevice(id) { await api('/api/devices/select', 'POST', { device_id: parseInt(id) }); }
+    async function setLanguage(lang) { await api('/api/language', 'POST', { language: lang }); }
+
+    // ---- Vosk ----
+    function updateVoskIndicator(enabled, listening) {
+        const ind = document.getElementById('vosk-indicator');
+        const label = document.getElementById('vosk-label');
+        if (enabled) {
+            ind.className = 'vosk-indicator active';
+            label.textContent = listening ? 'Sprache aktiv' : 'Sprache (pausiert)';
+        } else {
+            ind.className = 'vosk-indicator inactive';
+            label.textContent = 'Sprache aus';
+        }
+    }
+
+    async function toggleVosk() {
+        const res = await api('/api/vosk/toggle', 'POST');
+        if (res.error) showToast(res.error, '&#9888;');
+    }
+
+    // ---- Files ----
+    async function refreshFiles() {
+        const res = await api('/api/files');
+        const list = document.getElementById('file-list');
+        if (!res.files || res.files.length === 0) {
+            list.innerHTML = '<div class="empty" style="padding:16px"><div class="icon">&#128196;</div>Keine Dokumente</div>';
+            return;
+        }
+        list.innerHTML = res.files.map(f => {
+            const ext = f.name.split('.').pop().toUpperCase();
+            return `
+                <div class="file-item">
+                    <div class="file-icon">${ext}</div>
+                    <span class="file-name">${f.name}</span>
+                    <span class="file-size">${f.size_kb} KB</span>
+                    <div class="file-actions">
+                        <button class="file-btn" onclick="window.location.href='/api/files/download/${f.name}'" title="Download">&#8681;</button>
+                        <button class="file-btn" onclick="deleteFile('${f.name}')" title="Loeschen">&#10005;</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function deleteFile(name) {
+        if (!confirm('Dokument löschen: ' + name + '?')) return;
+        await api('/api/files/' + name, 'DELETE');
+        refreshFiles();
+    }
+
+    // ---- Mikrofon-Test ----
+    let micTestInterval = null;
+    let micTestPeak = 0;
+
+    function toggleMicTest() {
+        if (micTestInterval) {
+            stopMicTest();
+        } else {
+            startMicTest();
+        }
+    }
+
+    async function startMicTest() {
+        // Persistenten Stream starten falls noch nicht aktiv
+        await api('/api/mic/test', 'POST', {action: 'start'});
+        micTestPeak = 0;
+        const btn = document.getElementById('mic-test-btn');
+        btn.innerHTML = '&#9209; Test stoppen';
+        btn.style.borderColor = 'var(--cgi-red)';
+        btn.style.color = 'var(--cgi-red)';
+        document.getElementById('mic-test-status').textContent = 'Lauscht...';
+        document.getElementById('mic-test-status').style.color = 'var(--success)';
+
+        micTestInterval = setInterval(async () => {
+            try {
+                const res = await api('/api/mic/level');
+                const pct = Math.min(res.rms * 800, 100); // Skalierung für sichtbaren Ausschlag
+                const peakPct = Math.min(res.peak * 100, 100);
+                if (peakPct > micTestPeak) micTestPeak = peakPct;
+
+                const bar = document.getElementById('mic-test-bar');
+                const dbEl = document.getElementById('mic-test-db');
+                const peakEl = document.getElementById('mic-test-peak');
+
+                bar.style.width = pct + '%';
+                // Farbe nach Pegel
+                if (pct > 70) bar.style.background = 'var(--danger)';
+                else if (pct > 30) bar.style.background = 'var(--success)';
+                else bar.style.background = 'var(--warning)';
+
+                dbEl.textContent = res.db > -60 ? res.db.toFixed(0) + ' dB' : '-- dB';
+                peakEl.textContent = Math.round(micTestPeak);
+
+                if (res.error) {
+                    document.getElementById('mic-test-status').textContent = res.error;
+                    document.getElementById('mic-test-status').style.color = 'var(--danger)';
+                }
+            } catch(e) {}
+        }, 100);
+    }
+
+    function stopMicTest() {
+        if (micTestInterval) {
+            clearInterval(micTestInterval);
+            micTestInterval = null;
+        }
+        api('/api/mic/test', 'POST', {action: 'stop'});
+        const btn = document.getElementById('mic-test-btn');
+        btn.innerHTML = '&#127908; Test starten';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        document.getElementById('mic-test-status').textContent = 'Inaktiv';
+        document.getElementById('mic-test-status').style.color = 'var(--text-dim)';
+        document.getElementById('mic-test-bar').style.width = '0%';
+        document.getElementById('mic-test-db').textContent = '-- dB';
+    }
+
+    // ---- Hardware Overlay ----
+    function toggleHwOverlay() {
+        const overlay = document.getElementById('hw-overlay');
+        const btn = document.getElementById('hw-toggle');
+        overlay.classList.toggle('open');
+        btn.classList.toggle('active');
+    }
+
+    // Dragging
+    (function() {
+        const overlay = document.getElementById('hw-overlay');
+        const header = overlay.querySelector('.hw-overlay-header');
+        let dragging = false, startX, startY, startLeft, startTop;
+
+        header.addEventListener('mousedown', function(e) {
+            if (e.target.closest('.hw-overlay-close')) return;
+            dragging = true;
+            const rect = overlay.getBoundingClientRect();
+            startX = e.clientX; startY = e.clientY;
+            startLeft = rect.left; startTop = rect.top;
+            // Position von right/top auf left/top umstellen beim ersten Drag
+            overlay.style.left = rect.left + 'px';
+            overlay.style.top = rect.top + 'px';
+            overlay.style.right = 'auto';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            const dx = e.clientX - startX, dy = e.clientY - startY;
+            const newLeft = Math.max(0, Math.min(startLeft + dx, window.innerWidth - overlay.offsetWidth));
+            const newTop = Math.max(0, Math.min(startTop + dy, window.innerHeight - 60));
+            overlay.style.left = newLeft + 'px';
+            overlay.style.top = newTop + 'px';
+        });
+
+        document.addEventListener('mouseup', function() { dragging = false; });
+    })();
+
+    // ---- Theme (3-state: dark → saphir → light → dark) ----
+    const THEMES = ['dark', 'saphir', 'light'];
+    const THEME_ICONS = {dark: '🌙', saphir: '💎', light: '☀️'};
+    const THEME_LABELS = {dark: 'Dark', saphir: 'Saphir', light: 'Light'};
+
+    function toggleTheme() {
+        const current = document.body.getAttribute('data-theme') || 'dark';
+        const idx = THEMES.indexOf(current);
+        const next = THEMES[(idx + 1) % THEMES.length];
+        setTheme(next);
+    }
+
+    function updateThemeIcon(theme) {
+        const el = document.getElementById('theme-icon');
+        if (el) el.textContent = THEME_ICONS[theme] || '🌙';
+        const toggle = document.getElementById('theme-toggle');
+        if (toggle) toggle.title = 'Theme: ' + (THEME_LABELS[theme] || theme);
+    }
+
+    (function() {
+        const saved = localStorage.getItem('safir-theme');
+        if (saved) { document.body.setAttribute('data-theme', saved); updateThemeIcon(saved); }
+    })();
+
+    // ---- Analysis Spinner ----
+    function showAnalysisSpinner(show) {
+        // Spinner auf aktiver Patienten-Karte
+        const card = document.getElementById('active-patient-card');
+        if (card) {
+            let spinner = document.getElementById('analysis-spinner');
+            if (show && !spinner) {
+                spinner = document.createElement('div');
+                spinner.id = 'analysis-spinner';
+                spinner.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 12px;margin-top:8px;background:var(--accent-light);border-radius:var(--radius);font-size:11px;color:var(--accent);font-weight:600';
+                spinner.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31 31"/></svg> KI-Analyse läuft...';
+                card.querySelector('.card-body') ? card.querySelector('div').appendChild(spinner) : card.appendChild(spinner);
+            } else if (!show && spinner) {
+                spinner.remove();
+            }
+        }
+        // Pulsierender Rahmen auf aktiver Mini-Karte
+        document.querySelectorAll('.patient-mini-item.active').forEach(el => {
+            if (show) {
+                el.style.boxShadow = '0 0 0 2px var(--accent)';
+                el.style.animation = 'pulse-record 1.5s ease-in-out infinite';
+            } else {
+                el.style.boxShadow = '';
+                el.style.animation = '';
+            }
+        });
+    }
+
+    // ---- Mode Switching ----
+    let currentMode = 'feld';
+
+    function setMode(mode) {
+        currentMode = mode;
+        document.getElementById('mode-feld').style.display = mode === 'feld' ? 'flex' : 'none';
+        document.getElementById('mode-fahrzeug').style.display = mode === 'fahrzeug' ? 'block' : 'none';
+        document.getElementById('btn-mode-feld').className = mode === 'feld' ? 'btn btn-cgi' : 'btn';
+        document.getElementById('btn-mode-fahrzeug').className = mode === 'fahrzeug' ? 'btn btn-cgi' : 'btn';
+        // Sync patient data to Fahrzeug-Modus
+        if (mode === 'fahrzeug' && activePatient) {
+            document.getElementById('fz-patient-id').textContent = activePatient.patient_id;
+            // Highlight current triage
+            ['T1','T2','T3','T4'].forEach(t => {
+                const btn = document.getElementById('triage-btn-' + t);
+                if (btn) btn.style.borderColor = (activePatient.triage === t) ? '#fff' : 'transparent';
+            });
+        }
+    }
+
+    // ---- TTS Toggle ----
+    async function toggleTTS() {
+        const res = await api('/api/tts/toggle', 'POST');
+        const el = document.getElementById('tts-indicator');
+        if (res.enabled) {
+            el.innerHTML = '&#128264; TTS an';
+            el.style.color = 'var(--success)';
+        } else {
+            el.innerHTML = '&#128263; TTS aus';
+            el.style.color = 'var(--text-dim)';
+        }
+    }
+
+    // ---- Triage UI (Fahrzeug-Modus) ----
+    async function setTriageUI(level) {
+        if (!activePatient) {
+            showToast('Kein Patient aktiv', '&#9888;');
+            return;
+        }
+        const res = await api('/api/patient/' + activePatient.patient_id + '/status', 'POST', {flow_status: activePatient.flow_status});
+        // Set triage via update
+        await api('/api/patient/' + activePatient.patient_id + '/update', 'POST', {data: {triage: level}});
+        activePatient.triage = level;
+        setActivePatient(activePatient);
+        // Highlight buttons
+        ['T1','T2','T3','T4'].forEach(t => {
+            const btn = document.getElementById('triage-btn-' + t);
+            if (btn) btn.style.borderColor = (t === level) ? '#fff' : 'transparent';
+        });
+    }
+
+    // ---- Fahrzeug: Neuer Patient (Button) ----
+    async function voiceNewPatient() {
+        const res = await api('/api/patient/register', 'POST', {name: 'Unbekannt', triage: '', created_by: ''});
+        if (res.patient) {
+            await api('/api/session/create', 'POST', {patient_name: 'Unbekannt', location: 'Feld', medic: '', template_id: 'tccc'});
+            patients[res.patient_id] = res.patient;
+            setActivePatient(res.patient);
+            renderPatientCards();
+        }
+    }
+
+    async function fzRegisterPatient() {
+        const name = document.getElementById('fz-new-name').value.trim() || 'Unbekannt';
+        const triage = document.getElementById('fz-new-triage').value;
+        const res = await api('/api/patient/register', 'POST', {name: name, triage: triage, created_by: ''});
+        if (res.patient) {
+            await api('/api/session/create', 'POST', {patient_name: name, location: 'Feld', medic: '', template_id: 'tccc'});
+            patients[res.patient_id] = res.patient;
+            setActivePatient(res.patient);
+            renderPatientCards();
+            document.getElementById('fz-new-name').value = '';
+            document.getElementById('fz-new-triage').value = '';
+        }
+    }
+
+    async function savePatientField(field, value) {
+        if (!activePatient) return;
+        await savePatientFieldFor(activePatient.patient_id, field, value);
+    }
+
+    async function savePatientFieldFor(pid, field, value) {
+        if (!patients[pid]) return;
+        await api('/api/patient/' + pid + '/update', 'POST', {data: {[field]: value}});
+        patients[pid][field] = value;
+        if (activePatient && activePatient.patient_id === pid) activePatient[field] = value;
+        // Kein voller Re-Render — nur Summary-Text updaten
+        document.querySelectorAll(`.patient-card-details[data-pid="${pid}"] .p-name`).forEach(el => {
+            el.textContent = (patients[pid].name || 'Unbekannt') + (patients[pid].rank ? ' (' + patients[pid].rank + ')' : '');
+        });
+    }
+
+    async function saveVitalField(field, value) {
+        if (!activePatient) return;
+        await saveVitalFor(activePatient.patient_id, field, value);
+    }
+
+    async function saveVitalFor(pid, field, value) {
+        if (!patients[pid]) return;
+        await api('/api/patient/' + pid + '/update', 'POST', {vitals: {[field]: value}});
+        patients[pid].vitals[field] = value;
+        if (activePatient && activePatient.patient_id === pid) activePatient.vitals[field] = value;
+    }
+
+    async function setTriageFor(pid, level) {
+        if (!patients[pid]) return;
+        await api('/api/patient/' + pid + '/update', 'POST', {data: {triage: level}});
+        patients[pid].triage = level;
+        if (activePatient && activePatient.patient_id === pid) activePatient.triage = level;
+        renderPatientCards();
+    }
+
+    async function deletePatient(pid) {
+        if (!confirm('Patient löschen?')) return;
+        delete patients[pid];
+        delete patientTranscripts[pid];
+        if (activePatient && activePatient.patient_id === pid) activePatient = null;
+        renderPatientCards();
+        showToast('Patient gelöscht', '&#128465;');
+    }
+
+    // ---- Patient Registry + RFID ----
+    let activePatient = null;
+    let patients = {};
+    let patientTranscripts = {};  // patient_id -> [record, record, ...]
+    const TRIAGE_COLORS = {T1:'#FF0000', T2:'#FF8800', T3:'#00AA00', T4:'#4444AA'};
+    const FLOW_LABELS = {registered:'Registriert', inbound:'Transport', arrived:'Eingetroffen', in_treatment:'In Behandlung', stabilized:'Stabilisiert', outbound:'Verlegung', transferred:'Verlegt'};
+
+    async function rfidScan() {
+        const tagInput = document.getElementById('rfid-input');
+        const tagId = tagInput.value.trim();
+        const btn = document.getElementById('rfid-scan-btn');
+        btn.innerHTML = '<span style="font-size:18px">&#128179;</span> Scanning...';
+        try {
+            const res = await api('/api/rfid/scan', 'POST', { tag_id: tagId });
+            if (res.status === 'found') {
+                showToast('Patient gefunden: ' + (res.patient.name || res.patient_id), '&#128179;', 'voice');
+                setActivePatient(res.patient);
+                tagInput.value = res.patient.rfid_tag_id || '';
+            } else if (res.status === 'new') {
+                tagInput.value = res.tag_id;
+                showToast('Neuer RFID-Tag — Patient registrieren', '&#128179;');
+            }
+        } catch(e) {
+            showToast('RFID Scan Fehler', '&#9888;');
+        }
+        btn.innerHTML = '<span style="font-size:18px">&#128179;</span> RFID Scan';
+    }
+
+    async function registerPatient() {
+        const name = document.getElementById('patient-name').value.trim() || 'Unbekannt';
+        const triage = document.getElementById('patient-triage').value;
+        const medic = document.getElementById('medic').value.trim();
+        const rfid = document.getElementById('rfid-input').value.trim();
+        const templateId = document.getElementById('template-select').value;
+
+        const res = await api('/api/patient/register', 'POST', {
+            name: name,
+            triage: triage,
+            rfid_tag_id: rfid,
+            created_by: medic,
+        });
+
+        if (res.error) {
+            showToast(res.error, '&#9888;');
+            return;
+        }
+
+        // Patient registered — also create session
+        await api('/api/session/create', 'POST', {
+            patient_name: name,
+            location: 'Feld',
+            medic: medic,
+            template_id: templateId,
+        });
+
+        setActivePatient(res.patient);
+        patients[res.patient_id] = res.patient;
+        renderPatientList();
+
+        // Clear form
+        document.getElementById('patient-name').value = '';
+        document.getElementById('rfid-input').value = '';
+        renderPatientCards();
+        document.getElementById('transcript-count').textContent = '0 Eintraege';
+
+        showToast('Patient registriert: ' + name, '&#9989;', 'voice');
+        playTone(660, 0.1, 'sine', 0.2);
+        setTimeout(() => playTone(880, 0.15, 'sine', 0.25), 120);
+    }
+
+    function setActivePatient(patient) {
+        activePatient = patient;
+        const card = document.getElementById('active-patient-card');
+        card.style.display = 'block';
+
+        document.getElementById('active-patient-name').textContent = patient.name || 'Unbekannt';
+        document.getElementById('active-patient-id').textContent = patient.patient_id;
+        document.getElementById('active-patient-rfid').textContent = patient.rfid_tag_id || '--';
+
+        const triageBadge = document.getElementById('patient-triage-badge');
+        const triage = patient.triage || '';
+        triageBadge.textContent = triage || '--';
+        triageBadge.style.background = TRIAGE_COLORS[triage] || '#444';
+
+        const flowBadge = document.getElementById('active-patient-flow-badge');
+        const flowText = FLOW_LABELS[patient.flow_status] || patient.flow_status || 'Registriert';
+        const syncText = patient.synced ? ' · übermittelt' : '';
+        const badges = [];
+        if (patient.analyzed) badges.push('<span style="color:#5DADE2;margin-left:6px">✓ analysiert</span>');
+        if (patient.synced) badges.push('<span style="color:#2ECC71;margin-left:6px">✓ übermittelt</span>');
+        flowBadge.innerHTML = flowText + badges.join('');
+
+        const created = patient.timestamp_created ? new Date(patient.timestamp_created).toLocaleTimeString('de-DE') : '--';
+        document.getElementById('active-patient-time').textContent = 'Erfasst: ' + created;
+
+        // Update session info
+        const sessionInfo = document.getElementById('session-info');
+        if (sessionInfo) {
+            sessionInfo.style.display = 'block';
+            document.getElementById('session-patient').textContent = patient.name || 'Unbekannt';
+        }
+
+        // TCCC status
+        document.getElementById('tccc-status').textContent = patient.name || patient.patient_id;
+
+        // Update backend badge
+        updateBackendBadge();
+
+        // Update patient cards
+        renderPatientCards();
+
+        // Sync Fahrzeug-Modus Detail
+        const fzId = document.getElementById('fz-patient-id');
+        if (fzId) fzId.textContent = patient.patient_id;
+        const fzName = document.getElementById('fz-edit-name');
+        if (fzName) fzName.value = patient.name || '';
+        const fzRank = document.getElementById('fz-edit-rank');
+        if (fzRank) fzRank.value = patient.rank || '';
+        // Vitals
+        const fzPulse = document.getElementById('fz-vital-pulse');
+        if (fzPulse) fzPulse.value = patient.vitals?.pulse || '';
+        const fzBp = document.getElementById('fz-vital-bp');
+        if (fzBp) fzBp.value = patient.vitals?.bp || '';
+        const fzSpo2 = document.getElementById('fz-vital-spo2');
+        if (fzSpo2) fzSpo2.value = patient.vitals?.spo2 || '';
+        // Verletzungen
+        const fzInj = document.getElementById('fz-injuries');
+        if (fzInj) fzInj.innerHTML = (patient.injuries || []).length
+            ? '<span style="font-weight:600">Verletzungen:</span> ' + patient.injuries.join(', ')
+            : '';
+        // Triage Buttons
+        ['T1','T2','T3','T4'].forEach(t => {
+            const btn = document.getElementById('triage-btn-' + t);
+            if (btn) btn.style.borderColor = (patient.triage === t) ? '#fff' : 'transparent';
+        });
+    }
+
+    function renderPatientCards() {
+        const entries = Object.values(patients);
+        const count = entries.length;
+        const badge = document.getElementById('patient-count-badge');
+        if (badge) badge.textContent = count + ' Patienten';
+
+        const emptyHtml = '<div class="empty" style="padding:20px;text-align:center"><div class="icon" style="font-size:20px;opacity:0.4">&#9764;</div><div style="font-size:11px;color:var(--text-dim)">Keine Patienten</div></div>';
+
+        ['patient-cards-feld', 'patient-cards-fz'].forEach(containerId => {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            if (count === 0) { container.innerHTML = emptyHtml; return; }
+
+            // Offene Details merken
+            const openPids = new Set();
+            container.querySelectorAll('details[open]').forEach(d => openPids.add(d.dataset.pid));
+
+            container.innerHTML = entries.map(p => {
+                const isActive = activePatient && p.patient_id === activePatient.patient_id;
+                const isOpen = openPids.has(p.patient_id) || isActive;
+                const color = TRIAGE_COLORS[p.triage] || '#444';
+                const transcripts = patientTranscripts[p.patient_id] || [];
+                const isFz = containerId.includes('fz');
+
+                const transcriptsHtml = transcripts.length
+                    ? transcripts.map(t => `<div class="pt-entry"><div class="pt-time">${t.time}</div><div class="pt-text">${t.text}</div></div>`).join('')
+                    : '<div style="font-size:10px;color:var(--text-dim);padding:4px 0">Keine Aufnahmen</div>';
+
+                const injuriesHtml = (p.injuries || []).length
+                    ? '<div class="pt-meta">' + p.injuries.map(i => `<span>${i}</span>`).join('') + '</div>'
+                    : '';
+
+                const vitalsHtml = (p.vitals && (p.vitals.pulse || p.vitals.bp || p.vitals.spo2))
+                    ? '<div class="pt-meta">' +
+                      (p.vitals.pulse ? `<span>P: ${p.vitals.pulse}</span>` : '') +
+                      (p.vitals.bp ? `<span>RR: ${p.vitals.bp}</span>` : '') +
+                      (p.vitals.spo2 ? `<span>SpO2: ${p.vitals.spo2}</span>` : '') +
+                      '</div>' : '';
+
+                // Fahrzeug-Modus: Edit-Felder inline in der Karte
+                const fzEditHtml = isFz ? `
+                    <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+                        <input type="text" value="${p.name || ''}" placeholder="Name" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:11px" onblur="savePatientFieldFor('${p.patient_id}','name',this.value)">
+                        <input type="text" value="${p.rank || ''}" placeholder="Dienstgrad" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:11px" onblur="savePatientFieldFor('${p.patient_id}','rank',this.value)">
+                        <div style="display:flex;gap:2px">
+                            ${['T1','T2','T3','T4'].map(t => `<button onclick="event.stopPropagation();setTriageFor('${p.patient_id}','${t}')" style="width:28px;height:28px;border:2px solid ${p.triage===t?'#fff':'transparent'};border-radius:4px;background:${TRIAGE_COLORS[t]};color:#fff;font-size:9px;font-weight:800;cursor:pointer">${t}</button>`).join('')}
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:6px">
+                        <input type="text" value="${p.vitals?.pulse||''}" placeholder="Puls" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:10px" onblur="saveVitalFor('${p.patient_id}','pulse',this.value)">
+                        <input type="text" value="${p.vitals?.bp||''}" placeholder="RR" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:10px" onblur="saveVitalFor('${p.patient_id}','bp',this.value)">
+                        <input type="text" value="${p.vitals?.spo2||''}" placeholder="SpO2" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:10px" onblur="saveVitalFor('${p.patient_id}','spo2',this.value)">
+                    </div>` : '';
+
+                // Fahrzeug-Modus: Löschen-Icon
+                const deleteIcon = isFz ? `<span onclick="event.stopPropagation();deletePatient('${p.patient_id}')" style="cursor:pointer;color:var(--text-dim);font-size:14px;padding:0 4px" title="Patient löschen">&#128465;</span>` : '';
+
+                return `
+                <details class="patient-card-details ${isActive ? 'active-patient' : ''}" data-pid="${p.patient_id}" ${isOpen ? 'open' : ''} onclick="if(event.target.closest('summary'))selectPatient('${p.patient_id}')">
+                    <summary>
+                        <div class="triage-dot" style="background:${color}">${p.triage || '--'}</div>
+                        <span class="p-name">${p.name || 'Unbekannt'}${p.rank ? ' (' + p.rank + ')' : ''}</span>
+                        <div class="p-badges">
+                            ${p.analyzed ? '<span class="badge-sm" style="background:rgba(93,173,226,0.15);color:#5DADE2">analysiert</span>' : ''}
+                            ${p.synced ? '<span class="badge-sm" style="background:rgba(46,204,113,0.15);color:#2ECC71">übermittelt</span>' : ''}
+                        </div>
+                        ${deleteIcon}
+                        <span class="patient-card-chevron">&#9654;</span>
+                    </summary>
+                    <div class="patient-card-body">
+                        <div class="patient-transcripts" data-pid="${p.patient_id}">${transcriptsHtml}</div>
+                        ${injuriesHtml}${vitalsHtml}
+                        ${fzEditHtml}
+                    </div>
+                </details>`;
+            }).join('');
+        });
+    }
+
+    // Alias für Kompatibilität
+    function renderPatientList() { renderPatientCards(); }
+
+    async function selectPatient(pid) {
+        const res = await api('/api/patient/' + pid + '/select', 'POST');
+        if (res.status === 'ok') {
+            const pRes = await api('/api/patient/' + pid);
+            if (!pRes.error) {
+                patients[pid] = pRes;
+                setActivePatient(pRes);
+            }
+        }
+    }
+
+    async function sendToBackend() {
+        if (!Object.keys(patients).length) {
+            showToast('Keine Patienten vorhanden', '&#9888;');
+            return;
+        }
+        const btn = document.getElementById('btn-send-backend');
+        btn.textContent = 'Synchronisiere...';
+        btn.disabled = true;
+
+        try {
+            const res = await api('/api/patients/sync', 'POST');
+            if (res.status === 'ok') {
+                if (res.sent > 0) {
+                    showToast(res.sent + ' Patienten übermittelt' + (res.skipped ? ', ' + res.skipped + ' übersprungen' : ''), '&#9989;', 'voice');
+                    playTone(523, 0.1, 'sine', 0.2);
+                    setTimeout(() => playTone(784, 0.15, 'sine', 0.25), 120);
+                } else if (res.skipped > 0) {
+                    showToast('Alle Patienten bereits übermittelt', '&#9989;');
+                }
+                if (res.failed > 0) {
+                    showToast(res.failed + ' Patienten nicht übermittelt', '&#9888;');
+                }
+                updateBackendBadge(res.failed === 0);
+            } else {
+                showToast('Sync fehlgeschlagen: ' + (res.error || ''), '&#9888;');
+                updateBackendBadge(false);
+            }
+        } catch(e) {
+            showToast('Verbindungsfehler zur Leitstelle', '&#9888;');
+            updateBackendBadge(false);
+        }
+
+        btn.innerHTML = '&#9889; Alle Patienten melden';
+        btn.disabled = false;
+    }
+
+    function updateBackendBadge(reachable) {
+        const badge = document.getElementById('badge-backend');
+        const dot = document.getElementById('backend-dot');
+        const label = document.getElementById('backend-label');
+        badge.style.display = '';
+        if (reachable === true) {
+            badge.className = 'badge badge-ok';
+            dot.style.background = '#00cc44';
+            label.textContent = 'Leitstelle';
+        } else if (reachable === false) {
+            badge.className = 'badge badge-err';
+            dot.style.background = '#cc0000';
+            label.textContent = 'Leitstelle offline';
+        } else {
+            badge.className = 'badge badge-warn';
+            dot.style.background = '#ff8800';
+            label.textContent = 'Leitstelle';
+        }
+    }
+
+    // ---- Init ----
+    async function init() {
+        connectWS();
+
+        // Navigation aus Config laden
+        try {
+            const navRes = await api('/api/config/navigation');
+            if (navRes.navigation && navRes.navigation.length > 0) {
+                buildSidebar(navRes.navigation);
+            } else {
+                // Fallback Navigation
+                buildSidebar([
+                    { id: 'home', label: 'Start', icon: '&#9671;', default: true },
+                    { id: 'recording', label: 'Aufnahme', icon: '&#127908;' },
+                    { id: 'patients', label: 'Patienten', icon: '&#9764;' },
+                    { id: 'settings', label: 'Einstellungen', icon: '&#9881;' },
+                ]);
+            }
+        } catch (e) {
+            buildSidebar([
+                { id: 'dashboard', label: 'Dashboard', icon: '&#9783;', default: true },
+                { id: 'patients', label: 'Patienten', icon: '&#9764;' },
+                { id: 'settings', label: 'Einstellungen', icon: '&#9881;' },
+            ]);
+        }
+
+        // URL-Hash Navigation
+        if (location.hash) {
+            const pageId = location.hash.slice(1);
+            if (document.getElementById('page-' + pageId)) {
+                navigateTo(pageId);
+            }
+        }
+
+        // Templates laden
+        const tplRes = await api('/api/templates');
+        if (tplRes.templates) {
+            tplRes.templates.forEach(t => templateDefs[t.id] = t);
+            const tplGrid = document.getElementById('template-grid');
+            if (tplGrid) renderTemplateGrid(tplRes.templates);
+        }
+
+        const models = await api('/api/models');
+        const sel = document.getElementById('model-select');
+        if (sel) {
+            sel.innerHTML = models.models.map(m =>
+                `<option value="${m.name}" ${m.name === models.current ? 'selected' : ''}>${m.name} (${m.size_mb} MB)</option>`
+            ).join('');
+        }
+
+        const devs = await api('/api/devices');
+        const dsel = document.getElementById('device-select');
+        if (dsel) {
+            dsel.innerHTML = devs.devices.map(d =>
+                `<option value="${d.id}" ${d.default ? 'selected' : ''}>${d.name}</option>`
+            ).join('');
+        }
+
+        refreshFiles();
+
+        // Einheit im Header anzeigen
+        try {
+            const cfg = await api('/api/config');
+            if (cfg.unit_name) {
+                document.getElementById('header-unit-name').textContent = cfg.unit_name;
+            }
+        } catch(e) {}
+
+        // Patienten laden
+        try {
+            const pRes = await api('/api/patients');
+            if (pRes.patients) {
+                pRes.patients.forEach(p => { patients[p.patient_id] = p; });
+                renderPatientList();
+                if (pRes.active_patient && patients[pRes.active_patient]) {
+                    setActivePatient(patients[pRes.active_patient]);
+                }
+            }
+        } catch(e) { console.error('Patienten laden fehlgeschlagen:', e); }
+
+        const status = await api('/api/status');
+        if (status.model_loaded && status.model) {
+            updateModelBadge(status.model, 'loaded', status.model_ram_mb);
+        } else if (status.model) {
+            updateModelBadge(status.model, 'unloaded');
+        }
+        if (status.vosk_enabled !== undefined) {
+            updateVoskIndicator(status.vosk_enabled, status.vosk_listening);
+        }
+        if (status.session_data) {
+            showSessionInfo(status.session_data);
+            status.session_data.records.forEach(r => addTranscriptEntry(r));
+        }
+    }
+
+    init();
+
+    // Keyboard: Space = record toggle
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && !['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) {
+            e.preventDefault();
+            toggleRecording();
+        }
+    });
+</script>
+
+</body>
+</html>

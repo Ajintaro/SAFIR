@@ -1,7 +1,7 @@
 # SAFIR — Projekt-Kontext fuer Claude Code
 
 ## Was ist SAFIR?
-Sanitaets-Assistenz fuer Feld-Informations-Reporting. KI-gestuetztes Dokumentationssystem
+Sprachgestuetzte Assistenz fuer Informationserfassung in der Rettungskette. KI-gestuetztes Dokumentationssystem
 entlang der Rettungskette der Bundeswehr. Demo fuer AFCEA Bonn / Bundeswehr-Delegation am **19.03.2026**.
 
 Auftraggeber: CGI Deutschland. Zielgruppe: Bundeswehr Sanitaetsdienst.
@@ -74,7 +74,7 @@ Siehe `shared/models.py`:
 5. **DOCX-Export**: Uebergabeprotokolle, Patientenakten
 
 ## Konventionen
-- Alle Strings im Code: ASCII (ae statt ä, ue statt ü, oe statt ö, ss statt ß)
+- Deutsche Umlaute verwenden (ä, ö, ü, ß) — NICHT ae, oe, ue, ss
 - Kommentare auf Deutsch
 - API-Endpunkte auf Englisch (/api/patients, /api/ingest)
 - Kein TypeScript, kein Build-System — alles inline in HTML Templates
