@@ -382,6 +382,7 @@
             font-size: 18px; padding: 0 4px; line-height: 1;
         }
         .hw-overlay-close:hover { color: var(--text-primary); }
+        .hw-tab-content { min-height: 100px; }
 
         /* WS-Status Dot */
         .ws-dot {
@@ -1832,78 +1833,94 @@
         </div>
         <button class="hw-overlay-close" onclick="toggleHwOverlay()">&times;</button>
     </div>
-    <div class="metric">
-        <div class="metric-head">
-            <span class="metric-label">CPU</span>
-            <span class="metric-value"><span id="cpu-percent">0</span>% <span class="unit" id="cpu-freq"></span></span>
-        </div>
-        <div class="bar"><div class="bar-fill" id="cpu-bar" style="width:0%;background:var(--success)"></div></div>
+    <!-- Tabs -->
+    <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:10px">
+        <button class="hw-tab active" data-tab="hw-system" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer">System</button>
+        <button class="hw-tab" data-tab="hw-temps" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Temperatur</button>
+        <button class="hw-tab" data-tab="hw-audio" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Audio</button>
     </div>
-    <div class="metric">
-        <div class="metric-head">
-            <span class="metric-label">RAM</span>
-            <span class="metric-value"><span id="ram-used">0</span> / <span id="ram-total">0</span> <span class="unit">MB</span></span>
+
+    <!-- Tab: System -->
+    <div class="hw-tab-content active" id="hw-system">
+        <div class="metric">
+            <div class="metric-head">
+                <span class="metric-label">CPU</span>
+                <span class="metric-value"><span id="cpu-percent">0</span>% <span class="unit" id="cpu-freq"></span></span>
+            </div>
+            <div class="bar"><div class="bar-fill" id="cpu-bar" style="width:0%;background:var(--success)"></div></div>
         </div>
-        <div class="bar"><div class="bar-fill" id="ram-bar" style="width:0%;background:var(--success)"></div></div>
-        <div style="text-align:right;margin-top:3px"><span style="font-size:10px;color:var(--text-dim)" id="ram-percent">0</span><span style="font-size:10px;color:var(--text-dim)">%</span></div>
-    </div>
-    <div class="metric">
-        <div class="metric-head">
-            <span class="metric-label">GPU</span>
-            <span class="metric-value" id="gpu-usage">N/A</span>
+        <div class="metric">
+            <div class="metric-head">
+                <span class="metric-label">RAM</span>
+                <span class="metric-value"><span id="ram-used">0</span> / <span id="ram-total">0</span> <span class="unit">MB</span></span>
+            </div>
+            <div class="bar"><div class="bar-fill" id="ram-bar" style="width:0%;background:var(--success)"></div></div>
+            <div style="text-align:right;margin-top:3px"><span style="font-size:10px;color:var(--text-dim)" id="ram-percent">0</span><span style="font-size:10px;color:var(--text-dim)">%</span></div>
         </div>
-        <div class="bar"><div class="bar-fill" id="gpu-bar" style="width:0%;background:var(--cgi-red)"></div></div>
-    </div>
-    <div class="metric">
-        <div class="metric-head">
-            <span class="metric-label">NVMe SSD</span>
-            <span class="metric-value"><span id="disk-used">0</span> / <span id="disk-total">0</span> <span class="unit">GB</span></span>
+        <!-- Modelle im RAM -->
+        <details style="margin:6px 0">
+            <summary style="font-size:10px;font-weight:600;color:var(--text-dim);cursor:pointer;user-select:none">Modelle &amp; Prozesse</summary>
+            <div id="hw-ram-details" style="margin-top:6px;font-size:10px;display:flex;flex-direction:column;gap:3px">
+                <span style="color:var(--text-dim)">Lade...</span>
+            </div>
+        </details>
+        <div class="metric">
+            <div class="metric-head">
+                <span class="metric-label">GPU</span>
+                <span class="metric-value" id="gpu-usage">N/A</span>
+            </div>
+            <div class="bar"><div class="bar-fill" id="gpu-bar" style="width:0%;background:var(--cgi-red)"></div></div>
         </div>
-        <div class="bar"><div class="bar-fill" id="disk-bar" style="width:0%;background:var(--info)"></div></div>
-        <div style="text-align:right;margin-top:3px"><span style="font-size:10px;color:var(--text-dim)" id="disk-percent">0</span><span style="font-size:10px;color:var(--text-dim)">%</span></div>
+        <div class="metric">
+            <div class="metric-head">
+                <span class="metric-label">NVMe SSD</span>
+                <span class="metric-value"><span id="disk-used">0</span> / <span id="disk-total">0</span> <span class="unit">GB</span></span>
+            </div>
+            <div class="bar"><div class="bar-fill" id="disk-bar" style="width:0%;background:var(--info)"></div></div>
+            <div style="text-align:right;margin-top:3px"><span style="font-size:10px;color:var(--text-dim)" id="disk-percent">0</span><span style="font-size:10px;color:var(--text-dim)">%</span></div>
+        </div>
+        <div class="field" style="margin-top:8px">
+            <label>Whisper Modell</label>
+            <select id="model-select" onchange="loadModel(this.value)"></select>
+            <div id="model-status" style="margin-top:4px;font-size:10px"><span style="color:var(--text-dim)">Nicht geladen</span></div>
+            <button class="btn" onclick="unloadModel()" style="margin-top:4px;padding:3px 8px;font-size:9px;width:100%">Modell entladen</button>
+        </div>
     </div>
-    <div class="metric">
-        <span class="metric-label">Temperaturen</span>
+
+    <!-- Tab: Temperatur -->
+    <div class="hw-tab-content" id="hw-temps" style="display:none">
         <div class="temp-grid" id="temps"></div>
     </div>
-    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
-        <div class="config-section">
-            <div class="field">
-                <label>Whisper Modell</label>
-                <select id="model-select" onchange="loadModel(this.value)"></select>
-                <div id="model-status" style="margin-top:6px;font-size:11px">
-                    <span style="color:var(--text-dim)">Nicht geladen</span>
-                </div>
-                <button class="btn" onclick="unloadModel()" style="margin-top:6px;padding:4px 10px;font-size:10px;width:100%">Modell entladen (RAM freigeben)</button>
+
+    <!-- Tab: Audio -->
+    <div class="hw-tab-content" id="hw-audio" style="display:none">
+        <div class="field">
+            <label>Audio-Eingang</label>
+            <select id="device-select" onchange="selectDevice(this.value)"></select>
+        </div>
+        <div class="field">
+            <label>Mikrofon-Test</label>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+                <button class="btn" id="mic-test-btn" onclick="toggleMicTest()" style="padding:5px 10px;font-size:10px;flex-shrink:0">&#127908; Test</button>
+                <span id="mic-test-status" style="font-size:10px;color:var(--text-dim)">Inaktiv</span>
             </div>
-            <div class="field">
-                <label>Audio-Eingang</label>
-                <select id="device-select" onchange="selectDevice(this.value)"></select>
+            <div style="height:14px;background:var(--bg-elevated);border-radius:4px;overflow:hidden;position:relative">
+                <div id="mic-test-bar" style="height:100%;width:0%;background:var(--success);transition:width 0.1s;border-radius:4px"></div>
+                <div id="mic-test-db" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--text-secondary)">-- dB</div>
             </div>
-            <div class="field">
-                <label>Mikrofon-Test</label>
-                <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-                    <button class="btn" id="mic-test-btn" onclick="toggleMicTest()" style="padding:5px 12px;font-size:11px;flex-shrink:0">&#127908; Test starten</button>
-                    <span id="mic-test-status" style="font-size:10px;color:var(--text-dim)">Inaktiv</span>
-                </div>
-                <div style="height:16px;background:var(--bg-elevated);border-radius:4px;overflow:hidden;position:relative">
-                    <div id="mic-test-bar" style="height:100%;width:0%;background:var(--success);transition:width 0.1s;border-radius:4px"></div>
-                    <div id="mic-test-db" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--text-secondary)">-- dB</div>
-                </div>
-                <div style="display:flex;justify-content:space-between;margin-top:3px">
-                    <span style="font-size:8px;color:var(--text-dim)">Leise</span>
-                    <span style="font-size:8px;color:var(--text-dim)">Peak: <span id="mic-test-peak">0</span>%</span>
-                    <span style="font-size:8px;color:var(--text-dim)">Laut</span>
-                </div>
+            <div style="display:flex;justify-content:space-between;margin-top:2px">
+                <span style="font-size:8px;color:var(--text-dim)">Leise</span>
+                <span style="font-size:8px;color:var(--text-dim)">Peak: <span id="mic-test-peak">0</span>%</span>
+                <span style="font-size:8px;color:var(--text-dim)">Laut</span>
             </div>
-            <div class="field">
-                <label>Sprache</label>
-                <select id="lang-select" onchange="setLanguage(this.value)">
-                    <option value="de" selected>Deutsch</option>
-                    <option value="en">English</option>
-                    <option value="fr">Francais</option>
-                </select>
-            </div>
+        </div>
+        <div class="field">
+            <label>Sprache</label>
+            <select id="lang-select" onchange="setLanguage(this.value)">
+                <option value="de" selected>Deutsch</option>
+                <option value="en">English</option>
+                <option value="fr">Francais</option>
+            </select>
         </div>
     </div>
 </dialog>
@@ -2561,6 +2578,9 @@
             }
         }
         tempsDiv.innerHTML = html || '<div class="temp-chip">Keine Daten</div>';
+
+        // RAM-Details aktualisieren (Modelle + Prozesse)
+        updateHwRamDetails(s);
     }
 
     function setBar(id, percent) {
@@ -3042,6 +3062,47 @@
     }
 
     // ---- Hardware Overlay ----
+    function hwTabSwitch(btn) {
+        const tabId = btn.dataset.tab;
+        document.querySelectorAll('.hw-tab').forEach(t => {
+            t.classList.remove('active');
+            t.style.borderBottomColor = 'transparent';
+            t.style.color = 'var(--text-dim)';
+        });
+        btn.classList.add('active');
+        btn.style.borderBottomColor = 'var(--accent)';
+        btn.style.color = 'var(--accent)';
+        document.querySelectorAll('.hw-tab-content').forEach(c => c.style.display = 'none');
+        const target = document.getElementById(tabId);
+        if (target) target.style.display = '';
+    }
+
+    function updateHwRamDetails(stats) {
+        const el = document.getElementById('hw-ram-details');
+        if (!el) return;
+        let html = '';
+        // Whisper
+        if (stats.whisper_loaded) {
+            html += `<div style="display:flex;justify-content:space-between;padding:2px 4px;background:rgba(90,158,58,0.1);border-left:2px solid var(--success)"><span>Whisper (${stats.whisper_model})</span><span style="font-weight:700">${stats.whisper_ram_mb} MB GPU</span></div>`;
+        }
+        // Ollama
+        if (stats.ollama_models && stats.ollama_models.length) {
+            stats.ollama_models.forEach(m => {
+                html += `<div style="display:flex;justify-content:space-between;padding:2px 4px;background:rgba(200,184,120,0.1);border-left:2px solid var(--warning)"><span>Ollama (${m.name})</span><span style="font-weight:700">${m.vram_mb} MB VRAM</span></div>`;
+            });
+        }
+        // Prozesse
+        if (stats.ram_processes && stats.ram_processes.length) {
+            html += '<div style="margin-top:4px;font-size:9px;color:var(--text-dim);font-weight:600">TOP PROZESSE</div>';
+            stats.ram_processes.forEach(p => {
+                const barW = Math.min(100, (p.rss_mb / stats.ram_total_mb) * 100);
+                html += `<div style="display:flex;justify-content:space-between;padding:1px 4px;font-size:9px"><span>${p.name}</span><span>${p.rss_mb} MB</span></div>`;
+            });
+        }
+        if (!html) html = '<span style="color:var(--text-dim)">Keine Modelle geladen</span>';
+        el.innerHTML = html;
+    }
+
     function toggleHwOverlay() {
         const dlg = document.getElementById('hw-overlay');
         const btn = document.getElementById('hw-toggle');

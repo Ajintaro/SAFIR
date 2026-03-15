@@ -374,6 +374,37 @@ def get_system_stats():
 
     disk = psutil.disk_usage("/")
 
+    # Prozesse mit höchstem RAM-Verbrauch
+    ram_processes = []
+    try:
+        for proc in psutil.process_iter(['pid', 'name', 'memory_info']):
+            info = proc.info
+            rss = info.get('memory_info')
+            if rss and rss.rss > 50 * 1024 * 1024:  # > 50MB
+                ram_processes.append({
+                    "name": info['name'],
+                    "pid": info['pid'],
+                    "rss_mb": round(rss.rss / 1024 / 1024),
+                })
+        ram_processes.sort(key=lambda x: x['rss_mb'], reverse=True)
+        ram_processes = ram_processes[:8]
+    except Exception:
+        pass
+
+    # Ollama Modell-Status
+    ollama_models = []
+    try:
+        r = httpx.get(f"{OLLAMA_URL}/api/ps", timeout=3)
+        if r.status_code == 200:
+            for m in r.json().get("models", []):
+                ollama_models.append({
+                    "name": m["name"],
+                    "size_mb": round(m.get("size", 0) / 1024 / 1024),
+                    "vram_mb": round(m.get("size_vram", 0) / 1024 / 1024),
+                })
+    except Exception:
+        pass
+
     return {
         "cpu_percent": cpu_percent,
         "cpu_freq_mhz": round(cpu_freq.current) if cpu_freq else 0,
@@ -388,6 +419,11 @@ def get_system_stats():
         "disk_used_gb": round(disk.used / 1024**3, 1),
         "disk_total_gb": round(disk.total / 1024**3, 1),
         "disk_percent": round(disk.percent, 1),
+        "ram_processes": ram_processes,
+        "ollama_models": ollama_models,
+        "whisper_loaded": state.model_loaded,
+        "whisper_model": state.current_model or "",
+        "whisper_ram_mb": state.model_ram_mb,
     }
 
 
@@ -1076,38 +1112,49 @@ JSON:"""
 
 
 def _call_ollama(prompt: str, label: str = "LLM") -> dict:
-    """Ruft Ollama auf GPU auf (Whisper muss vorher entladen sein)."""
-    try:
-        response = httpx.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json",
-                "options": {"num_gpu": 99, "temperature": 0.1, "num_predict": 500},
-            },
-            timeout=180,
-        )
-        if response.status_code == 200:
-            result = response.json()
-            if "error" in result:
-                print(f"{label} (GPU): Ollama-Fehler: {result['error'][:100]}")
+    """Ruft Ollama auf mit GPU-Fallback auf CPU bei OOM."""
+    for num_gpu in [28, 0]:
+        gpu_label = f"GPU:{num_gpu}" if num_gpu > 0 else "CPU"
+        try:
+            response = httpx.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": "json",
+                    "options": {"num_gpu": num_gpu, "temperature": 0.1, "num_predict": 500},
+                },
+                timeout=180,
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if "error" in result:
+                    print(f"{label} ({gpu_label}): Ollama-Fehler: {result['error'][:100]}")
+                    if num_gpu > 0:
+                        print(f"{label}: GPU Fehler, Fallback auf CPU...")
+                        continue
+                    return {}
+                raw = result.get("response", "{}")
+                try:
+                    extracted = json.loads(raw)
+                    print(f"{label} ({gpu_label}): {len([v for v in extracted.values() if v])} Felder extrahiert")
+                    return extracted
+                except json.JSONDecodeError:
+                    print(f"{label}: JSON Parse Fehler: {raw[:200]}")
+                    return {}
+            else:
+                print(f"{label} ({gpu_label}): HTTP {response.status_code}")
+                if response.status_code == 500 and num_gpu > 0:
+                    print(f"{label}: GPU OOM, Fallback auf CPU...")
+                    continue
                 return {}
-            raw = result.get("response", "{}")
-            try:
-                extracted = json.loads(raw)
-                print(f"{label} (GPU): {len([v for v in extracted.values() if v])} Felder extrahiert")
-                return extracted
-            except json.JSONDecodeError:
-                print(f"{label}: JSON Parse Fehler: {raw[:200]}")
-                return {}
-        else:
-            print(f"{label} (GPU): HTTP {response.status_code}")
+        except Exception as e:
+            print(f"{label} ({gpu_label}): Fehler: {e}")
+            if num_gpu > 0:
+                continue
             return {}
-    except Exception as e:
-        print(f"{label} (GPU): Fehler: {e}")
-        return {}
+    return {}
 
 
 def _unload_ollama_model():
