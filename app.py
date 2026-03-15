@@ -1650,13 +1650,15 @@ async def sync_all_patients() -> dict:
 async def receive_position(body: dict):
     """Empfängt GPS-Position einer Einheit und broadcastet sie an alle Clients."""
     await broadcast({
-        "type": "position",
-        "unit_name": body.get("unit_name", ""),
-        "device_id": body.get("device_id", ""),
-        "lat": body.get("lat", 0),
-        "lon": body.get("lon", 0),
-        "heading": body.get("heading", 0),
-        "speed_kmh": body.get("speed_kmh", 0),
+        "type": "position_update",
+        "position": {
+            "unit_name": body.get("unit_name", ""),
+            "device_id": body.get("device_id", ""),
+            "lat": body.get("lat", 0),
+            "lon": body.get("lon", 0),
+            "heading": body.get("heading", 0),
+            "speed_kmh": body.get("speed_kmh", 0),
+        },
     })
     return {"status": "ok"}
 
