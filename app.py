@@ -637,10 +637,6 @@ async def process_vosk_commands():
 # ---------------------------------------------------------------------------
 async def voice_new_patient():
     """Sprachbefehl: Neuer Patient anlegen + Aufnahme automatisch starten."""
-    # Blockieren wenn Analyse läuft oder Whisper nicht bereit
-    if getattr(state, '_analyzing', False):
-        tts.speak("Analyse läuft, bitte warten")
-        return
     if not state.model_loaded:
         tts.speak("Sprachmodell nicht geladen, bitte warten")
         return
@@ -797,16 +793,10 @@ async def _run_batch_analysis(pending: list):
     Nach Boot-Optimierung passen beide Modelle gleichzeitig in den Shared Memory:
     - Whisper small: ~1 GB GPU
     - Ollama Qwen2.5:1.5b: ~1.5 GB (davon ~1.3 GB VRAM)
-    Kein GPU-Swap nötig. Aufnahme bleibt blockiert (Vosk pausiert).
+    Kein GPU-Swap nötig. Vosk + Whisper bleiben aktiv.
     TTS (Piper, CPU) bleibt durchgehend verfügbar.
     """
-    vosk_was_listening = state.vosk_listening
-
     try:
-        # Vosk pausieren — keine Sprachbefehle während Analyse
-        state.vosk_listening = False
-        await broadcast({"type": "vosk_status", "enabled": state.vosk_enabled, "listening": False})
-
         # Analyse — Ollama lädt Modell parallel zu Whisper
         print(f"Analyse: Ollama {OLLAMA_MODEL} parallel zu Whisper...")
         for pid, patient in pending:
@@ -839,14 +829,9 @@ async def _run_batch_analysis(pending: list):
         state._analyzing = False
         loop = asyncio.get_event_loop()
 
-        # Ollama-Modell entladen um RAM für nächste Aufnahmen freizugeben
+        # Ollama-Modell entladen um RAM freizugeben
         print("Analyse fertig: Ollama-Modell wird entladen...")
         await loop.run_in_executor(None, _unload_ollama_model)
-
-        # Vosk reaktivieren
-        if vosk_was_listening:
-            state.vosk_listening = True
-            await broadcast({"type": "vosk_status", "enabled": state.vosk_enabled, "listening": True})
 
 
 def _find_session_for_patient(patient_id: str) -> str | None:
@@ -1511,8 +1496,6 @@ async def select_session(body: dict):
 @app.post("/api/patient/register")
 async def register_patient(body: dict):
     """Patient anlegen mit RFID-Tag + Triage."""
-    if getattr(state, '_analyzing', False):
-        return {"error": "Analyse läuft, bitte warten"}
     if not state.model_loaded:
         return {"error": "Sprachmodell nicht geladen"}
     cfg = load_config()
@@ -2126,9 +2109,7 @@ def run_patient_enrichment(text: str) -> dict:
 
 async def _run_analysis_background(sid: str):
     """Einzelanalyse — Ollama parallel zu Whisper, kein GPU-Swap."""
-    vosk_was_listening = state.vosk_listening
     try:
-        state.vosk_listening = False
         result = await _run_analysis_for_session(sid)
         pid = state.sessions[sid].get("patient_id", state.active_patient)
         if pid and pid in state.patients:
@@ -2142,8 +2123,6 @@ async def _run_analysis_background(sid: str):
         state._analyzing = False
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _unload_ollama_model)
-        if vosk_was_listening:
-            state.vosk_listening = True
 
 
 async def _run_analysis_for_session(sid: str) -> dict:
