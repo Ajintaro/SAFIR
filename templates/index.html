@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAFIR | CGI Deutschland</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         /* ============================================================
            CGI Corporate Design — SAFIR Dashboard
@@ -683,6 +685,186 @@
             border: 1px solid var(--border); color: var(--text-dim);
         }
 
+        /* ============================================================
+           Role 1 — Taktische Lagekarte
+           ============================================================ */
+        .role1-layout {
+            display: grid; grid-template-columns: 1fr 420px;
+            height: 100%; min-height: 0;
+        }
+        .role1-map { width: 100%; height: 100%; }
+        .role1-map .leaflet-container { background: var(--bg-primary) !important; }
+        .role1-panel {
+            display: flex; flex-direction: column;
+            border-left: 1px solid var(--border); min-height: 0;
+            background: var(--bg-surface);
+        }
+        .role1-panel-header {
+            padding: 10px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+            font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--accent); display: flex; align-items: center; gap: 8px;
+        }
+        .role1-panel-header::before {
+            content: ''; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;
+        }
+        .role1-triage-bar {
+            display: flex; gap: 0; padding: 8px 16px;
+            border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .role1-tc { flex: 1; text-align: center; padding: 6px 4px; font-size: 11px; font-weight: 700; }
+        .role1-tc-num { font-size: 22px; font-weight: 800; display: block; }
+        .role1-transport-list { flex: 1; overflow-y: auto; padding: 8px; }
+        .role1-transport-card {
+            background: var(--bg-surface2); border: 1px solid var(--border);
+            border-radius: 8px; margin-bottom: 8px; overflow: hidden;
+        }
+        .role1-transport-header {
+            display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+            cursor: pointer; user-select: none;
+        }
+        .role1-transport-header:hover { background: rgba(255,255,255,0.03); }
+        .role1-transport-header .unit-icon {
+            width: 32px; height: 32px; border-radius: 6px; background: var(--bg-elevated);
+            display: flex; align-items: center; justify-content: center; font-size: 16px;
+        }
+        .role1-transport-header .unit-name { font-weight: 700; font-size: 13px; flex: 1; }
+        .role1-transport-header .unit-meta { font-size: 10px; color: var(--text-dim); }
+        .role1-transport-header .unit-dist { font-size: 10px; font-weight: 600; color: var(--info, #5DADE2); margin-right: 4px; }
+        .role1-transport-header .eta { font-size: 11px; font-weight: 700; color: var(--warning); }
+        .role1-transport-header .toggle-arrow {
+            font-size: 10px; color: var(--text-dim); transition: transform 0.2s;
+            flex-shrink: 0; margin-left: 4px;
+        }
+        .role1-transport-card.collapsed .toggle-arrow { transform: rotate(-90deg); }
+        .role1-transport-card.collapsed .role1-transport-patients { display: none; }
+        .role1-transport-patients { padding: 6px 12px 10px; border-top: 1px solid var(--border); }
+        .role1-tp-patient {
+            display: flex; align-items: center; gap: 8px; padding: 5px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            cursor: pointer; border-radius: 4px; padding: 5px 4px;
+        }
+        .role1-tp-patient:hover { background: rgba(255,255,255,0.04); }
+        .role1-tp-patient:last-child { border-bottom: none; }
+        .role1-tp-triage {
+            width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center;
+            justify-content: center; font-size: 9px; font-weight: 800; color: #fff; flex-shrink: 0;
+        }
+        .role1-tp-name { font-size: 11px; font-weight: 600; flex: 1; }
+        .role1-tp-injury { font-size: 10px; color: var(--text-dim); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .role1-tp-patient.t1 { animation: r1-pulse-t1 2s ease-in-out infinite; }
+        @keyframes r1-pulse-t1 { 0%,100% { background: transparent; } 50% { background: rgba(255,0,0,0.06); } }
+
+        /* Patient Detail Modal */
+        .r1-detail-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6); z-index: 9999;
+            display: flex; align-items: center; justify-content: center;
+            animation: r1-fade-in 0.2s ease;
+        }
+        @keyframes r1-fade-in { from { opacity: 0; } to { opacity: 1; } }
+        .r1-detail-modal {
+            background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: 12px; width: 520px; max-width: 95vw; max-height: 85vh;
+            overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .r1-detail-header {
+            display: flex; align-items: center; gap: 12px; padding: 16px 20px;
+            border-bottom: 1px solid var(--border); position: sticky; top: 0;
+            background: var(--bg-surface); z-index: 1;
+        }
+        .r1-detail-header .triage-badge {
+            width: 36px; height: 36px; border-radius: 8px; display: flex;
+            align-items: center; justify-content: center; font-weight: 800;
+            font-size: 14px; color: #fff; flex-shrink: 0;
+        }
+        .r1-detail-header .patient-name { font-size: 16px; font-weight: 700; flex: 1; }
+        .r1-detail-header .close-btn {
+            background: none; border: none; color: var(--text-dim); font-size: 20px;
+            cursor: pointer; padding: 4px 8px; border-radius: 4px;
+        }
+        .r1-detail-header .close-btn:hover { color: var(--text-primary); background: var(--bg-elevated); }
+        .r1-detail-body { padding: 16px 20px; }
+        .r1-detail-section {
+            margin-bottom: 16px;
+        }
+        .r1-detail-section-title {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--accent); margin-bottom: 8px;
+        }
+        .r1-detail-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+        }
+        .r1-detail-field {
+            background: var(--bg-surface2); border-radius: 6px; padding: 8px 12px;
+        }
+        .r1-detail-field .field-label {
+            font-size: 9px; text-transform: uppercase; color: var(--text-dim);
+            letter-spacing: 0.3px; margin-bottom: 2px;
+        }
+        .r1-detail-field .field-value { font-size: 12px; font-weight: 600; }
+        .r1-detail-injuries {
+            display: flex; flex-wrap: wrap; gap: 6px;
+        }
+        .r1-detail-injuries .injury-tag {
+            background: rgba(231,76,60,0.15); color: #E74C3C; border-radius: 4px;
+            padding: 3px 8px; font-size: 10px; font-weight: 600;
+        }
+        .r1-detail-treatments .treatment-item {
+            padding: 4px 0; font-size: 11px; color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        .r1-detail-treatments .treatment-item:last-child { border-bottom: none; }
+        .r1-llm-hints {
+            background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2);
+            border-radius: 8px; padding: 12px 16px; margin-top: 12px;
+        }
+        .r1-llm-hints .hints-title {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            color: var(--info, #5DADE2); margin-bottom: 6px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .r1-llm-hints .hints-content {
+            font-size: 11px; line-height: 1.6; color: var(--text-secondary);
+        }
+        .r1-llm-hints .hints-content ul { margin: 4px 0; padding-left: 16px; }
+        .r1-llm-hints .hints-content li { margin: 2px 0; }
+        .r1-llm-hints.loading .hints-content {
+            color: var(--text-dim); font-style: italic;
+        }
+        /* BAT Ankunft-Status */
+        .role1-transport-card.arrived {
+            border-color: var(--success, #2ECC71);
+        }
+        .role1-transport-card.arrived .role1-transport-header {
+            background: rgba(46,204,113,0.08);
+        }
+        .role1-arrived-badge {
+            font-size: 9px; font-weight: 700; color: var(--success, #2ECC71);
+            background: rgba(46,204,113,0.12); border-radius: 4px; padding: 2px 6px;
+        }
+        /* Map markers */
+        .bat-marker {
+            background: var(--bg-elevated, #1A2848); border: 2px solid var(--accent, #E11937);
+            border-radius: 8px; padding: 4px 8px; font-size: 10px; font-weight: 700;
+            color: var(--text-primary, #E0E8F5); white-space: nowrap;
+            display: flex; align-items: center; gap: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+        .bat-marker .bat-count {
+            background: var(--accent, #E11937); color: #fff; border-radius: 10px;
+            padding: 0 6px; font-size: 9px; min-width: 18px; text-align: center;
+        }
+        .station-marker {
+            background: var(--accent, #E11937); color: #fff; border-radius: 50%;
+            width: 32px; height: 32px; display: flex; align-items: center;
+            justify-content: center; font-size: 16px; font-weight: 800;
+            box-shadow: 0 0 20px rgba(225,25,55,0.4);
+        }
+
+        @media (max-width: 900px) {
+            .role1-layout { grid-template-columns: 1fr; grid-template-rows: 300px 1fr; }
+        }
+
         @media (max-width: 1100px) {
             .dashboard { grid-template-columns: 1fr; grid-template-rows: auto; }
             .right-panel { grid-row: auto; }
@@ -1111,11 +1293,37 @@
              PAGE: Role 1 — Rettungsstation
              ====================================================== -->
         <div class="page" id="page-role1">
-            <div class="placeholder-page">
-                <div class="ph-icon">&#9769;</div>
-                <div class="ph-title">Role 1 — Rettungsstation</div>
-                <div class="ph-desc">Erste ärztliche Behandlung. Triage, Stabilisierung und Vorbereitung des MEDEVAC-Transports. 9-Liner Erstellung und Übergabe.</div>
-                <div class="ph-badge">Geplant für Phase 2</div>
+            <!-- Role 1: Taktische Lagekarte + Eingehende Transporte -->
+            <div class="role1-layout">
+                <!-- Taktische Karte -->
+                <div id="role1-map" class="role1-map"></div>
+
+                <!-- Rechtes Panel -->
+                <div class="role1-panel">
+                    <div class="role1-panel-header">
+                        Eingehende Transporte
+                        <button class="btn" id="r1-sim-btn" onclick="role1StartSimulation()" style="margin-left:auto;padding:4px 12px;font-size:10px">Simulation</button>
+                    </div>
+
+                    <!-- Triage-Übersicht -->
+                    <div class="role1-triage-bar">
+                        <div class="role1-tc" style="color:var(--t1,#FF0000)"><span class="role1-tc-num" id="r1-tc-t1">0</span>T1 Sofort</div>
+                        <div class="role1-tc" style="color:var(--t2,#FF8800)"><span class="role1-tc-num" id="r1-tc-t2">0</span>T2 Dringend</div>
+                        <div class="role1-tc" style="color:var(--t3,#00AA00)"><span class="role1-tc-num" id="r1-tc-t3">0</span>T3 Aufschub</div>
+                        <div class="role1-tc" style="color:var(--t4,#4444AA)"><span class="role1-tc-num" id="r1-tc-t4">0</span>T4 Abwartend</div>
+                    </div>
+
+                    <!-- Transport-Liste -->
+                    <div class="role1-transport-list" id="r1-transport-list">
+                        <div class="empty">
+                            <div class="icon">&#9877;</div>
+                            <div>Warte auf Meldungen von Feldgeräten...</div>
+                            <div style="margin-top:8px;font-size:11px">BATs senden Verwundete über SAFIR Phase 0</div>
+                        </div>
+                    </div>
+
+                    <!-- Event Feed entfernt — Toasts reichen aus -->
+                </div>
             </div>
         </div>
 
@@ -1428,6 +1636,9 @@
 
         // Einstellungen: Config laden bei Seitenwechsel
         if (pageId === 'settings') loadSettingsData();
+
+        // Role 1: Karte initialisieren beim ersten Aufruf
+        if (pageId === 'role1') initRole1Map();
 
         // URL-Hash setzen
         location.hash = pageId;
@@ -1819,6 +2030,67 @@
                     renderPatientCards();
                 }
                 break;
+            // Role 1: Lagekarte Live-Updates
+            case 'patient_new':
+                if (msg.patient) {
+                    patients[msg.patient.patient_id] = msg.patient;
+                    renderPatientList();
+                    role1Patients = Object.values(patients);
+                    role1UpdateUI();
+                    role1AddEvent(
+                        `Patient ${msg.patient.name || msg.patient.patient_id} (${msg.patient.triage || '?'})`,
+                        msg.unit_name || '',
+                        true
+                    );
+                    showToast('Neuer Patient: ' + (msg.patient.name || msg.patient.patient_id), '&#9873;', 'voice');
+                }
+                break;
+            case 'position_update':
+                // GPS-Position eines BATs in Echtzeit aktualisieren
+                if (msg.position && msg.position.unit_name) {
+                    const pos = msg.position;
+                    const key = pos.unit_name;
+                    const lat = pos.lat || 0;
+                    const lng = pos.lon || pos.lng || 0;
+                    if (lat === 0 && lng === 0) break;
+
+                    // Cache position for distance display
+                    role1Positions[key] = pos;
+
+                    // Update distance in transport card
+                    const card = document.querySelector(`.role1-transport-card[data-unit="${key}"]`);
+                    if (card) {
+                        const km = haversineKm(lat, lng, R1_POS.lat, R1_POS.lng);
+                        const distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
+                        let distEl = card.querySelector('.unit-dist');
+                        if (distEl) {
+                            distEl.textContent = distStr;
+                        } else {
+                            distEl = document.createElement('span');
+                            distEl.className = 'unit-dist';
+                            distEl.textContent = distStr;
+                            const meta = card.querySelector('.unit-meta');
+                            if (meta) meta.parentNode.insertBefore(distEl, meta);
+                        }
+                    }
+
+                    if (role1Map) {
+                        if (role1Markers[key]) {
+                            role1Markers[key].setLatLng([lat, lng]);
+                        } else {
+                            const icon = L.divIcon({
+                                className: 'bat-marker-wrap',
+                                html: `<div class="bat-marker">${key} <span class="bat-count">?</span></div>`,
+                                iconSize: [120, 28],
+                                iconAnchor: [60, 14],
+                            });
+                            const marker = L.marker([lat, lng], { icon }).addTo(role1Map);
+                            marker.bindPopup(`<b>${key}</b>`);
+                            role1Markers[key] = marker;
+                        }
+                    }
+                }
+                break;
             case 'init':
                 if (msg.model) updateModelBadge(msg.model, 'loaded');
                 if (msg.vosk_enabled !== undefined) updateVoskIndicator(msg.vosk_enabled, msg.vosk_listening);
@@ -1829,12 +2101,20 @@
                 if (msg.patients) {
                     msg.patients.forEach(p => { patients[p.patient_id] = p; });
                     renderPatientList();
+                    // Role 1 Daten initialisieren
+                    role1Patients = msg.patients;
+                    role1UpdateUI();
                 }
                 if (msg.active_patient && patients[msg.active_patient]) {
                     setActivePatient(patients[msg.active_patient]);
                 }
                 if (msg.backend_reachable !== undefined) {
                     updateBackendBadge(msg.backend_reachable || null);
+                }
+                if (msg.events) {
+                    msg.events.forEach(ev => {
+                        role1AddEvent(ev.details, ev.unit, ev.type === 'patient_ingest');
+                    });
                 }
                 break;
         }
@@ -2825,6 +3105,618 @@
     }
 
     // ---- Init ----
+    // ============================================================
+    // Role 1: Taktische Lagekarte
+    // ============================================================
+    let role1Map = null;
+    let role1Markers = {};
+    let role1Patients = [];
+    let role1Initialized = false;
+
+    function initRole1Map() {
+        if (role1Initialized) {
+            if (role1Map) role1Map.invalidateSize();
+            return;
+        }
+        role1Initialized = true;
+
+        // Leaflet Karte initialisieren
+        role1Map = L.map('role1-map', {
+            zoomControl: true,
+            attributionControl: false,
+        }).setView([50.7374, 7.0982], 13); // Bonn/Remagen
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+        }).addTo(role1Map);
+
+        // Rettungsstation Marker (Role 1 Position)
+        const stationIcon = L.divIcon({
+            className: 'station-marker-wrap',
+            html: '<div class="station-marker">R1</div>',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+        });
+        L.marker([50.7374, 7.0982], { icon: stationIcon })
+            .bindPopup('<b>SAFIR Rettungsstation (Role 1)</b><br>Truppenverbandsplatz')
+            .addTo(role1Map);
+
+        // Daten laden
+        setTimeout(() => role1Map.invalidateSize(), 200);
+        role1LoadData();
+        setInterval(role1LoadData, 5000);
+    }
+
+    async function role1LoadData() {
+        try {
+            const res = await api('/api/patients');
+            if (res.patients) {
+                role1Patients = res.patients;
+                role1UpdateUI();
+            }
+        } catch (e) { /* Backend hat ggf. keinen /api/patients Endpunkt */ }
+    }
+
+    // R1 Station Position
+    const R1_POS = { lat: 50.7374, lng: 7.0982 };
+    let role1CollapsedCards = {};  // Explizit geöffnete Cards merken (Standard: eingeklappt)
+    let role1DefaultCollapsed = true;  // Standard: alle eingeklappt
+    let role1Positions = {};      // Cached positions
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function role1UpdateUI() {
+        const patients = role1Patients;
+
+        // Triage-Zaehler
+        const counts = { T1: 0, T2: 0, T3: 0, T4: 0 };
+        patients.forEach(p => {
+            const t = (p.triage || '').toUpperCase();
+            if (counts[t] !== undefined) counts[t]++;
+        });
+        document.getElementById('r1-tc-t1').textContent = counts.T1;
+        document.getElementById('r1-tc-t2').textContent = counts.T2;
+        document.getElementById('r1-tc-t3').textContent = counts.T3;
+        document.getElementById('r1-tc-t4').textContent = counts.T4;
+
+        // Transporte gruppiert nach BAT/Einheit
+        const bySource = {};
+        patients.forEach(p => {
+            const key = p.unit_name || p.created_by || p.device_id || 'Unbekannt';
+            if (!bySource[key]) bySource[key] = [];
+            bySource[key].push(p);
+        });
+
+        const list = document.getElementById('r1-transport-list');
+        if (Object.keys(bySource).length === 0) {
+            list.innerHTML = '<div class="empty"><div class="icon">&#9877;</div><div>Warte auf Meldungen von Feldgeraeten...</div></div>';
+            return;
+        }
+
+        const triageColors = { T1: '#FF0000', T2: '#FF8800', T3: '#00AA00', T4: '#4444AA' };
+        list.innerHTML = Object.entries(bySource).map(([src, pts]) => {
+            // Standard: eingeklappt, außer der User hat explizit aufgeklappt
+            const isCollapsed = (role1CollapsedCards[src] !== undefined) ? role1CollapsedCards[src] : role1DefaultCollapsed;
+            const collapsed = isCollapsed ? ' collapsed' : '';
+            const pos = role1Positions[src];
+            let distHtml = '';
+            if (pos && pos.lat && pos.lon) {
+                const km = haversineKm(pos.lat, pos.lon, R1_POS.lat, R1_POS.lng);
+                distHtml = `<span class="unit-dist">${km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km'}</span>`;
+            }
+            const plist = pts.map(p => {
+                const t = (p.triage || 'T3').toUpperCase();
+                const tClass = t === 'T1' ? ' t1' : '';
+                const injuries = (p.injuries || []).join(', ') || p.status || '';
+                const pid = p.patient_id || '';
+                return `<div class="role1-tp-patient${tClass}" onclick="role1ShowPatientDetail('${pid}')" title="Details anzeigen">
+                    <div class="role1-tp-triage" style="background:${triageColors[t] || '#666'}">${t}</div>
+                    <span class="role1-tp-name">${p.name || pid || '?'}</span>
+                    <span class="role1-tp-injury">${injuries}</span>
+                </div>`;
+            }).join('');
+            const isArrived = role1ArrivedBats && role1ArrivedBats[src];
+            const arrivedClass = isArrived ? ' arrived' : '';
+            const arrivedBadge = isArrived ? '<span class="role1-arrived-badge">✓ Eingetroffen</span>' : '';
+            return `<div class="role1-transport-card${collapsed}${arrivedClass}" data-unit="${src}">
+                <div class="role1-transport-header" onclick="role1ToggleCard(this)">
+                    <div class="unit-icon">&#9873;</div>
+                    <span class="unit-name">${src}</span>
+                    ${arrivedBadge}
+                    ${distHtml}
+                    <span class="unit-meta">${pts.length} Pat.</span>
+                    <span class="toggle-arrow">&#9660;</span>
+                </div>
+                <div class="role1-transport-patients">${plist}</div>
+            </div>`;
+        }).join('');
+
+        // Map Marker aktualisieren
+        role1UpdateMapMarkers(bySource);
+    }
+
+    function role1ToggleCard(headerEl) {
+        const card = headerEl.closest('.role1-transport-card');
+        const unit = card.dataset.unit;
+        card.classList.toggle('collapsed');
+        role1CollapsedCards[unit] = card.classList.contains('collapsed');
+    }
+
+    let role1MarkerPatientCounts = {};  // Cached count per unit to avoid icon rebuild flicker
+
+    async function role1UpdateMapMarkers(bySource) {
+        if (!role1Map) return;
+
+        // Positionen vom Backend holen
+        let positions = {};
+        try {
+            const posRes = await api('/api/positions');
+            positions = posRes.positions || {};
+        } catch(e) {}
+        role1Positions = positions;  // Cache for distance display
+
+        Object.entries(bySource).forEach(([src, pts]) => {
+            const pos = positions[src];
+            if (!pos) {
+                if (role1Markers[src]) {
+                    role1Map.removeLayer(role1Markers[src]);
+                    delete role1Markers[src];
+                    delete role1MarkerPatientCounts[src];
+                }
+                return;
+            }
+
+            const lat = pos.lat || 0;
+            const lng = pos.lon || pos.lng || 0;
+            if (lat === 0 && lng === 0) return;
+
+            const km = haversineKm(lat, lng, R1_POS.lat, R1_POS.lng);
+            const distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
+            const isArrived = role1ArrivedBats && role1ArrivedBats[src];
+            const statusLabel = isArrived ? ' ✓' : '';
+
+            const popupContent = `<b>${src}</b>${isArrived ? ' — <span style="color:#2ECC71">Eingetroffen</span>' : ''}<br>${distStr} bis R1<br>${pts.length} Patient(en)<br>${pts.map(p => (p.triage || '?') + ' ' + (p.name || p.patient_id || '')).join('<br>')}`;
+
+            if (role1Markers[src]) {
+                // Position sanft aktualisieren (kein Flackern)
+                role1Markers[src].setLatLng([lat, lng]);
+                // Icon NUR neu setzen wenn sich Patientenzahl oder Ankunftsstatus geändert hat
+                const prevCount = role1MarkerPatientCounts[src];
+                if (prevCount !== pts.length + statusLabel) {
+                    const icon = L.divIcon({
+                        className: 'bat-marker-wrap',
+                        html: `<div class="bat-marker">${src}${statusLabel} <span class="bat-count">${pts.length}</span></div>`,
+                        iconSize: [140, 28],
+                        iconAnchor: [70, 14],
+                    });
+                    role1Markers[src].setIcon(icon);
+                    role1MarkerPatientCounts[src] = pts.length + statusLabel;
+                }
+                role1Markers[src].setPopupContent(popupContent);
+            } else {
+                const icon = L.divIcon({
+                    className: 'bat-marker-wrap',
+                    html: `<div class="bat-marker">${src}${statusLabel} <span class="bat-count">${pts.length}</span></div>`,
+                    iconSize: [140, 28],
+                    iconAnchor: [70, 14],
+                });
+                const marker = L.marker([lat, lng], { icon }).addTo(role1Map);
+                marker.bindPopup(popupContent);
+                role1Markers[src] = marker;
+                role1MarkerPatientCounts[src] = pts.length + statusLabel;
+            }
+        });
+
+        Object.keys(role1Markers).forEach(key => {
+            if (!bySource[key]) {
+                role1Map.removeLayer(role1Markers[key]);
+                delete role1Markers[key];
+                delete role1MarkerPatientCounts[key];
+            }
+        });
+    }
+
+    function role1AddEvent(text, unitName, isPatient) {
+        // Live-Ticker entfernt — nur Toast-Benachrichtigung
+        if (isPatient) {
+            showToast(`${unitName}: ${text}`, '&#9873;', 'voice');
+        }
+    }
+
+    // ============================================================
+    // Role 1: Patienten-Detail-Ansicht
+    // ============================================================
+    function role1ShowPatientDetail(patientId) {
+        if (!patientId) return;
+        const p = role1Patients.find(pt => pt.patient_id === patientId);
+        if (!p) return;
+
+        const triageColors = { T1: '#FF0000', T2: '#FF8800', T3: '#00AA00', T4: '#4444AA' };
+        const t = (p.triage || '?').toUpperCase();
+        const tColor = triageColors[t] || '#666';
+
+        const injuries = (p.injuries || []);
+        const treatments = (p.treatments || []);
+        const medications = (p.medications || []);
+        const vitals = p.vitals || {};
+        const nineLiner = p.nine_liner || {};
+        const transcripts = (p.transcripts || []);
+
+        let vitalsHtml = '';
+        if (Object.keys(vitals).length > 0) {
+            vitalsHtml = `<div class="r1-detail-section">
+                <div class="r1-detail-section-title">Vitalzeichen</div>
+                <div class="r1-detail-grid">
+                    ${vitals.pulse ? `<div class="r1-detail-field"><div class="field-label">Puls</div><div class="field-value">${vitals.pulse}</div></div>` : ''}
+                    ${vitals.blood_pressure ? `<div class="r1-detail-field"><div class="field-label">Blutdruck</div><div class="field-value">${vitals.blood_pressure}</div></div>` : ''}
+                    ${vitals.spo2 ? `<div class="r1-detail-field"><div class="field-label">SpO2</div><div class="field-value">${vitals.spo2}%</div></div>` : ''}
+                    ${vitals.gcs ? `<div class="r1-detail-field"><div class="field-label">GCS</div><div class="field-value">${vitals.gcs}</div></div>` : ''}
+                    ${vitals.breathing ? `<div class="r1-detail-field"><div class="field-label">Atmung</div><div class="field-value">${vitals.breathing}</div></div>` : ''}
+                    ${vitals.temperature ? `<div class="r1-detail-field"><div class="field-label">Temperatur</div><div class="field-value">${vitals.temperature}</div></div>` : ''}
+                </div>
+            </div>`;
+        }
+
+        let injuriesHtml = '';
+        if (injuries.length > 0) {
+            injuriesHtml = `<div class="r1-detail-section">
+                <div class="r1-detail-section-title">Verletzungen</div>
+                <div class="r1-detail-injuries">${injuries.map(i => `<span class="injury-tag">${i}</span>`).join('')}</div>
+            </div>`;
+        }
+
+        let treatmentsHtml = '';
+        if (treatments.length > 0 || medications.length > 0) {
+            const items = [...treatments.map(t => typeof t === 'string' ? t : t.description || JSON.stringify(t)),
+                           ...medications.map(m => typeof m === 'string' ? m : m.name || JSON.stringify(m))];
+            treatmentsHtml = `<div class="r1-detail-section">
+                <div class="r1-detail-section-title">Behandlungen / Medikamente</div>
+                <div class="r1-detail-treatments">${items.map(i => `<div class="treatment-item">${i}</div>`).join('')}</div>
+            </div>`;
+        }
+
+        let transcriptsHtml = '';
+        if (transcripts.length > 0) {
+            const last3 = transcripts.slice(-3);
+            transcriptsHtml = `<div class="r1-detail-section">
+                <div class="r1-detail-section-title">Letzte Transkripte</div>
+                <div class="r1-detail-treatments">${last3.map(t => {
+                    const text = typeof t === 'string' ? t : t.text || t.transcript || JSON.stringify(t);
+                    return `<div class="treatment-item" style="font-size:10px">${text}</div>`;
+                }).join('')}</div>
+            </div>`;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'r1-detail-overlay';
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = `
+            <div class="r1-detail-modal">
+                <div class="r1-detail-header">
+                    <div class="triage-badge" style="background:${tColor}">${t}</div>
+                    <span class="patient-name">${p.name || p.patient_id || 'Unbekannt'}</span>
+                    <button class="close-btn" onclick="this.closest('.r1-detail-overlay').remove()">&times;</button>
+                </div>
+                <div class="r1-detail-body">
+                    <div class="r1-detail-section">
+                        <div class="r1-detail-section-title">Stammdaten</div>
+                        <div class="r1-detail-grid">
+                            <div class="r1-detail-field"><div class="field-label">Patient-ID</div><div class="field-value">${p.patient_id || '?'}</div></div>
+                            <div class="r1-detail-field"><div class="field-label">Einheit</div><div class="field-value">${p.unit_name || p.unit || '?'}</div></div>
+                            <div class="r1-detail-field"><div class="field-label">Status</div><div class="field-value">${p.flow_status || p.status || '?'}</div></div>
+                            <div class="r1-detail-field"><div class="field-label">Blutgruppe</div><div class="field-value">${p.blood_type || '?'}</div></div>
+                            ${p.rank ? `<div class="r1-detail-field"><div class="field-label">Dienstgrad</div><div class="field-value">${p.rank}</div></div>` : ''}
+                            ${p.current_role ? `<div class="r1-detail-field"><div class="field-label">Aktuelle Phase</div><div class="field-value">${p.current_role}</div></div>` : ''}
+                        </div>
+                    </div>
+                    ${injuriesHtml}
+                    ${vitalsHtml}
+                    ${treatmentsHtml}
+                    ${transcriptsHtml}
+                    <div class="r1-llm-hints loading" id="r1-llm-hints-${p.patient_id}">
+                        <div class="hints-title">&#9881; KI-Vorbereitungshinweise</div>
+                        <div class="hints-content">Analyse wird erstellt...</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        // LLM Hints generieren
+        role1GenerateLLMHints(p);
+    }
+
+    async function role1GenerateLLMHints(patient) {
+        const hintsEl = document.getElementById('r1-llm-hints-' + patient.patient_id);
+        if (!hintsEl) return;
+
+        // Lokale Regelbasierte Hinweise als Fallback (sofort anzeigen)
+        const hints = role1RuleBasedHints(patient);
+        const contentEl = hintsEl.querySelector('.hints-content');
+        contentEl.innerHTML = hints;
+        hintsEl.classList.remove('loading');
+
+        // Versuche LLM-basierte Hinweise zu laden (wenn Ollama verfügbar)
+        try {
+            const res = await api('/api/llm/prepare', 'POST', { patient });
+            if (res && res.hints) {
+                contentEl.innerHTML = res.hints;
+            }
+        } catch(e) {
+            // Regelbasierte Hinweise bleiben stehen
+        }
+    }
+
+    function role1RuleBasedHints(p) {
+        const hints = [];
+        const t = (p.triage || '').toUpperCase();
+        const injuries = (p.injuries || []).map(i => i.toLowerCase());
+        const allText = injuries.join(' ');
+
+        // Triage-basierte Vorbereitung
+        if (t === 'T1') {
+            hints.push('<b>SOFORT-Behandlung erforderlich</b> — Schockraum vorbereiten');
+        } else if (t === 'T2') {
+            hints.push('Dringend — Behandlungsplatz reservieren');
+        }
+
+        // Verletzungs-spezifische Hinweise
+        if (allText.includes('blutung') || allText.includes('schusswunde') || allText.includes('schuss')) {
+            hints.push('Blutkonserven bereitstellen (Blutgruppe: ' + (p.blood_type || 'unbekannt') + ')');
+            hints.push('Tourniquet / Druckverband vorbereiten');
+            hints.push('Chirurgisches Besteck sterilisieren');
+        }
+        if (allText.includes('fraktur') || allText.includes('bruch')) {
+            hints.push('Schienungsmaterial vorbereiten');
+            hints.push('Analgetika bereitstellen');
+        }
+        if (allText.includes('verbrennung') || allText.includes('brand')) {
+            hints.push('Brandwundenversorgung: Coolpacks, sterile Abdeckung');
+            hints.push('Infusionszugang vorbereiten (Volumenersatz)');
+        }
+        if (allText.includes('blast') || allText.includes('explosion')) {
+            hints.push('Polytrauma-Protokoll aktivieren');
+            hints.push('Thoraxdrainage bereithalten');
+            hints.push('Beatmung vorbereiten');
+        }
+        if (allText.includes('bewusstlos') || allText.includes('bewusstlosigkeit')) {
+            hints.push('Atemwegssicherung vorbereiten (Tubus/Larynxmaske)');
+            hints.push('Monitoring: EKG, SpO2, Kapnografie');
+        }
+        if (allText.includes('splitter')) {
+            hints.push('Splitterentfernung: Pinzetten, Wundreinigung');
+            hints.push('Tetanus-Impfstatus pruefen');
+        }
+
+        // Vitals-basierte Hinweise
+        const vitals = p.vitals || {};
+        if (vitals.spo2 && parseInt(vitals.spo2) < 92) {
+            hints.push('Sauerstoffgabe vorbereiten (SpO2 niedrig)');
+        }
+        if (vitals.pulse && parseInt(vitals.pulse) > 120) {
+            hints.push('Tachykardie — Schock? Volumentherapie vorbereiten');
+        }
+
+        if (hints.length === 0) {
+            hints.push('Standardversorgung vorbereiten');
+            hints.push('Patientenakte anlegen');
+        }
+
+        return '<ul>' + hints.map(h => `<li>${h}</li>`).join('') + '</ul>';
+    }
+
+    // ============================================================
+    // Role 1: Simulation — 3 BATs fahren zur Rettungsstation
+    // ============================================================
+    let role1SimRunning = false;
+    let role1SimIntervals = [];
+    let role1SimTimeouts = [];
+    let role1RouteLines = [];  // Polylines for routes
+    let role1ArrivedBats = {};  // BATs die angekommen sind
+
+    async function role1FetchRoute(start, end) {
+        // OSRM Public Demo Server for routing
+        try {
+            const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.routes && data.routes[0]) {
+                const coords = data.routes[0].geometry.coordinates;
+                // OSRM returns [lng, lat], convert to [lat, lng]
+                return coords.map(c => ({ lat: c[1], lng: c[0] }));
+            }
+        } catch(e) {
+            console.warn('OSRM routing failed, using straight line:', e);
+        }
+        return null;
+    }
+
+    async function role1StartSimulation() {
+        const btn = document.getElementById('r1-sim-btn');
+        if (role1SimRunning) {
+            // Stop
+            role1SimIntervals.forEach(id => clearInterval(id));
+            role1SimTimeouts.forEach(id => clearTimeout(id));
+            role1SimIntervals = [];
+            role1SimTimeouts = [];
+            role1RouteLines.forEach(line => { if (role1Map) role1Map.removeLayer(line); });
+            role1RouteLines = [];
+            role1ArrivedBats = {};
+            role1SimRunning = false;
+            btn.textContent = 'Simulation';
+            btn.style.background = '';
+            btn.style.borderColor = '';
+            btn.style.color = '';
+            return;
+        }
+
+        role1SimRunning = true;
+        btn.textContent = 'Stopp';
+        btn.style.background = 'var(--danger, #E74C3C)';
+        btn.style.borderColor = 'var(--danger, #E74C3C)';
+        btn.style.color = '#fff';
+
+        // Erst alte Demo-Daten aufraumen
+        try { await api('/api/simulation/reset', 'POST'); } catch(e) {}
+
+        role1AddEvent('Simulation gestartet — 3 BATs unterwegs', 'SIM', false);
+
+        const r1 = { lat: 50.7374, lng: 7.0982 };
+
+        const bats = [
+            {
+                name: 'BAT Alpha42',
+                start: { lat: 50.7580, lng: 7.0450 },
+                patients: [
+                    { id: 'SIM-A1', name: 'Huber, Stefan', triage: 'T1', injuries: ['Schusswunde li. Oberschenkel', 'Starke Blutung'], vitals: { pulse: '132', spo2: '88', blood_pressure: '85/55' }, blood_type: 'A+', status: 'critical' },
+                    { id: 'SIM-A2', name: 'Richter, Anna', triage: 'T2', injuries: ['Splitterverletzung re. Arm'], vitals: { pulse: '98', spo2: '95' }, status: 'urgent' },
+                ],
+            },
+            {
+                name: 'BAT Bravo17',
+                start: { lat: 50.7100, lng: 7.0500 },
+                patients: [
+                    { id: 'SIM-B1', name: 'Weber, Thomas', triage: 'T3', injuries: ['Prellungen', 'Schuerfwunden'], vitals: { pulse: '78', spo2: '98' }, status: 'stable' },
+                ],
+            },
+            {
+                name: 'BAT Charlie9',
+                start: { lat: 50.7450, lng: 7.1500 },
+                patients: [
+                    { id: 'SIM-C1', name: 'Klein, Markus', triage: 'T1', injuries: ['Blast-Verletzung', 'Bewusstlos'], vitals: { pulse: '140', spo2: '82', gcs: '6' }, blood_type: '0-', status: 'critical' },
+                    { id: 'SIM-C2', name: 'Fischer, Lisa', triage: 'T2', injuries: ['Fraktur li. Unterarm'], vitals: { pulse: '105', spo2: '96' }, status: 'urgent' },
+                    { id: 'SIM-C3', name: 'Schmidt, Peter', triage: 'T3', injuries: ['Leichte Verbrennung'], vitals: { pulse: '82', spo2: '97' }, status: 'stable' },
+                ],
+            },
+        ];
+
+        // Routen fuer alle BATs laden (OSRM)
+        role1AddEvent('Routen werden berechnet...', 'SIM', false);
+        const routes = await Promise.all(bats.map(bat => role1FetchRoute(bat.start, r1)));
+
+        // Route-Polylines auf Karte zeichnen
+        routes.forEach((route, i) => {
+            if (route && role1Map) {
+                const latlngs = route.map(p => [p.lat, p.lng]);
+                const line = L.polyline(latlngs, {
+                    color: ['#E11937', '#F39C12', '#3B82F6'][i],
+                    weight: 3, opacity: 0.5, dashArray: '8 6'
+                }).addTo(role1Map);
+                role1RouteLines.push(line);
+            }
+        });
+
+        // Patienten LANGSAM und GESTAFFELT einspielen
+        // BAT 1 meldet nach 3s, BAT 2 nach 12s, BAT 3 nach 20s
+        // Innerhalb eines BATs: jeder Patient einzeln mit 4s Abstand
+        const batDelays = [3000, 12000, 20000];
+        const patientDelay = 4000;
+
+        for (let bi = 0; bi < bats.length; bi++) {
+            const bat = bats[bi];
+            for (let pi = 0; pi < bat.patients.length; pi++) {
+                const p = bat.patients[pi];
+                const delay = batDelays[bi] + pi * patientDelay;
+                const tid = setTimeout(async () => {
+                    if (!role1SimRunning) return;
+                    await api('/api/ingest', 'POST', {
+                        patient: {
+                            patient_id: p.id, name: p.name, triage: p.triage,
+                            injuries: p.injuries, vitals: p.vitals || {},
+                            blood_type: p.blood_type || '',
+                            status: p.status, flow_status: 'inbound', current_role: 'phase0',
+                        },
+                        unit_name: bat.name,
+                        device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
+                    });
+                    role1AddEvent(`${p.name} (${p.triage}) gemeldet`, bat.name, true);
+                }, delay);
+                role1SimTimeouts.push(tid);
+            }
+        }
+
+        // BATs bewegen sich entlang der Route (alle 1.5s ein Schritt, ~80 Schritte)
+        const totalSteps = 80;
+        bats.forEach((bat, bi) => {
+            const route = routes[bi];
+            let step = 0;
+            const interval = setInterval(async () => {
+                if (step >= totalSteps || !role1SimRunning) {
+                    clearInterval(interval);
+                    if (step >= totalSteps && role1SimRunning) {
+                        // BAT ist angekommen — Status aktualisieren
+                        role1ArrivedBats[bat.name] = true;
+                        showToast(`${bat.name} an Rettungsstation eingetroffen`, '&#10003;', 'voice');
+
+                        // Position auf exakt R1 setzen
+                        await api('/api/position', 'POST', {
+                            unit_name: bat.name,
+                            lat: r1.lat, lon: r1.lng,
+                            heading: 0, speed_kmh: 0,
+                            device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
+                        });
+
+                        // Transport-Card visuell markieren
+                        const card = document.querySelector(`.role1-transport-card[data-unit="${bat.name}"]`);
+                        if (card) {
+                            card.classList.add('arrived');
+                            const header = card.querySelector('.role1-transport-header');
+                            if (header && !header.querySelector('.role1-arrived-badge')) {
+                                const badge = document.createElement('span');
+                                badge.className = 'role1-arrived-badge';
+                                badge.textContent = '✓ Eingetroffen';
+                                const meta = header.querySelector('.unit-meta');
+                                if (meta) meta.parentNode.insertBefore(badge, meta);
+                            }
+                        }
+
+                        // Patienten-Status auf "arrived" setzen
+                        for (const p of bat.patients) {
+                            try {
+                                await api(`/api/patient/${p.id}/update`, 'POST', {
+                                    flow_status: 'arrived',
+                                });
+                            } catch(e) {}
+                        }
+
+                        // UI aktualisieren
+                        role1LoadData();
+                    }
+                    return;
+                }
+                step++;
+                const progress = step / totalSteps;
+
+                let lat, lng;
+                if (route && route.length > 2) {
+                    // Entlang der OSRM-Route interpolieren
+                    const idx = Math.min(Math.floor(progress * (route.length - 1)), route.length - 2);
+                    const frac = (progress * (route.length - 1)) - idx;
+                    lat = route[idx].lat + (route[idx + 1].lat - route[idx].lat) * frac;
+                    lng = route[idx].lng + (route[idx + 1].lng - route[idx].lng) * frac;
+                } else {
+                    // Fallback: Gerade Linie mit Wobble
+                    const wobble = Math.sin(progress * Math.PI) * 0.003 * (bi % 2 === 0 ? 1 : -1);
+                    lat = bat.start.lat + (r1.lat - bat.start.lat) * progress + wobble;
+                    lng = bat.start.lng + (r1.lng - bat.start.lng) * progress - wobble * 0.5;
+                }
+
+                await api('/api/position', 'POST', {
+                    unit_name: bat.name, lat, lon: lng,
+                    heading: 0, speed_kmh: 30 + Math.random() * 20,
+                    device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
+                });
+            }, 1500);
+            role1SimIntervals.push(interval);
+        });
+    }
+
     async function init() {
         connectWS();
 
@@ -2916,6 +3808,25 @@
         if (status.session_data) {
             showSessionInfo(status.session_data);
             status.session_data.records.forEach(r => addTranscriptEntry(r));
+        }
+
+        // Feature-Detection: UI-Elemente ein-/ausblenden je nach Backend
+        if (status.default_page && !location.hash) {
+            navigateTo(status.default_page);
+        }
+        // Audio/Recording-Features ausblenden wenn nicht verfügbar
+        if (status.has_audio === false || status.has_whisper === false) {
+            const recordBtn = document.getElementById('record-btn');
+            if (recordBtn) {
+                recordBtn.disabled = true;
+                recordBtn.innerHTML = 'Aufnahme nicht verfügbar auf diesem Gerät';
+                recordBtn.style.opacity = '0.4';
+                recordBtn.style.cursor = 'not-allowed';
+            }
+        }
+        if (status.has_vosk === false) {
+            const voskInd = document.getElementById('vosk-indicator');
+            if (voskInd) voskInd.style.display = 'none';
         }
     }
 

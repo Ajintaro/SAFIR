@@ -20,7 +20,9 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 PROJECT_DIR = Path(__file__).parent
-TEMPLATES_DIR = PROJECT_DIR / "templates"
+ROOT_DIR = PROJECT_DIR.parent
+TEMPLATES_DIR = ROOT_DIR / "templates"          # Einheitliches Template
+TEMPLATES_DIR_LOCAL = PROJECT_DIR / "templates"  # Fallback
 STATIC_DIR = PROJECT_DIR / "static"
 DATA_DIR = PROJECT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
@@ -30,7 +32,9 @@ PATIENTS_DIR.mkdir(exist_ok=True)
 app = FastAPI(title="SAFIR Leitstelle")
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+# Einheitliches Template bevorzugen, Fallback auf lokales
+_tpl_dir = TEMPLATES_DIR if TEMPLATES_DIR.exists() else TEMPLATES_DIR_LOCAL
+templates = Jinja2Templates(directory=str(_tpl_dir))
 
 
 # ---------------------------------------------------------------------------
@@ -166,17 +170,85 @@ async def get_status():
 
     return {
         "device": "leitstelle",
+        "device_id": "surface-01",
         "role": "role1",
         "patients_total": len(state.patients),
         "triage": triage_counts,
         "transports_active": len(state.transports),
         "positions": len(state.positions),
+        # Feature-Flags für die einheitliche UI
+        "has_whisper": False,
+        "has_vosk": False,
+        "has_audio": False,
+        "has_map": True,
+        "default_page": "role1",
     }
+
+
+@app.get("/api/config")
+@app.get("/api/config/navigation")
+async def get_config():
+    """Config laden (Navigation, Geräte-Einstellungen)."""
+    config_path = ROOT_DIR / "config.json"
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        # Default-Page für Role 1 setzen
+        for nav in config.get("navigation", []):
+            if nav.get("id") == "role1":
+                nav["default"] = True
+            elif nav.get("default"):
+                nav["default"] = False
+        return config
+    return {"navigation": [
+        {"id": "role1", "label": "Role 1", "icon": "&#9769;", "subtitle": "Rettungsstation", "default": True},
+        {"id": "patients", "label": "Patienten", "icon": "&#9764;"},
+        {"id": "settings", "label": "Einstellungen", "icon": "&#9881;"},
+    ]}
+
+
+# Stub-Endpunkte die das einheitliche Template erwartet
+@app.get("/api/templates")
+async def get_templates():
+    return {"templates": []}
+
+
+@app.get("/api/sessions")
+async def get_sessions():
+    return {"sessions": []}
+
+
+@app.get("/api/models")
+async def get_models():
+    return {"models": [], "current": None}
+
+
+@app.get("/api/devices")
+async def get_devices():
+    return {"devices": []}
+
+
+@app.get("/api/files")
+async def get_files():
+    return {"files": []}
 
 
 @app.get("/api/patients")
 async def get_patients():
-    return {"patients": list(state.patients.values())}
+    # Unit-Name an Patienten anhängen (aus Transport-Cluster)
+    pid_to_unit = {}
+    for unit_name, transport in state.transports.items():
+        for pid in transport.get("patient_ids", []):
+            pid_to_unit[pid] = unit_name
+
+    patients_with_unit = []
+    for p in state.patients.values():
+        patient = {**p}
+        if patient["patient_id"] in pid_to_unit:
+            patient["unit_name"] = pid_to_unit[patient["patient_id"]]
+        patients_with_unit.append(patient)
+
+    return {"patients": patients_with_unit}
 
 
 @app.get("/api/patients/{patient_id}")
@@ -349,6 +421,103 @@ async def dashboard_stats():
             for name, t in state.transports.items()
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Patienten-Aktionen (für einheitliches Template)
+# ---------------------------------------------------------------------------
+@app.post("/api/patient/{patient_id}/select")
+async def select_patient(patient_id: str):
+    if patient_id not in state.patients:
+        return {"error": "Patient nicht gefunden"}
+    await broadcast({"type": "patient_selected", "patient": state.patients[patient_id]})
+    return {"status": "ok"}
+
+
+@app.post("/api/patient/{patient_id}/update")
+async def update_patient(patient_id: str, body: dict):
+    if patient_id not in state.patients:
+        return {"error": "Patient nicht gefunden"}
+    patient = state.patients[patient_id]
+    for key, val in body.items():
+        if key != "patient_id" and val is not None:
+            patient[key] = val
+    save_patient(patient)
+    await broadcast({"type": "patient_update", "patient": patient})
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Simulation: Reset (löscht SIM-Patienten)
+# ---------------------------------------------------------------------------
+@app.post("/api/simulation/reset")
+async def simulation_reset():
+    """Löscht alle Simulations-Patienten (IDs mit SIM- Prefix)."""
+    sim_ids = [pid for pid in state.patients if pid.startswith("SIM-")]
+    for pid in sim_ids:
+        del state.patients[pid]
+        filepath = PATIENTS_DIR / f"{pid}.json"
+        if filepath.exists():
+            filepath.unlink()
+
+    # Transporte mit sim- Devices aufräumen
+    sim_transports = [k for k, v in state.transports.items()
+                      if v.get("device_id", "").startswith("sim-")]
+    for k in sim_transports:
+        del state.transports[k]
+        if k in state.positions:
+            del state.positions[k]
+
+    state.events = []
+    save_state()
+    await broadcast({"type": "init", "patients": list(state.patients.values()),
+                     "transports": state.transports, "positions": state.positions, "events": []})
+    return {"status": "ok", "removed": len(sim_ids)}
+
+
+# ---------------------------------------------------------------------------
+# LLM: Vorbereitungshinweise für eintreffende Patienten
+# ---------------------------------------------------------------------------
+@app.post("/api/llm/prepare")
+async def llm_prepare(body: dict):
+    """Generiert KI-Vorbereitungshinweise für einen Patienten."""
+    patient = body.get("patient", {})
+    if not patient:
+        return {"hints": "<p>Keine Patientendaten</p>"}
+
+    # Versuche Ollama/Qwen für Hinweise (wenn verfügbar)
+    try:
+        import httpx
+        injuries = ", ".join(patient.get("injuries", []))
+        triage = patient.get("triage", "?")
+        vitals = patient.get("vitals", {})
+        vitals_str = ", ".join(f"{k}: {v}" for k, v in vitals.items() if v)
+
+        prompt = f"""Du bist ein militärmedizinischer Assistent an einer Rettungsstation (Role 1).
+Ein verwundeter Soldat trifft gleich ein. Erstelle eine kurze, präzise Vorbereitungsliste.
+
+Patient: {patient.get('name', 'Unbekannt')}
+Triage: {triage}
+Verletzungen: {injuries or 'keine Angabe'}
+Vitalzeichen: {vitals_str or 'keine Angabe'}
+Blutgruppe: {patient.get('blood_type', 'unbekannt')}
+
+Antworte NUR mit einer HTML-Liste (<ul><li>...</li></ul>) der Vorbereitungsschritte.
+Maximal 6 Punkte. Deutsch. Knapp und präzise."""
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post("http://127.0.0.1:11434/api/generate", json={
+                "model": "qwen2.5:1.5b",
+                "prompt": prompt,
+                "stream": False,
+            })
+            if resp.status_code == 200:
+                data = resp.json()
+                return {"hints": data.get("response", "")}
+    except Exception:
+        pass
+
+    return {"hints": ""}
 
 
 # ---------------------------------------------------------------------------
