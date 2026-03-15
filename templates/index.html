@@ -1521,6 +1521,10 @@
                         <span class="settings-nav-icon">&#127912;</span>
                         Darstellung
                     </div>
+                    <div class="settings-nav-item" onclick="showSettingsSection('interop')" data-settings="interop">
+                        <span class="settings-nav-icon">&#9878;</span>
+                        Interoperabilität
+                    </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('system')" data-settings="system">
                         <span class="settings-nav-icon">&#9881;</span>
                         System
@@ -1635,27 +1639,40 @@
                             </div>
                         </div>
                         <div class="settings-card">
-                            <div class="settings-card-title">SitaWare Interoperabilität</div>
-                            <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">
-                                Schnittstelle zu SitaWare Edge / Frontline / Headquarters (D-LBO).<br>
-                                Protokolle: CoT 2.0, NVG 2.0.2 | Standards: APP-6D, MIL-STD-2525D, MIP 4.3+
-                            </div>
-                            <div style="display:flex;gap:6px;flex-wrap:wrap">
-                                <span style="font-size:9px;padding:2px 6px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Edge 2.0</span>
-                                <span style="font-size:9px;padding:2px 6px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Frontline</span>
-                                <span style="font-size:9px;padding:2px 6px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">ATAK / WinTAK</span>
-                                <span style="font-size:9px;padding:2px 6px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">NATO JCOP</span>
-                            </div>
-                            <div class="btn-group" style="margin-top:8px">
-                                <button class="btn" onclick="exportSitawareCot()" style="font-size:11px;padding:5px 10px">CoT XML Export</button>
-                                <button class="btn" onclick="exportSitawareNvg()" style="font-size:11px;padding:5px 10px">NVG Overlay</button>
-                            </div>
-                        </div>
-                        <div class="settings-card">
                             <div class="settings-card-title">Audio-Eingang</div>
                             <div class="field">
                                 <label>Eingabegerät</label>
                                 <select id="settings-audio-device" onchange="selectDevice(this.value)"></select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Interoperabilität -->
+                    <div class="settings-section" id="settings-interop">
+                        <div class="settings-title">Interoperabilität</div>
+                        <div class="settings-desc">Schnittstellen zu externen Führungsinformationssystemen.</div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">SitaWare (D-LBO)</div>
+                            <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">
+                                Schnittstelle zu SitaWare Edge / Frontline / Headquarters.<br>
+                                Protokolle: Cursor-on-Target 2.0, NATO Vector Graphics 2.0.2<br>
+                                Standards: APP-6D, MIL-STD-2525D, MIP 4.3+, STANAG 4609
+                            </div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Edge 2.0</span>
+                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Frontline</span>
+                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Headquarters</span>
+                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">ATAK / WinTAK</span>
+                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">NATO JCOP</span>
+                            </div>
+                            <div style="font-size:10px;font-weight:600;margin-bottom:6px;color:var(--text-primary)">Datenexport</div>
+                            <div class="btn-group">
+                                <button class="btn" onclick="exportSitawareCot()" style="padding:6px 12px;font-size:11px">&#9878; CoT XML (MEDEVAC)</button>
+                                <button class="btn" onclick="exportSitawareNvg()" style="padding:6px 12px;font-size:11px">&#9873; NVG Overlay (APP-6D)</button>
+                            </div>
+                            <div style="font-size:9px;color:var(--text-dim);margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-radius:var(--radius)">
+                                CoT-Events werden als XML exportiert und können direkt in SitaWare, ATAK oder WinTAK importiert werden.
+                                NVG-Overlays enthalten APP-6D SIDC-Symbole für die taktische Lagekarte.
                             </div>
                         </div>
                     </div>
@@ -2167,7 +2184,7 @@
                     patients[msg.patient.patient_id] = msg.patient;
                     setActivePatient(msg.patient);
                     renderPatientList();
-                    role1Patients = Object.values(patients).filter(p => p.synced);
+                    role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));
                     role1ScheduleUIUpdate();
                 }
                 break;
@@ -2181,7 +2198,7 @@
                         setActivePatient(msg.patient);
                     }
                     renderPatientList();
-                    role1Patients = Object.values(patients).filter(p => p.synced);
+                    role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));
                     role1ScheduleUIUpdate();
                     // Fortschritt in Activity Bar aktualisieren (Batch-Analyse)
                     if (msg.patient.analyzed && document.getElementById('activity-bar').classList.contains('active')) {
@@ -2198,7 +2215,7 @@
                         setActivePatient(msg.patient);
                     }
                     renderPatientList();
-                    role1Patients = Object.values(patients).filter(p => p.synced);
+                    role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));
                     role1ScheduleUIUpdate();
                 }
                 break;
@@ -2239,7 +2256,7 @@
                 if (msg.patient) {
                     patients[msg.patient.patient_id] = msg.patient;
                     // Role 1 UI: Nur role1Patients aktualisieren + gebatchtes UI-Update
-                    role1Patients = Object.values(patients).filter(p => p.synced);
+                    role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));
                     role1ScheduleUIUpdate();
                     // Dashboard-Patientenkarten nur aktualisieren wenn Phase0-Seite sichtbar
                     const phase0Visible = document.getElementById('page-phase0')?.classList.contains('active');
@@ -2314,7 +2331,7 @@
                     msg.patients.forEach(p => { patients[p.patient_id] = p; });
                     renderPatientList();
                     // Role 1 Daten initialisieren (einmalig)
-                    role1Patients = Object.values(patients).filter(p => p.synced);
+                    role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));
                     role1ScheduleUIUpdate();
                 }
                 if (msg.active_patient && patients[msg.active_patient]) {
@@ -3548,7 +3565,7 @@
             if (res.patients) {
                 // Ins globale patients-Objekt einfügen (Single Source of Truth)
                 res.patients.forEach(p => { patients[p.patient_id] = p; });
-                role1Patients = Object.values(patients).filter(p => p.synced);
+                role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));
                 role1UpdateUI();
             }
         } catch (e) {}
@@ -4070,7 +4087,7 @@
         role1MarkerPatientCounts = {};
         role1MarkerPositions = {};
         role1Positions = {};
-        role1Patients = Object.values(patients).filter(p => p.synced);  // Nur echte Patienten behalten
+        role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));  // Nur echte Patienten behalten
         role1CollapsedCards = {};
         role1MilSymCache = {};
         role1PrevBySource = {};
@@ -4321,7 +4338,7 @@
                 pRes.patients.forEach(p => { patients[p.patient_id] = p; });
                 renderPatientList();
                 // Role 1 ebenfalls initialisieren
-                role1Patients = Object.values(patients).filter(p => p.synced);
+                role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));
                 role1ScheduleUIUpdate();
                 if (pRes.active_patient && patients[pRes.active_patient]) {
                     setActivePatient(patients[pRes.active_patient]);

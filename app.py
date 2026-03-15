@@ -1646,6 +1646,27 @@ async def sync_all_patients() -> dict:
     return {"sent": sent, "skipped": skipped, "failed": failed}
 
 
+@app.post("/api/position")
+async def receive_position(body: dict):
+    """Empfängt GPS-Position einer Einheit und broadcastet sie an alle Clients."""
+    await broadcast({
+        "type": "position",
+        "unit_name": body.get("unit_name", ""),
+        "device_id": body.get("device_id", ""),
+        "lat": body.get("lat", 0),
+        "lon": body.get("lon", 0),
+        "heading": body.get("heading", 0),
+        "speed_kmh": body.get("speed_kmh", 0),
+    })
+    return {"status": "ok"}
+
+
+@app.post("/api/simulation/reset")
+async def reset_simulation():
+    """Setzt die Simulation zurück."""
+    return {"status": "ok"}
+
+
 @app.post("/api/patients/sync")
 async def sync_patients_to_backend():
     """Alle Patienten an Leitstelle übermitteln (überspringt bereits synchronisierte)."""
