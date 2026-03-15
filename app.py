@@ -635,6 +635,14 @@ async def process_vosk_commands():
 # ---------------------------------------------------------------------------
 async def voice_new_patient():
     """Sprachbefehl: Neuer Patient anlegen + Aufnahme automatisch starten."""
+    # Blockieren wenn Analyse läuft oder Whisper nicht bereit
+    if getattr(state, '_analyzing', False):
+        tts.speak("Analyse läuft, bitte warten")
+        return
+    if not state.model_loaded:
+        tts.speak("Sprachmodell nicht geladen, bitte warten")
+        return
+
     # Falls gerade aufgenommen wird: erst stoppen und transkribieren
     if state.recording:
         trim_chunks = int(1.5 / 0.1)
@@ -1520,6 +1528,10 @@ async def select_session(body: dict):
 @app.post("/api/patient/register")
 async def register_patient(body: dict):
     """Patient anlegen mit RFID-Tag + Triage."""
+    if getattr(state, '_analyzing', False):
+        return {"error": "Analyse läuft, bitte warten"}
+    if not state.model_loaded:
+        return {"error": "Sprachmodell nicht geladen"}
     cfg = load_config()
     device_id = cfg.get("device_id", "jetson-01")
 
