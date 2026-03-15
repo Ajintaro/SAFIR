@@ -897,8 +897,10 @@ async def voice_send_backend():
     result = await sync_all_patients()
     if result["sent"] > 0:
         tts.speak(f"{result['sent']} Patienten übermittelt")
+    elif result.get("error"):
+        tts.speak("Leitstelle nicht erreichbar")
     elif result["failed"] > 0:
-        tts.announce_error()
+        tts.speak(f"{result['failed']} Patienten nicht übermittelt. Leitstelle nicht erreichbar.")
 
 
 # ---------------------------------------------------------------------------
@@ -1727,8 +1729,10 @@ async def sync_all_patients() -> dict:
                 await broadcast({"type": "patient_synced", "patient_id": pid, "patient": patient})
                 sent += 1
             else:
+                print(f"Sync Fehler für {pid}: HTTP {response.status_code}")
                 failed += 1
-        except Exception:
+        except Exception as e:
+            print(f"Sync Fehler für {pid}: {e}")
             failed += 1
 
     state.backend_reachable = (sent > 0 or skipped > 0) and failed == 0
