@@ -349,13 +349,15 @@
 
         /* Hardware Overlay */
         .hw-overlay {
-            display: none; position: fixed; top: 52px; right: 12px;
+            visibility: hidden; opacity: 0; pointer-events: none;
+            position: fixed; top: 52px; right: 12px;
             width: 300px; max-height: calc(100vh - 70px); overflow-y: auto;
             background: var(--bg-surface); border: 1px solid var(--border);
             border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.3);
             z-index: 1000; padding: 16px;
+            transition: opacity 0.15s;
         }
-        .hw-overlay.open { display: block; }
+        .hw-overlay.open { visibility: visible; opacity: 1; pointer-events: auto; }
         .hw-overlay-header {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
