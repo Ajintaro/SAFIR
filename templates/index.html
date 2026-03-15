@@ -2018,6 +2018,8 @@
                     patients[msg.patient.patient_id] = msg.patient;
                     setActivePatient(msg.patient);
                     renderPatientList();
+                    role1Patients = Object.values(patients);
+                    role1ScheduleUIUpdate();
                 }
                 break;
             case 'patient_selected':
@@ -2030,6 +2032,8 @@
                         setActivePatient(msg.patient);
                     }
                     renderPatientList();
+                    role1Patients = Object.values(patients);
+                    role1ScheduleUIUpdate();
                 }
                 break;
             case 'patient_synced':
@@ -2039,6 +2043,8 @@
                         setActivePatient(msg.patient);
                     }
                     renderPatientList();
+                    role1Patients = Object.values(patients);
+                    role1ScheduleUIUpdate();
                 }
                 break;
             case 'sync_complete':
@@ -2071,9 +2077,12 @@
             case 'patient_new':
                 if (msg.patient) {
                     patients[msg.patient.patient_id] = msg.patient;
-                    renderPatientList();
+                    // Role 1 UI: Nur role1Patients aktualisieren + gebatchtes UI-Update
                     role1Patients = Object.values(patients);
-                    role1UpdateUI();
+                    role1ScheduleUIUpdate();
+                    // Dashboard-Patientenkarten nur aktualisieren wenn Phase0-Seite sichtbar
+                    const phase0Visible = document.getElementById('page-phase0')?.classList.contains('active');
+                    if (phase0Visible) renderPatientList();
                     role1AddEvent(
                         `Patient ${msg.patient.name || msg.patient.patient_id} (${msg.patient.triage || '?'})`,
                         msg.unit_name || '',
@@ -2120,12 +2129,15 @@
                                 role1MarkerPositions[key] = posKey;
                             }
                         } else {
-                            const icon = createBatIconCached(key, 0, false);
+                            // Korrekte Patientenzahl aus role1Patients ermitteln
+                            const patCount = role1Patients.filter(p => (p.unit_name || p.created_by || p.device_id || 'Unbekannt') === key).length;
+                            const isArrived = role1ArrivedBats && role1ArrivedBats[key];
+                            const icon = createBatIconCached(key, patCount, isArrived);
                             const marker = L.marker([lat, lng], { icon }).addTo(role1Map);
                             marker.bindPopup(`<b>${key}</b>`);
                             role1Markers[key] = marker;
                             role1MarkerPositions[key] = posKey;
-                            role1MarkerPatientCounts[key] = `0_${role1ActiveLayer}_0`;
+                            role1MarkerPatientCounts[key] = `${patCount}_${role1ActiveLayer}_${isArrived ? 1 : 0}`;
                         }
                     }
                 }
@@ -2140,9 +2152,9 @@
                 if (msg.patients) {
                     msg.patients.forEach(p => { patients[p.patient_id] = p; });
                     renderPatientList();
-                    // Role 1 Daten initialisieren
-                    role1Patients = msg.patients;
-                    role1UpdateUI();
+                    // Role 1 Daten initialisieren (einmalig)
+                    role1Patients = Object.values(patients);
+                    role1ScheduleUIUpdate();
                 }
                 if (msg.active_patient && patients[msg.active_patient]) {
                     setActivePatient(patients[msg.active_patient]);
@@ -3147,6 +3159,18 @@
     // ============================================================
     // Role 1: Taktische Lagekarte + NATO APP-6 Layer-System
     // ============================================================
+
+    // requestAnimationFrame-Batchung für flackerfreie DOM-Updates
+    let role1UIUpdateScheduled = false;
+    function role1ScheduleUIUpdate() {
+        if (role1UIUpdateScheduled) return;  // Bereits geplant — kein Doppel-Update
+        role1UIUpdateScheduled = true;
+        requestAnimationFrame(() => {
+            role1UIUpdateScheduled = false;
+            role1UpdateUI();
+        });
+    }
+
     let role1Map = null;
     let role1Markers = {};
     let role1Patients = [];
@@ -3320,17 +3344,24 @@
             .addTo(role1Map);
 
         setTimeout(() => role1Map.invalidateSize(), 200);
-        role1LoadData();
+        // Einmalig Daten laden (kein Polling mehr — WebSocket ist die einzige Quelle)
+        role1LoadDataOnce();
+        // Positionen periodisch holen (mit In-Flight Guard)
         role1FetchPositions();
-        setInterval(role1LoadData, 5000);
-        setInterval(role1FetchPositions, 3000);
+        role1PosInterval = setInterval(role1FetchPositions, 3000);
     }
 
-    async function role1LoadData() {
+    let role1PosInterval = null;
+    let role1PosFetching = false;  // In-Flight Guard
+
+    // Einmaliges Laden beim Init — danach nur noch WebSocket
+    async function role1LoadDataOnce() {
         try {
             const res = await api('/api/patients');
             if (res.patients) {
-                role1Patients = res.patients;
+                // Ins globale patients-Objekt einfügen (Single Source of Truth)
+                res.patients.forEach(p => { patients[p.patient_id] = p; });
+                role1Patients = Object.values(patients);
                 role1UpdateUI();
             }
         } catch (e) {}
@@ -3586,14 +3617,18 @@
     }
 
     // Positionen periodisch vom Backend holen — einziger Ort für Marker-Updates
+    // Mit In-Flight Guard: verhindert Aufstapeln bei langsamen Responses
     async function role1FetchPositions() {
+        if (role1PosFetching) return;  // Vorheriger Aufruf noch aktiv
+        role1PosFetching = true;
         try {
             const posRes = await api('/api/positions');
             role1Positions = posRes.positions || {};
         } catch(e) {}
+        role1PosFetching = false;
         // Marker nur hier aktualisieren (nicht in role1UpdateUI)
         if (Object.keys(role1LastBySource).length > 0) {
-            role1UpdateMapMarkers(role1LastBySource);
+            requestAnimationFrame(() => role1UpdateMapMarkers(role1LastBySource));
         }
     }
 
@@ -3835,6 +3870,11 @@
         // Backend-Daten löschen
         try { await api('/api/simulation/reset', 'POST'); } catch(e) {}
 
+        // Globales patients-Objekt: SIM-Patienten entfernen
+        Object.keys(patients).forEach(pid => {
+            if (pid.startsWith('SIM-')) delete patients[pid];
+        });
+
         // Marker entfernen und UI aktualisieren
         Object.keys(role1Markers).forEach(key => {
             role1Map.removeLayer(role1Markers[key]);
@@ -3843,12 +3883,13 @@
         role1MarkerPatientCounts = {};
         role1MarkerPositions = {};
         role1Positions = {};
-        role1Patients = [];
+        role1Patients = Object.values(patients);  // Nur echte Patienten behalten
         role1CollapsedCards = {};
         role1MilSymCache = {};
         role1PrevBySource = {};
         role1LastBySource = {};
         role1UpdateUI();
+        renderPatientList();
         showToast('Simulation zurückgesetzt', '&#8634;');
     }
 
@@ -3910,8 +3951,8 @@
             },
         ];
 
-        // Routen fuer alle BATs laden (OSRM)
-        role1AddEvent('Routen werden berechnet...', 'SIM', false);
+        // Routen für alle BATs laden (OSRM)
+        showToast('Routen werden berechnet...', '&#9873;');
         const routes = await Promise.all(bats.map(bat => role1FetchRoute(bat.start, r1)));
 
         // Route-Polylines auf Karte zeichnen
@@ -3926,36 +3967,27 @@
             }
         });
 
-        // Patienten LANGSAM und GESTAFFELT einspielen
-        // BAT 1 meldet nach 3s, BAT 2 nach 12s, BAT 3 nach 20s
-        // Innerhalb eines BATs: jeder Patient einzeln mit 4s Abstand
-        const batDelays = [3000, 12000, 20000];
-        const patientDelay = 4000;
-
-        for (let bi = 0; bi < bats.length; bi++) {
-            const bat = bats[bi];
-            for (let pi = 0; pi < bat.patients.length; pi++) {
-                const p = bat.patients[pi];
-                const delay = batDelays[bi] + pi * patientDelay;
-                const tid = setTimeout(async () => {
-                    if (!role1SimRunning) return;
-                    await api('/api/ingest', 'POST', {
-                        patient: {
-                            patient_id: p.id, name: p.name, triage: p.triage,
-                            injuries: p.injuries, vitals: p.vitals || {},
-                            blood_type: p.blood_type || '',
-                            status: p.status, flow_status: 'inbound', current_role: 'phase0',
-                        },
-                        unit_name: bat.name,
-                        device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
-                    });
-                    role1AddEvent(`${p.name} (${p.triage}) gemeldet`, bat.name, true);
-                }, delay);
-                role1SimTimeouts.push(tid);
-            }
-        }
+        // BAT-Boxen sofort im rechten Panel erzeugen (ohne Patienten)
+        const list = document.getElementById('r1-transport-list');
+        const emptyEl = list.querySelector('.empty');
+        if (emptyEl) emptyEl.remove();
+        bats.forEach(bat => {
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'role1-transport-card';
+            cardDiv.dataset.unit = bat.name;
+            cardDiv.innerHTML = `
+                <div class="role1-transport-header">
+                    <div class="unit-icon">&#9873;</div>
+                    <span class="unit-name">${bat.name}</span>
+                    <span class="unit-dist">—</span>
+                    <span class="unit-meta">unterwegs</span>
+                </div>
+            `;
+            list.appendChild(cardDiv);
+        });
 
         // BATs bewegen sich entlang der Route (alle 1.5s ein Schritt, ~80 Schritte)
+        // KEINE Patientenmeldungen — nur Bewegung + Entfernung
         const totalSteps = 80;
         bats.forEach((bat, bi) => {
             const route = routes[bi];
@@ -3964,7 +3996,7 @@
                 if (step >= totalSteps || !role1SimRunning) {
                     clearInterval(interval);
                     if (step >= totalSteps && role1SimRunning) {
-                        // BAT ist angekommen — Status aktualisieren
+                        // BAT ist angekommen
                         role1ArrivedBats[bat.name] = true;
                         showToast(`${bat.name} an Rettungsstation eingetroffen`, '&#10003;', 'voice');
 
@@ -3980,27 +4012,17 @@
                         const card = document.querySelector(`.role1-transport-card[data-unit="${bat.name}"]`);
                         if (card) {
                             card.classList.add('arrived');
-                            const header = card.querySelector('.role1-transport-header');
-                            if (header && !header.querySelector('.role1-arrived-badge')) {
-                                const badge = document.createElement('span');
-                                badge.className = 'role1-arrived-badge';
-                                badge.textContent = '✓ Eingetroffen';
-                                const meta = header.querySelector('.unit-meta');
-                                if (meta) meta.parentNode.insertBefore(badge, meta);
-                            }
+                            const meta = card.querySelector('.unit-meta');
+                            if (meta) meta.textContent = '✓ Eingetroffen';
+                            const distEl = card.querySelector('.unit-dist');
+                            if (distEl) distEl.textContent = '0 m';
                         }
 
-                        // Patienten-Status auf "arrived" setzen
-                        for (const p of bat.patients) {
-                            try {
-                                await api(`/api/patient/${p.id}/update`, 'POST', {
-                                    flow_status: 'arrived',
-                                });
-                            } catch(e) {}
+                        // Marker auf Ankunft-Icon setzen
+                        if (role1Markers[bat.name]) {
+                            const icon = createBatIconCached(bat.name, 0, true);
+                            role1Markers[bat.name].setIcon(icon);
                         }
-
-                        // UI aktualisieren
-                        role1LoadData();
                     }
                     return;
                 }
@@ -4021,11 +4043,18 @@
                     lng = bat.start.lng + (r1.lng - bat.start.lng) * progress - wobble * 0.5;
                 }
 
+                // Position an Backend senden
                 await api('/api/position', 'POST', {
                     unit_name: bat.name, lat, lon: lng,
                     heading: 0, speed_kmh: 30 + Math.random() * 20,
                     device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
                 });
+
+                // Entfernung direkt im Frontend aktualisieren (kein DOM-Rebuild)
+                const km = haversineKm(lat, lng, r1.lat, r1.lng);
+                const distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
+                const card = document.querySelector(`.role1-transport-card[data-unit="${bat.name}"] .unit-dist`);
+                if (card) card.textContent = distStr;
             }, 1500);
             role1SimIntervals.push(interval);
         });
@@ -4104,6 +4133,9 @@
             if (pRes.patients) {
                 pRes.patients.forEach(p => { patients[p.patient_id] = p; });
                 renderPatientList();
+                // Role 1 ebenfalls initialisieren
+                role1Patients = Object.values(patients);
+                role1ScheduleUIUpdate();
                 if (pRes.active_patient && patients[pRes.active_patient]) {
                     setActivePatient(patients[pRes.active_patient]);
                 }

@@ -63,13 +63,20 @@ def save_patient(patient: dict):
 
 
 def load_patients():
-    """Lädt alle Patienten aus JSON-Dateien."""
+    """Lädt alle Patienten aus JSON-Dateien.
+    SIM-Patienten (Prefix SIM-) werden beim Start übersprungen und gelöscht,
+    da sie nur während einer aktiven Simulation existieren sollen."""
     for filepath in PATIENTS_DIR.glob("*.json"):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 patient = json.load(f)
                 pid = patient.get("patient_id")
                 if pid:
+                    # Simulations-/Test-Patienten beim Start entfernen
+                    if pid.startswith("SIM-") or pid.startswith("TEST-"):
+                        filepath.unlink()
+                        print(f"  Simulations-Patient {pid} entfernt")
+                        continue
                     state.patients[pid] = patient
         except Exception as e:
             print(f"Fehler beim Laden von {filepath}: {e}")
@@ -87,7 +94,8 @@ def save_state():
 
 
 def load_state():
-    """Lädt globalen Zustand."""
+    """Lädt globalen Zustand.
+    Simulations-Transporte und -Positionen werden beim Start bereinigt."""
     state_file = DATA_DIR / "state.json"
     if state_file.exists():
         try:
@@ -96,6 +104,16 @@ def load_state():
                 state.transports = data.get("transports", {})
                 state.positions = data.get("positions", {})
                 state.events = data.get("events", [])
+            # Simulations-Transporte beim Start aufräumen
+            sim_keys = [k for k, v in state.transports.items()
+                        if v.get("device_id", "").startswith("sim-")]
+            for k in sim_keys:
+                del state.transports[k]
+                if k in state.positions:
+                    del state.positions[k]
+                print(f"  Simulations-Transport {k} entfernt")
+            if sim_keys:
+                save_state()
         except Exception:
             pass
 
@@ -452,8 +470,8 @@ async def update_patient(patient_id: str, body: dict):
 # ---------------------------------------------------------------------------
 @app.post("/api/simulation/reset")
 async def simulation_reset():
-    """Löscht alle Simulations-Patienten (IDs mit SIM- Prefix)."""
-    sim_ids = [pid for pid in state.patients if pid.startswith("SIM-")]
+    """Löscht alle Simulations- und Test-Patienten (IDs mit SIM- oder TEST- Prefix)."""
+    sim_ids = [pid for pid in state.patients if pid.startswith("SIM-") or pid.startswith("TEST-")]
     for pid in sim_ids:
         del state.patients[pid]
         filepath = PATIENTS_DIR / f"{pid}.json"
@@ -528,6 +546,7 @@ async def startup():
     load_patients()
     load_state()
     print(f"SAFIR Leitstelle gestartet — Role 1 (Rettungsstation)")
-    print(f"Geladene Patienten: {len(state.patients)}")
-    print(f"Aktive Transporte: {len(state.transports)}")
+    print(f"  Geladene Patienten: {len(state.patients)}")
+    print(f"  Aktive Transporte: {len(state.transports)}")
+    print(f"  Aktive Positionen: {len(state.positions)}")
     print("Warte auf Verbindungen von Feldgeräten...")
