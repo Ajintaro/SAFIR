@@ -792,35 +792,23 @@ async def voice_analyze_all():
 
 
 async def _run_batch_analysis(pending: list):
-    """Analysiert Patienten sequentiell auf GPU.
+    """Analysiert Patienten sequentiell — Whisper + Ollama parallel im RAM.
 
-    Speichermanagement:
-    1. Vosk pausieren (kein Sprachbefehl während Analyse)
-    2. Whisper-Server entladen (GPU-RAM freigeben, ~500-1000MB)
-    3. Ollama lädt Modell auf GPU (num_gpu=99)
-    4. Alle Patienten analysieren
-    5. Ollama-Modell entladen (keep_alive=0)
-    6. Whisper-Server neu laden auf GPU
-    7. Vosk reaktivieren
+    Nach Boot-Optimierung passen beide Modelle gleichzeitig in den Shared Memory:
+    - Whisper small: ~1 GB GPU
+    - Ollama Qwen2.5:1.5b: ~1.5 GB (davon ~1.3 GB VRAM)
+    Kein GPU-Swap nötig. Aufnahme bleibt blockiert (Vosk pausiert).
     TTS (Piper, CPU) bleibt durchgehend verfügbar.
     """
-    whisper_was_loaded = state.model_loaded
     vosk_was_listening = state.vosk_listening
-    loop = asyncio.get_event_loop()
 
     try:
-        # 1. Vosk pausieren — keine Sprachbefehle während Analyse
+        # Vosk pausieren — keine Sprachbefehle während Analyse
         state.vosk_listening = False
         await broadcast({"type": "vosk_status", "enabled": state.vosk_enabled, "listening": False})
 
-        # 2. Whisper-Server entladen → GPU-RAM freigeben
-        if whisper_was_loaded:
-            print("GPU-Swap: Whisper-Server wird entladen...")
-            stop_whisper_server()
-            await asyncio.sleep(1)
-
-        # 3. Analyse — Ollama lädt Modell automatisch auf GPU beim ersten Call
-        print(f"GPU-Swap: Ollama {OLLAMA_MODEL} wird auf GPU geladen...")
+        # Analyse — Ollama lädt Modell parallel zu Whisper
+        print(f"Analyse: Ollama {OLLAMA_MODEL} parallel zu Whisper...")
         for pid, patient in pending:
             sid = _find_session_for_patient(pid)
             if not sid:
@@ -849,22 +837,13 @@ async def _run_batch_analysis(pending: list):
         await broadcast({"type": "analysis_error", "error": str(e)})
     finally:
         state._analyzing = False
+        loop = asyncio.get_event_loop()
 
-        # 4. Ollama-Modell aus GPU entladen
-        print("GPU-Swap: Ollama-Modell wird entladen...")
+        # Ollama-Modell entladen um RAM für nächste Aufnahmen freizugeben
+        print("Analyse fertig: Ollama-Modell wird entladen...")
         await loop.run_in_executor(None, _unload_ollama_model)
-        await asyncio.sleep(1)
 
-        # 5. Whisper-Server wieder laden auf GPU
-        if whisper_was_loaded and state.model_path:
-            print("GPU-Swap: Whisper-Server wird neu geladen...")
-            success = await loop.run_in_executor(None, start_whisper_server, state.model_path)
-            if success:
-                print(f"GPU-Swap: Whisper bereit ({state.current_model})")
-            else:
-                print("WARNUNG: Whisper konnte nicht neu geladen werden!")
-
-        # 6. Vosk reaktivieren
+        # Vosk reaktivieren
         if vosk_was_listening:
             state.vosk_listening = True
             await broadcast({"type": "vosk_status", "enabled": state.vosk_enabled, "listening": True})
@@ -2146,17 +2125,10 @@ def run_patient_enrichment(text: str) -> dict:
 
 
 async def _run_analysis_background(sid: str):
-    """Einzelanalyse — GPU-Swap: Whisper → Ollama → Whisper."""
-    whisper_was_loaded = state.model_loaded
+    """Einzelanalyse — Ollama parallel zu Whisper, kein GPU-Swap."""
     vosk_was_listening = state.vosk_listening
-    loop = asyncio.get_event_loop()
     try:
         state.vosk_listening = False
-        if whisper_was_loaded:
-            print("GPU-Swap: Whisper entladen für Einzelanalyse...")
-            stop_whisper_server()
-            await asyncio.sleep(1)
-
         result = await _run_analysis_for_session(sid)
         pid = state.sessions[sid].get("patient_id", state.active_patient)
         if pid and pid in state.patients:
@@ -2168,15 +2140,8 @@ async def _run_analysis_background(sid: str):
         await broadcast({"type": "analysis_error", "error": str(e)})
     finally:
         state._analyzing = False
+        loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _unload_ollama_model)
-        await asyncio.sleep(1)
-        if whisper_was_loaded and state.model_path:
-            print("GPU-Swap: Whisper neu laden...")
-            success = await loop.run_in_executor(None, start_whisper_server, state.model_path)
-            if success:
-                print(f"GPU-Swap: Whisper bereit ({state.current_model})")
-            else:
-                print("WARNUNG: Whisper konnte nicht neu geladen werden!")
         if vosk_was_listening:
             state.vosk_listening = True
 
