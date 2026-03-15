@@ -104,15 +104,18 @@ def load_state():
                 state.transports = data.get("transports", {})
                 state.positions = data.get("positions", {})
                 state.events = data.get("events", [])
-            # Simulations-Transporte beim Start aufräumen
+            # Simulations-Transporte und -Positionen beim Start aufräumen
             sim_keys = [k for k, v in state.transports.items()
                         if v.get("device_id", "").startswith("sim-")]
             for k in sim_keys:
                 del state.transports[k]
-                if k in state.positions:
-                    del state.positions[k]
                 print(f"  Simulations-Transport {k} entfernt")
-            if sim_keys:
+            sim_pos = [k for k, v in state.positions.items()
+                       if v.get("device_id", "").startswith("sim-")]
+            for k in sim_pos:
+                del state.positions[k]
+                print(f"  Simulations-Position {k} entfernt")
+            if sim_keys or sim_pos:
                 save_state()
         except Exception:
             pass
@@ -483,8 +486,12 @@ async def simulation_reset():
                       if v.get("device_id", "").startswith("sim-")]
     for k in sim_transports:
         del state.transports[k]
-        if k in state.positions:
-            del state.positions[k]
+
+    # Positionen mit sim- Devices aufräumen (auch wenn Transport schon weg ist)
+    sim_positions = [k for k, v in state.positions.items()
+                     if v.get("device_id", "").startswith("sim-")]
+    for k in sim_positions:
+        del state.positions[k]
 
     state.events = []
     save_state()
