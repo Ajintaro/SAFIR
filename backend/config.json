@@ -1,0 +1,20 @@
+{
+    "device_id": "surface-01",
+    "unit_name": "Rettungsstation Nord",
+    "role": "role1",
+    "role_label": "Rettungsstation (Role 1)",
+    "default_medic": "",
+    "ui": {
+        "theme": "dark",
+        "language": "de"
+    },
+    "ollama": {
+        "url": "http://127.0.0.1:11434",
+        "model": "qwen2.5:7b"
+    },
+    "navigation": [
+        {"id": "role1", "label": "Role 1", "icon": "&#9769;", "subtitle": "Rettungsstation", "default": true},
+        {"id": "patients", "label": "Patienten", "icon": "&#9764;"},
+        {"id": "settings", "label": "Einstellungen", "icon": "&#9881;"}
+    ]
+}

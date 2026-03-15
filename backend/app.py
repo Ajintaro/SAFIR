@@ -189,10 +189,12 @@ async def get_status():
         if t in triage_counts:
             triage_counts[t] += 1
 
+    cfg = load_backend_config()
     return {
         "device": "leitstelle",
-        "device_id": "surface-01",
-        "role": "role1",
+        "device_id": cfg.get("device_id", "surface-01"),
+        "unit_name": cfg.get("unit_name", "Rettungsstation"),
+        "role": cfg.get("role", "role1"),
         "patients_total": len(state.patients),
         "triage": triage_counts,
         "transports_active": len(state.transports),
@@ -206,26 +208,49 @@ async def get_status():
     }
 
 
+BACKEND_CONFIG_PATH = PROJECT_DIR / "config.json"
+
+
+def load_backend_config() -> dict:
+    """Lädt die Backend-eigene Config."""
+    if BACKEND_CONFIG_PATH.exists():
+        with open(BACKEND_CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "device_id": "surface-01",
+        "unit_name": "Rettungsstation",
+        "role": "role1",
+        "navigation": [
+            {"id": "role1", "label": "Role 1", "icon": "&#9769;", "subtitle": "Rettungsstation", "default": True},
+            {"id": "patients", "label": "Patienten", "icon": "&#9764;"},
+            {"id": "settings", "label": "Einstellungen", "icon": "&#9881;"},
+        ],
+    }
+
+
+def save_backend_config(cfg: dict):
+    """Speichert die Backend-eigene Config."""
+    with open(BACKEND_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=4, ensure_ascii=False)
+
+
 @app.get("/api/config")
 @app.get("/api/config/navigation")
 async def get_config():
-    """Config laden (Navigation, Geräte-Einstellungen)."""
-    config_path = ROOT_DIR / "config.json"
-    if config_path.exists():
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        # Default-Page für Role 1 setzen
-        for nav in config.get("navigation", []):
-            if nav.get("id") == "role1":
-                nav["default"] = True
-            elif nav.get("default"):
-                nav["default"] = False
-        return config
-    return {"navigation": [
-        {"id": "role1", "label": "Role 1", "icon": "&#9769;", "subtitle": "Rettungsstation", "default": True},
-        {"id": "patients", "label": "Patienten", "icon": "&#9764;"},
-        {"id": "settings", "label": "Einstellungen", "icon": "&#9881;"},
-    ]}
+    return load_backend_config()
+
+
+@app.post("/api/config")
+async def update_config(body: dict):
+    """Config aktualisieren und speichern."""
+    cfg = load_backend_config()
+    for key, value in body.items():
+        if isinstance(value, dict) and isinstance(cfg.get(key), dict):
+            cfg[key].update(value)
+        else:
+            cfg[key] = value
+    save_backend_config(cfg)
+    return {"status": "ok"}
 
 
 # Stub-Endpunkte die das einheitliche Template erwartet
