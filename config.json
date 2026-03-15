@@ -99,10 +99,20 @@
                 "wie viele"
             ]
         },
-        "send_backend": {
-            "label": "Patient melden",
+        "analyze_all": {
+            "label": "Alle Patienten analysieren",
             "triggers": [
-                "patient melden",
+                "alle patienten analysieren",
+                "patienten analysieren",
+                "alle analysieren",
+                "analyse starten"
+            ]
+        },
+        "send_backend": {
+            "label": "Patienten melden",
+            "triggers": [
+                "alle patienten melden",
+                "patienten melden",
                 "daten senden",
                 "an leitstelle",
                 "melden"
@@ -128,7 +138,7 @@
         "model": "qwen2.5:1.5b"
     },
     "backend": {
-        "url": "http://100.86.216.71:8080",
+        "url": "http://100.101.80.64:9090",
         "auto_sync": true
     },
     "device_id": "jetson-01",

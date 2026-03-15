@@ -962,6 +962,62 @@
         .dashboard > div:first-child {
             grid-column: 1; grid-row: 1;
         }
+        /* Patienten-Karte Analyse-Spinner */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .patient-card-details.analyzing {
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 1px var(--accent-light);
+        }
+        .patient-card-details.analyzing summary::after {
+            content: '';
+            width: 14px; height: 14px;
+            border: 2px solid var(--accent);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+            margin-left: 6px;
+        }
+        /* Activity Bar */
+        @keyframes activity-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        @keyframes activity-progress {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(400%); }
+        }
+        .activity-bar {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            position: relative;
+            overflow: hidden;
+            z-index: 50;
+        }
+        .activity-bar.active { display: flex; }
+        .activity-bar .activity-progress {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+            background: var(--bg-surface2); overflow: hidden;
+        }
+        .activity-bar .activity-progress::after {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 25%;
+            background: var(--cgi-red);
+            animation: activity-progress 1.2s ease-in-out infinite;
+        }
+        .activity-bar .activity-icon {
+            font-size: 16px; animation: activity-pulse 1.5s ease-in-out infinite;
+        }
+        .activity-bar .activity-text { flex: 1; }
+        .activity-bar .activity-detail {
+            font-size: 10px; color: var(--text-dim); font-weight: 400;
+        }
     </style>
 </head>
 <body data-theme="dark">
@@ -1088,6 +1144,14 @@
 <!-- TOAST CONTAINER -->
 <div class="toast-container" id="toast-container"></div>
 
+<!-- ACTIVITY BAR (Analyse/Sync Status) -->
+<div class="activity-bar" id="activity-bar">
+    <span class="activity-icon" id="activity-icon">&#129504;</span>
+    <span class="activity-text" id="activity-text">Verarbeitung läuft...</span>
+    <span class="activity-detail" id="activity-detail"></span>
+    <div class="activity-progress"></div>
+</div>
+
 <!-- APP LAYOUT: Sidebar + Pages -->
 <div class="app-layout">
 
@@ -1168,22 +1232,15 @@
             <!-- ============ FELD-MODUS ============ -->
             <div id="mode-feld" style="display:flex;flex-direction:column;height:100%;padding:12px;gap:10px">
 
-                <!-- Aktiver Patient — kompakte Zeile -->
-                <div id="active-patient-card" style="display:none;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:10px 16px">
-                    <div style="display:flex;align-items:center;gap:12px">
-                        <div id="patient-triage-badge" style="width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;background:#444">--</div>
-                        <div style="flex:1">
-                            <div style="font-size:18px;font-weight:700" id="active-patient-name">Kein Patient</div>
-                            <div style="font-size:10px;color:var(--text-dim);margin-top:2px">
-                                <span id="active-patient-flow-badge" style="font-weight:600;color:var(--text-secondary)">Registriert</span>
-                            </div>
-                            <span id="active-patient-id" style="display:none"></span>
-                            <span id="active-patient-rfid" style="display:none"></span>
-                        </div>
-                        <div style="text-align:right">
-                            <div style="font-size:10px;color:var(--text-dim)" id="active-patient-time">--</div>
-                        </div>
-                    </div>
+                <!-- Hidden elements für JS-Kompatibilität -->
+                <div style="display:none">
+                    <div id="active-patient-card"></div>
+                    <span id="patient-triage-badge"></span>
+                    <span id="active-patient-name"></span>
+                    <span id="active-patient-flow-badge"></span>
+                    <span id="active-patient-id"></span>
+                    <span id="active-patient-rfid"></span>
+                    <span id="active-patient-time"></span>
                 </div>
 
                 <!-- Grosser Record-Button (Zentrum des Feld-Modus) -->
@@ -1205,32 +1262,34 @@
                         <span style="margin-left:auto;font-size:9px;color:var(--text-dim);font-weight:400">aufklappen</span>
                     </summary>
                     <div style="padding:8px 12px 12px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border)">
+                        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:2px 0">Phase A — Patienten aufnehmen</div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">1</span>
-                            <div><span style="font-size:11px;font-weight:600">Neuen Patienten anlegen</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Neuer Patient"</strong> — SAFIR legt Akte an</span></div>
+                            <div><span style="font-size:11px;font-weight:600">Neuer Patient + Aufnahme</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Neuer Patient"</strong> — Akte anlegen, Aufnahme startet automatisch</span></div>
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">2</span>
-                            <div><span style="font-size:11px;font-weight:600">Befund dokumentieren</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Aufnahme starten"</strong> / <strong>"Aufnahme stoppen"</strong> — frei sprechen</span></div>
+                            <div><span style="font-size:11px;font-weight:600">Befund frei sprechen</span><br><span style="font-size:10px;color:var(--text-dim)">Aufnahme läuft — Verletzungen, Vitalwerte, Maßnahmen diktieren</span></div>
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">3</span>
-                            <div><span style="font-size:11px;font-weight:600">Triage zuweisen</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Triage rot / gelb / grün / blau"</strong></span></div>
+                            <div><span style="font-size:11px;font-weight:600">Triage / Abschluss</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Triage rot/gelb/grün/blau"</strong> · <strong>"Patient fertig"</strong> stoppt Aufnahme</span></div>
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
-                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">4</span>
-                            <div><span style="font-size:11px;font-weight:600">Patient abschließen</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Patient fertig"</strong> — RFID-Tag scannen &amp; befestigen</span></div>
+                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">&#8634;</span>
+                            <div><span style="font-size:11px;font-weight:600">Nächster Patient</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Neuer Patient"</strong> — stoppt laufende Aufnahme, legt neuen an</span></div>
                         </div>
-                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
-                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">5</span>
-                            <div><span style="font-size:11px;font-weight:600">An Leitstelle melden</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Patient melden"</strong> — Daten übertragen</span></div>
+                        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">Phase B — Alle Patienten verarbeiten</div>
+                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid #5DADE2;background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
+                            <span style="font-size:16px;font-weight:800;color:#5DADE2;min-width:20px;text-align:center">4</span>
+                            <div><span style="font-size:11px;font-weight:600">KI-Analyse</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Alle Patienten analysieren"</strong> — KI extrahiert Felder aus Transkripten</span></div>
                         </div>
-                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
-                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">6</span>
-                            <div><span style="font-size:11px;font-weight:600">Nächster Patient</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Neuer Patient"</strong> — weiter bei 1 | <strong>"Wie viele Patienten"</strong> zur Kontrolle</span></div>
+                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid #2ECC71;background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
+                            <span style="font-size:16px;font-weight:800;color:#2ECC71;min-width:20px;text-align:center">5</span>
+                            <div><span style="font-size:11px;font-weight:600">An Leitstelle melden</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Patienten melden"</strong> — analysierte Daten übertragen</span></div>
                         </div>
                         <div style="margin-top:4px;padding:6px 10px;background:var(--bg-elevated);border-radius:var(--radius);font-size:9px;color:var(--text-dim)">
-                            Weitere: <strong>"Eintrag löschen"</strong> · <strong>"Export"</strong> · Leertaste = Aufnahme
+                            Weitere: <strong>"Eintrag löschen"</strong> · <strong>"Wie viele Patienten"</strong> · <strong>"Export"</strong>
                         </div>
                     </div>
                 </details>
@@ -1245,7 +1304,7 @@
             </div>
 
             <!-- ============ FAHRZEUG-MODUS ============ -->
-            <div id="mode-fahrzeug" style="display:none;height:100%;display:flex;flex-direction:column;padding:12px;gap:10px">
+            <div id="mode-fahrzeug" style="display:none;flex-direction:column;padding:12px;gap:10px;height:100%">
 
                 <!-- Aktions-Leiste oben -->
                 <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
@@ -1646,6 +1705,21 @@
         return res.json();
     }
 
+    // ---- Activity Bar ----
+    function showActivity(icon, text, detail = '') {
+        const bar = document.getElementById('activity-bar');
+        document.getElementById('activity-icon').innerHTML = icon;
+        document.getElementById('activity-text').textContent = text;
+        document.getElementById('activity-detail').textContent = detail;
+        bar.classList.add('active');
+    }
+    function updateActivityDetail(detail) {
+        document.getElementById('activity-detail').textContent = detail;
+    }
+    function hideActivity() {
+        document.getElementById('activity-bar').classList.remove('active');
+    }
+
     // ---- Toast ----
     function showToast(text, icon = '', cls = '') {
         const container = document.getElementById('toast-container');
@@ -1983,32 +2057,66 @@
             case 'transcription_error':
                 setTranscribingState(false); beepError();
                 if (msg.error) showToast('Fehler: ' + msg.error, '&#9888;'); break;
-            case 'model_loading': updateModelBadge(msg.model, 'loading'); break;
-            case 'model_loaded': updateModelBadge(msg.model, 'loaded', msg.ram_mb); break;
+            case 'model_loading':
+                updateModelBadge(msg.model, 'loading');
+                showActivity('&#9881;', `Whisper-Modell wird geladen...`, msg.model);
+                break;
+            case 'model_loaded':
+                updateModelBadge(msg.model, 'loaded', msg.ram_mb);
+                hideActivity();
+                break;
             case 'model_unloaded': updateModelBadge(null, 'unloaded'); break;
             case 'session_created':
                 showSessionInfo(msg.session); refreshSessions(); break;
             case 'analyzing':
-                showToast(msg.auto ? 'KI-Analyse gestartet (automatisch)...' : 'KI analysiert Transkripte...', '&#129504;');
+                showToast('KI analysiert Transkripte...', '&#129504;');
+                showActivity('&#129504;', 'KI-Analyse läuft...', 'Einzelpatient');
                 document.getElementById('btn-analyze').textContent = 'Analysiert...';
                 document.getElementById('btn-analyze').disabled = true;
                 showAnalysisSpinner(true);
                 break;
+            case 'analyzing_batch':
+                showActivity('&#129504;', `KI-Analyse: ${msg.count} Patienten`, 'Whisper wird entladen, Ollama startet...');
+                showToast(`${msg.count} Patienten werden analysiert...`, '&#129504;');
+                document.getElementById('btn-analyze').textContent = 'Analysiert...';
+                document.getElementById('btn-analyze').disabled = true;
+                break;
             case 'analysis_complete':
                 showAnalysisSpinner(false);
                 showToast(msg.fields_count + ' Felder extrahiert', '&#9989;', 'voice');
-                document.getElementById('btn-analyze').textContent = 'KI-Analyse';
+                document.getElementById('btn-analyze').innerHTML = '&#129504; Analyse';
                 document.getElementById('btn-analyze').disabled = false;
                 if (msg.data && currentSessionTemplate) renderTemplateFields(currentSessionTemplate, msg.data);
                 break;
+            case 'analyzing_patient':
+                // Spinner an der Patientenkarte die gerade analysiert wird
+                document.querySelectorAll('.patient-card-details.analyzing').forEach(el => el.classList.remove('analyzing'));
+                document.querySelectorAll(`.patient-card-details[data-pid="${msg.patient_id}"]`).forEach(el => el.classList.add('analyzing'));
+                { const p = patients[msg.patient_id]; if (p) updateActivityDetail(`${p.name || msg.patient_id}...`); }
+                break;
+            case 'batch_analysis_complete':
+                hideActivity();
+                document.querySelectorAll('.patient-card-details.analyzing').forEach(el => el.classList.remove('analyzing'));
+                showToast(`${msg.analyzed}/${msg.total} Patienten analysiert`, '&#9989;', 'voice');
+                document.getElementById('btn-analyze').innerHTML = '&#129504; Analyse';
+                document.getElementById('btn-analyze').disabled = false;
+                break;
             case 'analysis_error':
+                hideActivity();
+                document.querySelectorAll('.patient-card-details.analyzing').forEach(el => el.classList.remove('analyzing'));
                 showToast('Analyse fehlgeschlagen: ' + (msg.error || ''), '&#9888;');
-                document.getElementById('btn-analyze').textContent = 'KI-Analyse';
+                document.getElementById('btn-analyze').innerHTML = '&#129504; Analyse';
                 document.getElementById('btn-analyze').disabled = false;
                 break;
             case 'voice_command':
                 beepVoiceCommand();
-                const labels = {record_start:'Aufnahme gestartet', record_stop:'Aufnahme gestoppt', new_session:'Neue Session', export_docx:'Export angefordert'};
+                const labels = {
+                    record_start:'Aufnahme gestartet', record_stop:'Aufnahme gestoppt',
+                    new_patient:'Neuer Patient', patient_ready:'Patient abgeschlossen',
+                    analyze_all:'Alle Patienten analysieren', send_backend:'Patienten melden',
+                    export_docx:'Export angefordert', delete_last:'Eintrag gelöscht',
+                    patient_count:'Patientenzahl',
+                };
                 showToast('Sprachbefehl: ' + (labels[msg.action] || msg.action), '&#127908;', 'voice');
                 break;
             case 'vosk_status':
@@ -2018,7 +2126,7 @@
                     patients[msg.patient.patient_id] = msg.patient;
                     setActivePatient(msg.patient);
                     renderPatientList();
-                    role1Patients = Object.values(patients);
+                    role1Patients = Object.values(patients).filter(p => p.synced);
                     role1ScheduleUIUpdate();
                 }
                 break;
@@ -2032,8 +2140,14 @@
                         setActivePatient(msg.patient);
                     }
                     renderPatientList();
-                    role1Patients = Object.values(patients);
+                    role1Patients = Object.values(patients).filter(p => p.synced);
                     role1ScheduleUIUpdate();
+                    // Fortschritt in Activity Bar aktualisieren (Batch-Analyse)
+                    if (msg.patient.analyzed && document.getElementById('activity-bar').classList.contains('active')) {
+                        const done = Object.values(patients).filter(p => p.analyzed).length;
+                        const total = Object.keys(patients).length;
+                        updateActivityDetail(`${done}/${total} abgeschlossen`);
+                    }
                 }
                 break;
             case 'patient_synced':
@@ -2043,13 +2157,19 @@
                         setActivePatient(msg.patient);
                     }
                     renderPatientList();
-                    role1Patients = Object.values(patients);
+                    role1Patients = Object.values(patients).filter(p => p.synced);
                     role1ScheduleUIUpdate();
                 }
                 break;
             case 'sync_complete':
                 updateBackendBadge(msg.backend_reachable);
                 renderPatientList();
+                break;
+            case 'patient_deleted':
+                delete patients[msg.patient_id];
+                delete patientTranscripts[msg.patient_id];
+                if (activePatient && activePatient.patient_id === msg.patient_id) activePatient = null;
+                renderPatientCards();
                 break;
             case 'patient_sent':
                 updateBackendBadge(msg.success);
@@ -2078,7 +2198,7 @@
                 if (msg.patient) {
                     patients[msg.patient.patient_id] = msg.patient;
                     // Role 1 UI: Nur role1Patients aktualisieren + gebatchtes UI-Update
-                    role1Patients = Object.values(patients);
+                    role1Patients = Object.values(patients).filter(p => p.synced);
                     role1ScheduleUIUpdate();
                     // Dashboard-Patientenkarten nur aktualisieren wenn Phase0-Seite sichtbar
                     const phase0Visible = document.getElementById('page-phase0')?.classList.contains('active');
@@ -2153,7 +2273,7 @@
                     msg.patients.forEach(p => { patients[p.patient_id] = p; });
                     renderPatientList();
                     // Role 1 Daten initialisieren (einmalig)
-                    role1Patients = Object.values(patients);
+                    role1Patients = Object.values(patients).filter(p => p.synced);
                     role1ScheduleUIUpdate();
                 }
                 if (msg.active_patient && patients[msg.active_patient]) {
@@ -2492,8 +2612,9 @@
 
     // ---- KI-Analyse ----
     async function analyzeSession() {
-        if (!activeSession) { showToast('Keine aktive Session', '&#9888;'); return; }
-        const res = await api('/api/session/analyze', 'POST', { session_id: activeSession });
+        // Batch-Analyse: alle nicht-analysierten Patienten
+        if (!Object.keys(patients).length) { showToast('Keine Patienten vorhanden', '&#9888;'); return; }
+        const res = await api('/api/patients/analyze', 'POST');
         if (res.error) showToast(res.error, '&#9888;');
     }
 
@@ -2753,18 +2874,11 @@
     function setMode(mode) {
         currentMode = mode;
         document.getElementById('mode-feld').style.display = mode === 'feld' ? 'flex' : 'none';
-        document.getElementById('mode-fahrzeug').style.display = mode === 'fahrzeug' ? 'block' : 'none';
+        document.getElementById('mode-fahrzeug').style.display = mode === 'fahrzeug' ? 'flex' : 'none';
         document.getElementById('btn-mode-feld').className = mode === 'feld' ? 'btn btn-cgi' : 'btn';
         document.getElementById('btn-mode-fahrzeug').className = mode === 'fahrzeug' ? 'btn btn-cgi' : 'btn';
-        // Sync patient data to Fahrzeug-Modus
-        if (mode === 'fahrzeug' && activePatient) {
-            document.getElementById('fz-patient-id').textContent = activePatient.patient_id;
-            // Highlight current triage
-            ['T1','T2','T3','T4'].forEach(t => {
-                const btn = document.getElementById('triage-btn-' + t);
-                if (btn) btn.style.borderColor = (activePatient.triage === t) ? '#fff' : 'transparent';
-            });
-        }
+        // Patientenkarten in beiden Modi synchron halten
+        renderPatientCards();
     }
 
     // ---- TTS Toggle ----
@@ -2861,6 +2975,8 @@
 
     async function deletePatient(pid) {
         if (!confirm('Patient löschen?')) return;
+        const res = await api('/api/patient/' + pid, 'DELETE');
+        if (res.error) { showToast(res.error, '&#9888;'); return; }
         delete patients[pid];
         delete patientTranscripts[pid];
         if (activePatient && activePatient.patient_id === pid) activePatient = null;
@@ -3022,10 +3138,14 @@
             // Offene Details merken
             const openPids = new Set();
             container.querySelectorAll('details[open]').forEach(d => openPids.add(d.dataset.pid));
+            // Vorherige PIDs merken um neue Karten zu erkennen
+            const prevPids = new Set();
+            container.querySelectorAll('details[data-pid]').forEach(d => prevPids.add(d.dataset.pid));
 
             container.innerHTML = entries.map(p => {
                 const isActive = activePatient && p.patient_id === activePatient.patient_id;
-                const isOpen = openPids.has(p.patient_id) || isActive;
+                const isNew = !prevPids.has(p.patient_id);
+                const isOpen = openPids.has(p.patient_id) || (isActive && isNew);
                 const color = TRIAGE_COLORS[p.triage] || '#444';
                 const transcripts = patientTranscripts[p.patient_id] || [];
                 const isFz = containerId.includes('fz');
@@ -3107,6 +3227,7 @@
         const btn = document.getElementById('btn-send-backend');
         btn.textContent = 'Synchronisiere...';
         btn.disabled = true;
+        showActivity('&#9889;', 'Daten werden an Leitstelle übertragen...', '');
 
         try {
             const res = await api('/api/patients/sync', 'POST');
@@ -3131,7 +3252,8 @@
             updateBackendBadge(false);
         }
 
-        btn.innerHTML = '&#9889; Alle Patienten melden';
+        hideActivity();
+        btn.innerHTML = '&#9889; Alle melden';
         btn.disabled = false;
     }
 
@@ -3361,7 +3483,7 @@
             if (res.patients) {
                 // Ins globale patients-Objekt einfügen (Single Source of Truth)
                 res.patients.forEach(p => { patients[p.patient_id] = p; });
-                role1Patients = Object.values(patients);
+                role1Patients = Object.values(patients).filter(p => p.synced);
                 role1UpdateUI();
             }
         } catch (e) {}
@@ -3401,7 +3523,7 @@
         // Transporte gruppiert nach BAT/Einheit
         const bySource = {};
         patients.forEach(p => {
-            const key = p.unit_name || p.created_by || p.device_id || 'Unbekannt';
+            const key = p.unit_name || p.device_id || 'Unbekannt';
             if (!bySource[key]) bySource[key] = [];
             bySource[key].push(p);
         });
@@ -3883,7 +4005,7 @@
         role1MarkerPatientCounts = {};
         role1MarkerPositions = {};
         role1Positions = {};
-        role1Patients = Object.values(patients);  // Nur echte Patienten behalten
+        role1Patients = Object.values(patients).filter(p => p.synced);  // Nur echte Patienten behalten
         role1CollapsedCards = {};
         role1MilSymCache = {};
         role1PrevBySource = {};
@@ -4134,7 +4256,7 @@
                 pRes.patients.forEach(p => { patients[p.patient_id] = p; });
                 renderPatientList();
                 // Role 1 ebenfalls initialisieren
-                role1Patients = Object.values(patients);
+                role1Patients = Object.values(patients).filter(p => p.synced);
                 role1ScheduleUIUpdate();
                 if (pRes.active_patient && patients[pRes.active_patient]) {
                     setActivePatient(patients[pRes.active_patient]);

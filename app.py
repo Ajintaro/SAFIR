@@ -461,8 +461,10 @@ def persistent_audio_callback(indata, frames, time_info, status):
                 if text:
                     action = match_voice_command(text)
                     if action:
-                        # Waehrend Aufnahme nur Stop-Befehl erlauben
-                        if state.recording and action != "record_stop":
+                        # Während Aufnahme: Stop, Patient fertig, Neuer Patient, Triage erlauben
+                        allowed_during_recording = {"record_stop", "patient_ready", "new_patient",
+                            "triage_red", "triage_yellow", "triage_green", "triage_blue"}
+                        if state.recording and action not in allowed_during_recording:
                             return
                         # Wenn nicht aufnimmt, kein Stop-Befehl
                         if not state.recording and action == "record_stop":
@@ -576,6 +578,8 @@ async def process_vosk_commands():
                     await voice_delete_last()
                 elif action == "patient_count":
                     await voice_patient_count()
+                elif action == "analyze_all":
+                    await voice_analyze_all()
                 elif action == "send_backend":
                     await voice_send_backend()
                 elif action == "export_docx":
@@ -592,7 +596,14 @@ async def process_vosk_commands():
 # Voice Command Handlers (Feld-Modus)
 # ---------------------------------------------------------------------------
 async def voice_new_patient():
-    """Sprachbefehl: Neuer Patient anlegen."""
+    """Sprachbefehl: Neuer Patient anlegen + Aufnahme automatisch starten."""
+    # Falls gerade aufgenommen wird: erst stoppen und transkribieren
+    if state.recording:
+        trim_chunks = int(1.5 / 0.1)
+        if len(state.audio_chunks) > trim_chunks:
+            state.audio_chunks = state.audio_chunks[:-trim_chunks]
+        await stop_recording()
+
     cfg = load_config()
     device_id = cfg.get("device_id", "jetson-01")
 
@@ -619,6 +630,12 @@ async def voice_new_patient():
     if num > 1:
         tts.speak(f"Patient {num}")
 
+    # Aufnahme automatisch starten (nach TTS-Ansage)
+    await asyncio.sleep(1.5)
+    if not state.recording and not state.transcribing and state.model_loaded:
+        state.audio_chunks = []
+        await start_recording_internal()
+
 
 async def voice_set_triage(level: str):
     """Sprachbefehl: Triage setzen für aktiven Patient."""
@@ -638,28 +655,28 @@ async def voice_set_triage(level: str):
 
 
 async def voice_patient_ready():
-    """Sprachbefehl: Patient fertig — KI-Analyse starten, dann RFID."""
+    """Sprachbefehl: Patient fertig — Aufnahme stoppen und abschließen (KEINE Analyse)."""
     if not state.active_patient or state.active_patient not in state.patients:
         tts.announce_error()
         return
+
+    # Laufende Aufnahme stoppen und transkribieren
+    if state.recording:
+        trim_chunks = int(1.5 / 0.1)
+        if len(state.audio_chunks) > trim_chunks:
+            state.audio_chunks = state.audio_chunks[:-trim_chunks]
+        await stop_recording()
+
     patient = state.patients[state.active_patient]
     patient["flow_status"] = "inbound"
     patient["timeline"].append({
         "time": datetime.now().isoformat(),
         "role": patient["current_role"],
         "event": "patient_ready",
-        "details": "Versorgung abgeschlossen, bereit für Transport",
+        "details": "Aufnahme abgeschlossen",
     })
     await broadcast({"type": "patient_update", "patient": patient})
     tts.announce_patient_ready()
-
-    # KI-Analyse als Background-Task starten (blockiert nicht)
-    sid = state.active_session
-    if sid and sid in state.sessions and state.sessions[sid]["records"] and not getattr(state, '_analyzing', False):
-        state._analyzing = True
-        await broadcast({"type": "analyzing", "session_id": sid, "auto": True})
-        asyncio.create_task(_run_analysis_background(sid))
-
     await broadcast({"type": "rfid_prompt", "patient_id": state.active_patient})
 
 
@@ -692,18 +709,108 @@ async def voice_patient_count():
     await broadcast({"type": "voice_command", "action": "patient_count", "count": count})
 
 
-async def voice_send_backend():
-    """Sprachbefehl: Alle Patienten an Leitstelle übermitteln."""
+async def voice_analyze_all():
+    """Sprachbefehl: Alle nicht-analysierten Patienten per KI analysieren."""
     if not state.patients:
         tts.speak("Keine Patienten vorhanden")
+        return
+    if getattr(state, '_analyzing', False):
+        tts.speak("Analyse läuft bereits")
+        return
+
+    # Patienten ohne 'analyzed'-Badge sammeln
+    pending = [(pid, p) for pid, p in state.patients.items() if not p.get("analyzed")]
+    if not pending:
+        tts.speak("Alle Patienten bereits analysiert")
+        return
+
+    tts.speak(f"{len(pending)} Patienten werden analysiert")
+    state._analyzing = True
+    await broadcast({"type": "analyzing_batch", "count": len(pending)})
+    asyncio.create_task(_run_batch_analysis(pending))
+
+
+async def _run_batch_analysis(pending: list):
+    """Analysiert mehrere Patienten sequentiell — Whisper wird nur 1x entladen."""
+    whisper_was_loaded = state.model_loaded
+    try:
+        # Whisper entladen um RAM für Ollama freizugeben (~1GB)
+        if whisper_was_loaded:
+            print("Batch-Analyse: Whisper-Server wird temporär entladen...")
+            stop_whisper_server()
+            await asyncio.sleep(2)
+
+        for pid, patient in pending:
+            # Session für diesen Patienten finden
+            sid = _find_session_for_patient(pid)
+            if not sid:
+                print(f"Analyse übersprungen: Keine Session für {pid}")
+                continue
+
+            print(f"Analysiere Patient {pid}...")
+            await broadcast({"type": "analyzing_patient", "patient_id": pid})
+            try:
+                # active_patient temporär setzen damit _run_analysis_for_session korrekt schreibt
+                prev_active = state.active_patient
+                state.active_patient = pid
+                result = await _run_analysis_for_session(sid)
+                patient["analyzed"] = True
+                await broadcast({"type": "patient_update", "patient": patient})
+                state.active_patient = prev_active
+            except Exception as e:
+                print(f"Analyse Fehler für {pid}: {e}")
+                await broadcast({"type": "analyzing_patient_done", "patient_id": pid, "error": True})
+
+        analyzed_count = sum(1 for _, p in pending if p.get("analyzed"))
+        tts.speak(f"{analyzed_count} Patienten analysiert")
+        await broadcast({"type": "batch_analysis_complete", "analyzed": analyzed_count, "total": len(pending)})
+
+    except Exception as e:
+        print(f"Batch-Analyse Fehler: {e}")
+        await broadcast({"type": "analysis_error", "error": str(e)})
+    finally:
+        state._analyzing = False
+        # Whisper wieder laden
+        if whisper_was_loaded and state.model_path:
+            print("Batch-Analyse fertig: Whisper-Server wird neu geladen...")
+            loop = asyncio.get_event_loop()
+            success = await loop.run_in_executor(None, start_whisper_server, state.model_path)
+            if success:
+                print(f"Whisper wieder bereit ({state.current_model})")
+            else:
+                print("WARNUNG: Whisper konnte nicht neu geladen werden!")
+
+
+def _find_session_for_patient(patient_id: str) -> str | None:
+    """Findet die Session-ID die zu einem Patienten gehört."""
+    # Direkt per patient_id-Feld in der Session
+    for sid, session in state.sessions.items():
+        if session.get("patient_id") == patient_id:
+            return sid
+    # Fallback: letzte Session mit Transkripten (Altdaten)
+    return None
+
+
+async def voice_send_backend():
+    """Sprachbefehl: Alle analysierten, nicht-übermittelten Patienten an Leitstelle senden."""
+    if not state.patients:
+        tts.speak("Keine Patienten vorhanden")
+        return
+
+    # Nur analysierte, nicht-gesyncte Patienten senden
+    sendable = [p for p in state.patients.values() if p.get("analyzed") and not p.get("synced")]
+    if not sendable:
+        not_analyzed = [p for p in state.patients.values() if not p.get("analyzed")]
+        if not_analyzed:
+            tts.speak(f"{len(not_analyzed)} Patienten noch nicht analysiert")
+        else:
+            tts.speak("Alle Patienten bereits übermittelt")
         return
 
     result = await sync_all_patients()
     if result["sent"] > 0:
         tts.speak(f"{result['sent']} Patienten übermittelt")
-    elif result["skipped"] > 0 and result["failed"] == 0:
-        tts.speak("Alle Patienten bereits übermittelt")
-    else:
+    elif result["failed"] > 0:
         tts.announce_error()
 
 
@@ -925,40 +1032,56 @@ Text: {text}
 JSON:"""
 
 
+def _call_ollama(prompt: str, label: str = "LLM") -> dict:
+    """Ruft Ollama auf mit GPU-Fallback auf CPU bei OOM."""
+    for num_gpu in [5, 0]:
+        try:
+            gpu_label = f"GPU:{num_gpu}" if num_gpu > 0 else "CPU"
+            response = httpx.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": "json",
+                    "options": {"num_gpu": num_gpu, "temperature": 0.1, "num_predict": 500},
+                },
+                timeout=180,
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if "error" in result:
+                    print(f"{label} ({gpu_label}): Ollama-Fehler: {result['error'][:100]}")
+                    continue
+                raw = result.get("response", "{}")
+                try:
+                    extracted = json.loads(raw)
+                    print(f"{label} ({gpu_label}): {len([v for v in extracted.values() if v])} Felder extrahiert")
+                    return extracted
+                except json.JSONDecodeError:
+                    print(f"{label}: JSON Parse Fehler: {raw[:200]}")
+                    return {}
+            else:
+                print(f"{label} ({gpu_label}): HTTP {response.status_code}")
+                # Bei 500 (oft OOM) → Retry mit CPU
+                if response.status_code == 500 and num_gpu > 0:
+                    print(f"{label}: GPU OOM, Fallback auf CPU...")
+                    continue
+                return {}
+        except Exception as e:
+            print(f"{label} ({gpu_label}): Fehler: {e}")
+            if num_gpu > 0:
+                continue
+            return {}
+    return {}
+
+
 def run_llm_extraction(template_id: str, text: str) -> dict:
-    """Extrahiert Template-Felder aus Text via Ollama LLM (CPU-only)."""
+    """Extrahiert Template-Felder aus Text via Ollama LLM."""
     prompt = build_extraction_prompt(template_id, text)
     if not prompt:
         return {}
-
-    try:
-        response = httpx.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json",
-                "options": {"num_gpu": 10, "temperature": 0.1, "num_predict": 500},
-            },
-            timeout=120,
-        )
-        if response.status_code == 200:
-            result = response.json()
-            raw = result.get("response", "{}")
-            try:
-                extracted = json.loads(raw)
-                print(f"LLM Extraktion: {len(extracted)} Felder extrahiert")
-                return extracted
-            except json.JSONDecodeError:
-                print(f"LLM JSON Parse Fehler: {raw[:200]}")
-                return {}
-        else:
-            print(f"LLM Fehler: {response.status_code}")
-            return {}
-    except Exception as e:
-        print(f"LLM Extraktion fehlgeschlagen: {e}")
-        return {}
+    return _call_ollama(prompt, "Feldextraktion")
 
 
 # ---------------------------------------------------------------------------
@@ -1145,6 +1268,7 @@ async def create_session_internal(patient_name, location, medic, template_id):
         "template_id": template_id,
         "template_data": {},
         "patient_name": patient_name,
+        "patient_id": state.active_patient or "",
         "location": location,
         "medic": medic,
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -1383,6 +1507,24 @@ async def update_patient(patient_id: str, body: dict):
     return {"status": "ok", "patient": patient}
 
 
+@app.delete("/api/patient/{patient_id}")
+async def delete_patient(patient_id: str):
+    """Patient löschen."""
+    if patient_id not in state.patients:
+        return {"error": "Patient nicht gefunden"}
+    # Aus State entfernen
+    patient = state.patients.pop(patient_id)
+    # RFID-Mapping entfernen
+    rfid = patient.get("rfid_tag_id", "")
+    if rfid and rfid in state.rfid_map:
+        del state.rfid_map[rfid]
+    # Aktiven Patient zurücksetzen
+    if state.active_patient == patient_id:
+        state.active_patient = ""
+    await broadcast({"type": "patient_deleted", "patient_id": patient_id})
+    return {"status": "ok", "patient_id": patient_id}
+
+
 @app.post("/api/patient/{patient_id}/status")
 async def update_patient_status(patient_id: str, body: dict):
     """Flow-Status ändern."""
@@ -1450,6 +1592,10 @@ async def sync_all_patients() -> dict:
     for pid, patient in state.patients.items():
         # Bereits übermittelte überspringen
         if patient.get("synced"):
+            skipped += 1
+            continue
+        # Nur analysierte Patienten senden
+        if not patient.get("analyzed"):
             skipped += 1
             continue
 
@@ -1722,49 +1868,38 @@ JSON:"""
 def run_patient_enrichment(text: str) -> dict:
     """Extrahiert Patientendaten aus Transkript-Text via Ollama LLM."""
     prompt = build_patient_enrichment_prompt(text)
-    try:
-        response = httpx.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json",
-                "options": {"num_gpu": 10, "temperature": 0.1, "num_predict": 500},
-            },
-            timeout=120,
-        )
-        if response.status_code == 200:
-            result = response.json()
-            raw = result.get("response", "{}")
-            try:
-                extracted = json.loads(raw)
-                print(f"Patienten-Anreicherung: {len([v for v in extracted.values() if v])} Felder extrahiert")
-                return extracted
-            except json.JSONDecodeError:
-                print(f"LLM JSON Parse Fehler: {raw[:200]}")
-                return {}
-        else:
-            print(f"LLM Fehler: {response.status_code}")
-            return {}
-    except Exception as e:
-        print(f"Patienten-Anreicherung fehlgeschlagen: {e}")
-        return {}
+    return _call_ollama(prompt, "Patienten-Anreicherung")
 
 
 async def _run_analysis_background(sid: str):
-    """Startet KI-Analyse als Background-Task — blockiert nicht den Hauptthread."""
+    """Startet KI-Analyse für eine einzelne Session — entlädt Whisper temporär für RAM."""
+    whisper_was_loaded = state.model_loaded
     try:
+        if whisper_was_loaded:
+            print("Analyse: Whisper-Server wird temporär entladen...")
+            stop_whisper_server()
+            await asyncio.sleep(2)
+
         result = await _run_analysis_for_session(sid)
-        if state.active_patient and state.active_patient in state.patients:
-            state.patients[state.active_patient]["analyzed"] = True
-            await broadcast({"type": "patient_update", "patient": state.patients[state.active_patient]})
+        # Patient über Session-Mapping finden
+        pid = state.sessions[sid].get("patient_id", state.active_patient)
+        if pid and pid in state.patients:
+            state.patients[pid]["analyzed"] = True
+            await broadcast({"type": "patient_update", "patient": state.patients[pid]})
         tts.speak("Analyse abgeschlossen")
     except Exception as e:
         print(f"Background-Analyse Fehler: {e}")
         await broadcast({"type": "analysis_error", "error": str(e)})
     finally:
         state._analyzing = False
+        if whisper_was_loaded and state.model_path:
+            print("Analyse fertig: Whisper-Server wird neu geladen...")
+            loop = asyncio.get_event_loop()
+            success = await loop.run_in_executor(None, start_whisper_server, state.model_path)
+            if success:
+                print(f"Whisper wieder bereit ({state.current_model})")
+            else:
+                print("WARNUNG: Whisper konnte nicht neu geladen werden!")
 
 
 async def _run_analysis_for_session(sid: str) -> dict:
@@ -1786,8 +1921,9 @@ async def _run_analysis_for_session(sid: str) -> dict:
     enriched = await loop.run_in_executor(None, run_patient_enrichment, full_text)
 
     # Patientendaten aktualisieren (nur nicht-leere Felder überschreiben)
-    if enriched and state.active_patient and state.active_patient in state.patients:
-        patient = state.patients[state.active_patient]
+    pid = session.get("patient_id") or state.active_patient
+    if enriched and pid and pid in state.patients:
+        patient = state.patients[pid]
         # Einfache String-Felder: nur überschreiben wenn aktuell leer oder "Unbekannt"
         for key in ["name", "rank", "triage", "unit", "blood_type"]:
             val = enriched.get(key, "")
@@ -1849,6 +1985,21 @@ async def analyze_session(body: dict = None):
     await broadcast({"type": "analyzing", "session_id": sid})
     asyncio.create_task(_run_analysis_background(sid))
     return {"status": "ok", "message": "Analyse gestartet"}
+
+
+@app.post("/api/patients/analyze")
+async def analyze_all_patients():
+    """Alle nicht-analysierten Patienten per KI analysieren."""
+    if getattr(state, '_analyzing', False):
+        return {"error": "Analyse läuft bereits"}
+    pending = [(pid, p) for pid, p in state.patients.items() if not p.get("analyzed")]
+    if not pending:
+        return {"status": "ok", "message": "Alle Patienten bereits analysiert", "analyzed": 0}
+
+    state._analyzing = True
+    await broadcast({"type": "analyzing_batch", "count": len(pending)})
+    asyncio.create_task(_run_batch_analysis(pending))
+    return {"status": "ok", "message": f"{len(pending)} Patienten werden analysiert"}
 
 
 @app.post("/api/export/docx")

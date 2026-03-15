@@ -114,3 +114,9 @@ def announce_error():
 
 def announce_confirmed():
     speak("Verstanden")
+
+def announce_batch_analysis(count: int):
+    speak(f"{count} Patienten werden analysiert")
+
+def announce_batch_analysis_done(count: int):
+    speak(f"{count} Patienten analysiert")
