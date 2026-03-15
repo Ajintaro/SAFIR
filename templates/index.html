@@ -1338,7 +1338,8 @@
                 <div class="role1-panel">
                     <div class="role1-panel-header">
                         Eingehende Transporte
-                        <button class="btn" id="r1-sim-btn" onclick="role1StartSimulation()" style="margin-left:auto;padding:4px 12px;font-size:10px">Simulation</button>
+                        <button class="btn" id="r1-sim-reset-btn" onclick="role1ResetSimulation()" style="margin-left:auto;padding:4px 12px;font-size:10px;display:none">Reset</button>
+                        <button class="btn" id="r1-sim-btn" onclick="role1StartSimulation()" style="padding:4px 12px;font-size:10px">Simulation</button>
                     </div>
 
                     <!-- Triage-Übersicht -->
@@ -3264,6 +3265,7 @@
 
         // Alle BAT-Marker mit neuem Stil neu erzeugen
         role1MarkerPatientCounts = {};  // Force rebuild
+        role1MilSymCache = {};  // SVG-Cache leeren
         role1UpdateUI();
     }
 
@@ -3309,7 +3311,9 @@
 
         setTimeout(() => role1Map.invalidateSize(), 200);
         role1LoadData();
+        role1FetchPositions();
         setInterval(role1LoadData, 5000);
+        setInterval(role1FetchPositions, 3000);
     }
 
     async function role1LoadData() {
@@ -3414,20 +3418,31 @@
     }
 
     let role1MarkerPatientCounts = {};
+    let role1MilSymCache = {};  // Cache für milsymbol SVG Data-URLs
 
-    async function role1UpdateMapMarkers(bySource) {
+    function createBatIconCached(name, patientCount, isArrived) {
+        // Für medizinisch und gelände kein Cache nötig (divIcon ist billig)
+        if (role1ActiveLayer !== 'taktisch') {
+            return createBatIcon(name, patientCount, isArrived);
+        }
+        // Taktisch: milsymbol SVG cachen (teuer zu erzeugen)
+        const cacheKey = `${name}_${patientCount}_${isArrived ? 1 : 0}`;
+        if (!role1MilSymCache[cacheKey]) {
+            role1MilSymCache[cacheKey] = createBatIcon(name, patientCount, isArrived);
+        }
+        return role1MilSymCache[cacheKey];
+    }
+
+    function role1UpdateMapMarkers(bySource) {
         if (!role1Map) return;
 
-        let positions = {};
-        try {
-            const posRes = await api('/api/positions');
-            positions = posRes.positions || {};
-        } catch(e) {}
-        role1Positions = positions;
+        // Positionen aus Cache verwenden (werden via WebSocket aktualisiert)
+        const positions = role1Positions;
 
         Object.entries(bySource).forEach(([src, pts]) => {
             const pos = positions[src];
             if (!pos) {
+                // Kein GPS — Marker nur entfernen wenn vorher vorhanden
                 if (role1Markers[src]) {
                     role1Map.removeLayer(role1Markers[src]);
                     delete role1Markers[src];
@@ -3446,18 +3461,19 @@
 
             const popupContent = `<b>${src}</b>${isArrived ? ' — <span style="color:#2ECC71">Eingetroffen</span>' : ''}<br>${distStr} bis R1<br>${pts.length} Patient(en)<br>${pts.map(p => (p.triage || '?') + ' ' + (p.name || p.patient_id || '')).join('<br>')}`;
 
-            // Cache-Key: Patientenzahl + Layer + Ankunft
+            // Cache-Key: Nur Icon neu setzen wenn sich wirklich etwas geändert hat
             const cacheKey = `${pts.length}_${role1ActiveLayer}_${isArrived ? 1 : 0}`;
 
             if (role1Markers[src]) {
                 role1Markers[src].setLatLng([lat, lng]);
+                // Icon NUR tauschen wenn Cache-Key anders ist
                 if (role1MarkerPatientCounts[src] !== cacheKey) {
-                    role1Markers[src].setIcon(createBatIcon(src, pts.length, isArrived));
+                    role1Markers[src].setIcon(createBatIconCached(src, pts.length, isArrived));
                     role1MarkerPatientCounts[src] = cacheKey;
                 }
                 role1Markers[src].setPopupContent(popupContent);
             } else {
-                const icon = createBatIcon(src, pts.length, isArrived);
+                const icon = createBatIconCached(src, pts.length, isArrived);
                 const marker = L.marker([lat, lng], { icon }).addTo(role1Map);
                 marker.bindPopup(popupContent);
                 role1Markers[src] = marker;
@@ -3472,6 +3488,14 @@
                 delete role1MarkerPatientCounts[key];
             }
         });
+    }
+
+    // Positionen periodisch vom Backend holen (nicht bei jedem UI-Update)
+    async function role1FetchPositions() {
+        try {
+            const posRes = await api('/api/positions');
+            role1Positions = posRes.positions || {};
+        } catch(e) {}
     }
 
     function role1AddEvent(text, unitName, isPatient) {
@@ -3689,17 +3713,52 @@
         return null;
     }
 
+    async function role1ResetSimulation() {
+        // Alles stoppen
+        role1SimIntervals.forEach(id => clearInterval(id));
+        role1SimTimeouts.forEach(id => clearTimeout(id));
+        role1SimIntervals = [];
+        role1SimTimeouts = [];
+        role1RouteLines.forEach(line => { if (role1Map) role1Map.removeLayer(line); });
+        role1RouteLines = [];
+        role1ArrivedBats = {};
+        role1SimRunning = false;
+
+        // Buttons zurücksetzen
+        const btn = document.getElementById('r1-sim-btn');
+        const resetBtn = document.getElementById('r1-sim-reset-btn');
+        btn.textContent = 'Simulation';
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        resetBtn.style.display = 'none';
+
+        // Backend-Daten löschen
+        try { await api('/api/simulation/reset', 'POST'); } catch(e) {}
+
+        // Marker entfernen und UI aktualisieren
+        Object.keys(role1Markers).forEach(key => {
+            role1Map.removeLayer(role1Markers[key]);
+        });
+        role1Markers = {};
+        role1MarkerPatientCounts = {};
+        role1Positions = {};
+        role1Patients = [];
+        role1CollapsedCards = {};
+        role1MilSymCache = {};
+        role1UpdateUI();
+        showToast('Simulation zurückgesetzt', '&#8634;');
+    }
+
     async function role1StartSimulation() {
         const btn = document.getElementById('r1-sim-btn');
+        const resetBtn = document.getElementById('r1-sim-reset-btn');
         if (role1SimRunning) {
-            // Stop
+            // Stopp (pausiert, Reset-Button bleibt sichtbar)
             role1SimIntervals.forEach(id => clearInterval(id));
             role1SimTimeouts.forEach(id => clearTimeout(id));
             role1SimIntervals = [];
             role1SimTimeouts = [];
-            role1RouteLines.forEach(line => { if (role1Map) role1Map.removeLayer(line); });
-            role1RouteLines = [];
-            role1ArrivedBats = {};
             role1SimRunning = false;
             btn.textContent = 'Simulation';
             btn.style.background = '';
@@ -3713,6 +3772,7 @@
         btn.style.background = 'var(--danger, #E74C3C)';
         btn.style.borderColor = 'var(--danger, #E74C3C)';
         btn.style.color = '#fff';
+        resetBtn.style.display = '';
 
         // Erst alte Demo-Daten aufraumen
         try { await api('/api/simulation/reset', 'POST'); } catch(e) {}
