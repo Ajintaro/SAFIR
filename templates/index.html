@@ -1253,6 +1253,10 @@
             <span id="backend-label">Leitstelle</span>
         </span>
         <span class="badge badge-ok" id="badge-ws"><span class="ws-dot" id="ws-dot"></span> Server verbunden</span>
+        <span class="badge" id="badge-peers" onclick="togglePeersDialog()" style="cursor:pointer" title="Netzwerk-Teilnehmer">
+            <span class="ws-dot" style="background:var(--success)"></span>
+            <span id="peers-label">1 Teilnehmer</span>
+        </span>
         <button class="hw-toggle" id="hw-toggle" onclick="toggleHwOverlay()" title="Hardware-Monitor">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="4" y="4" width="16" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/>
@@ -1922,6 +1926,20 @@
                 <option value="fr">Francais</option>
             </select>
         </div>
+    </div>
+</dialog>
+
+<!-- PEERS DIALOG -->
+<dialog class="hw-overlay" id="peers-dialog" style="width:260px;top:52px;right:320px">
+    <div class="hw-overlay-header">
+        <div>
+            <h3>Netzwerk-Teilnehmer</h3>
+            <span>SAFIR Mesh</span>
+        </div>
+        <button class="hw-overlay-close" onclick="togglePeersDialog()">&times;</button>
+    </div>
+    <div id="peers-list" style="display:flex;flex-direction:column;gap:6px;font-size:11px">
+        <span style="color:var(--text-dim)">Lade...</span>
     </div>
 </dialog>
 
@@ -3062,6 +3080,44 @@
     }
 
     // ---- Hardware Overlay ----
+    // ---- Peers Dialog ----
+    function togglePeersDialog() {
+        const dlg = document.getElementById('peers-dialog');
+        if (dlg.open) { dlg.close(); } else { dlg.show(); refreshPeers(); }
+    }
+
+    async function refreshPeers() {
+        const res = await api('/api/peers');
+        const list = document.getElementById('peers-list');
+        if (!res.peers || !res.peers.length) {
+            list.innerHTML = '<span style="color:var(--text-dim)">Keine Teilnehmer</span>';
+            return;
+        }
+        const now = Date.now();
+        list.innerHTML = res.peers.map(p => {
+            const lastSeen = new Date(p.last_seen);
+            const ageSec = (now - lastSeen.getTime()) / 1000;
+            const isSelf = p.role === 'self';
+            const isOnline = isSelf || ageSec < 60;
+            const dotColor = isOnline ? 'var(--success)' : ageSec < 300 ? 'var(--warning)' : 'var(--text-dim)';
+            const statusText = isSelf ? 'LOKAL' : isOnline ? 'ONLINE' : ageSec < 3600 ? Math.floor(ageSec / 60) + 'm' : Math.floor(ageSec / 3600) + 'h';
+            const patients = p.patient_count ? `${p.patient_count} Pat.` : '';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:4px 6px;background:var(--bg-surface2);border-left:2px solid ${dotColor}">
+                <span class="ws-dot" style="background:${dotColor};flex-shrink:0"></span>
+                <div style="flex:1;min-width:0">
+                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.unit_name || p.device_id}</div>
+                    <div style="font-size:9px;color:var(--text-dim)">${p.device_id} ${patients}</div>
+                </div>
+                <span style="font-size:9px;font-weight:600;color:${dotColor}">${statusText}</span>
+            </div>`;
+        }).join('');
+        // Badge aktualisieren
+        document.getElementById('peers-label').textContent = res.peers.length + ' Teilnehmer';
+    }
+
+    // Peers alle 30s aktualisieren
+    setInterval(() => { if (document.getElementById('peers-dialog').open) refreshPeers(); }, 30000);
+
     function hwTabSwitch(btn) {
         const tabId = btn.dataset.tab;
         document.querySelectorAll('.hw-tab').forEach(t => {
@@ -4574,13 +4630,14 @@
 
         refreshFiles();
 
-        // Einheit im Header anzeigen
+        // Einheit im Header anzeigen + Peers laden
         try {
             const cfg = await api('/api/config');
             if (cfg.unit_name) {
                 document.getElementById('header-unit-name').textContent = cfg.unit_name;
             }
         } catch(e) {}
+        try { refreshPeers(); } catch(e) {}
 
         // Patienten laden
         try {

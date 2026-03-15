@@ -280,6 +280,8 @@ class AppState:
         self.active_patient: str = ""  # Aktuell ausgewählter Patient
         self.backend_reachable: bool = False
         self.sync_queue_depth: int = 0
+        # Netzwerk-Teilnehmer (Peer Discovery)
+        self.peers: dict = {}  # device_id -> {unit_name, ip, port, last_seen, role}
         self._stream_samplerate: int = SAMPLE_RATE
         # Mikrofon-Test
         self._mic_test: bool = False
@@ -1777,6 +1779,99 @@ async def reset_simulation():
     return {"status": "ok"}
 
 
+# ---------------------------------------------------------------------------
+# Peer Discovery / Netzwerk-Teilnehmer
+# ---------------------------------------------------------------------------
+PEER_TIMEOUT_HOURS = 5
+
+@app.post("/api/heartbeat")
+async def receive_heartbeat(body: dict):
+    """Empfängt Heartbeat von einem Netzwerk-Teilnehmer."""
+    device_id = body.get("device_id", "")
+    if not device_id:
+        return {"error": "device_id fehlt"}
+    state.peers[device_id] = {
+        "unit_name": body.get("unit_name", "Unbekannt"),
+        "device_id": device_id,
+        "ip": body.get("ip", ""),
+        "port": body.get("port", 8080),
+        "role": body.get("role", ""),
+        "last_seen": datetime.now().isoformat(),
+        "patient_count": body.get("patient_count", 0),
+    }
+    return {"status": "ok", "peers": len(state.peers)}
+
+
+@app.get("/api/peers")
+async def get_peers():
+    """Gibt alle bekannten Netzwerk-Teilnehmer zurück."""
+    now = datetime.now()
+    # Alte Peers entfernen (> PEER_TIMEOUT_HOURS)
+    expired = [k for k, v in state.peers.items()
+               if (now - datetime.fromisoformat(v["last_seen"])).total_seconds() > PEER_TIMEOUT_HOURS * 3600]
+    for k in expired:
+        del state.peers[k]
+
+    peers_list = list(state.peers.values())
+    # Eigene Instanz immer mit aufnehmen
+    cfg = load_config()
+    own = {
+        "unit_name": cfg.get("unit_name", ""),
+        "device_id": cfg.get("device_id", ""),
+        "ip": "127.0.0.1",
+        "port": 8080,
+        "role": "self",
+        "last_seen": now.isoformat(),
+        "patient_count": len(state.patients),
+    }
+    # Eigene Instanz nicht doppelt
+    peers_list = [p for p in peers_list if p["device_id"] != own["device_id"]]
+    peers_list.insert(0, own)
+    return {"peers": peers_list}
+
+
+async def _heartbeat_loop():
+    """Sendet periodisch Heartbeats an alle bekannten Peers (alle 30s)."""
+    await asyncio.sleep(5)  # Warten bis Server bereit
+    while True:
+        try:
+            cfg = load_config()
+            own_device_id = cfg.get("device_id", "")
+            own_unit_name = cfg.get("unit_name", "")
+            backend_url = cfg.get("backend", {}).get("url", "")
+
+            payload = {
+                "device_id": own_device_id,
+                "unit_name": own_unit_name,
+                "ip": "",  # Wird vom Empfänger nicht gebraucht
+                "port": 8080,
+                "role": "field",
+                "patient_count": len(state.patients),
+            }
+
+            # An Backend senden (falls konfiguriert)
+            if backend_url:
+                try:
+                    httpx.post(f"{backend_url}/api/heartbeat", json=payload, timeout=5)
+                except Exception:
+                    pass
+
+            # An alle bekannten Peers senden
+            for peer in list(state.peers.values()):
+                if peer["device_id"] == own_device_id:
+                    continue
+                ip = peer.get("ip", "")
+                port = peer.get("port", 8080)
+                if ip and ip != "127.0.0.1":
+                    try:
+                        httpx.post(f"http://{ip}:{port}/api/heartbeat", json=payload, timeout=3)
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"Heartbeat Fehler: {e}")
+        await asyncio.sleep(30)
+
+
 @app.post("/api/patients/sync")
 async def sync_patients_to_backend():
     """Alle Patienten an Leitstelle übermitteln (überspringt bereits synchronisierte)."""
@@ -2587,6 +2682,9 @@ async def startup():
 
     # GPS-Simulation starten (für Demo)
     asyncio.create_task(gps_simulation_loop())
+
+    # Peer Discovery Heartbeat
+    asyncio.create_task(_heartbeat_loop())
 
 
 @app.on_event("shutdown")
