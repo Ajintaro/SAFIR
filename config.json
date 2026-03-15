@@ -37,7 +37,6 @@
                 "patient fertig",
                 "patient abgeschlossen",
                 "versorgung abgeschlossen",
-                "fertig",
                 "patient abschließen"
             ]
         },
@@ -48,8 +47,7 @@
                 "triage eins",
                 "patient rot",
                 "sofort behandlung",
-                "triasch rot",
-                "triasch blau"
+                "triasch rot"
             ]
         },
         "triage_yellow": {
@@ -114,8 +112,7 @@
                 "alle patienten melden",
                 "patienten melden",
                 "daten senden",
-                "an leitstelle",
-                "melden"
+                "an leitstelle melden"
             ]
         },
         "export_docx": {

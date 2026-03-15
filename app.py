@@ -35,6 +35,7 @@ import httpx
 from shared.rfid import generate_patient_id, generate_rfid_tag, lookup_by_rfid, create_patient_record
 from shared.models import PATIENT_SCHEMA, TRANSFER_SCHEMA, PatientFlowStatus, FLOW_STATUS_LABELS, TRIAGE_COLORS
 from shared import tts
+from shared import sitaware
 
 PROJECT_DIR = Path(__file__).parent
 CONFIG_PATH = PROJECT_DIR / "config.json"
@@ -419,10 +420,11 @@ def match_voice_command(text: str) -> str | None:
     # Exakter Match
     if text in VOICE_COMMANDS:
         return VOICE_COMMANDS[text]
-    # Substring-Match
+    # Phrase-in-Text Match (Befehl muss vollständig im Text vorkommen)
     for phrase, action in VOICE_COMMANDS.items():
-        if phrase in text or text in phrase:
+        if phrase in text:
             return action
+    # KEIN text-in-phrase Match mehr — zu viele Fehlauslösungen
     return None
 
 
@@ -1651,6 +1653,48 @@ async def sync_patients_to_backend():
         return {"error": "Keine Patienten vorhanden"}
     result = await sync_all_patients()
     return {"status": "ok", **result}
+
+
+# ---------------------------------------------------------------------------
+# SitaWare Interoperabilität (CoT / NVG / APP-6D)
+# ---------------------------------------------------------------------------
+@app.get("/api/sitaware/status")
+async def sitaware_status():
+    """Status der SitaWare-Schnittstelle."""
+    return sitaware.get_sitaware_status()
+
+
+@app.get("/api/sitaware/cot")
+async def sitaware_cot_export():
+    """Exportiert alle Patienten als Cursor-on-Target XML Events."""
+    if not state.patients:
+        return {"error": "Keine Patienten vorhanden"}
+    cfg = load_config()
+    patients_list = list(state.patients.values())
+    xml = sitaware.generate_cot_batch(
+        patients_list,
+        unit_name=cfg.get("unit_name", ""),
+        device_id=cfg.get("device_id", ""),
+    )
+    from fastapi.responses import Response
+    return Response(content=xml, media_type="application/xml",
+                    headers={"Content-Disposition": "attachment; filename=safir_medevac_cot.xml"})
+
+
+@app.get("/api/sitaware/nvg")
+async def sitaware_nvg_export():
+    """Exportiert Patienten als NATO Vector Graphics Overlay."""
+    if not state.patients:
+        return {"error": "Keine Patienten vorhanden"}
+    cfg = load_config()
+    patients_list = list(state.patients.values())
+    xml = sitaware.generate_nvg_overlay(
+        patients_list,
+        unit_name=cfg.get("unit_name", ""),
+    )
+    from fastapi.responses import Response
+    return Response(content=xml, media_type="application/xml",
+                    headers={"Content-Disposition": "attachment; filename=safir_overlay.nvg"})
 
 
 MAX_RECORD_SECONDS = 300

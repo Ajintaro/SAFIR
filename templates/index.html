@@ -88,6 +88,30 @@
             --cgi-red-glow: rgba(59, 130, 246, 0.30);
         }
 
+        [data-theme="bundeswehr"] {
+            --bg-primary: #0D1117;
+            --bg-surface: #161B22;
+            --bg-surface2: #1A2332;
+            --bg-elevated: #1E293B;
+            --border: #1E3A5F;
+            --border-light: #264A6E;
+            --text-primary: #C9D1D9;
+            --text-secondary: #8B949E;
+            --text-dim: #6B7D8E;
+            --logo-color: #0A6E9E;
+            --accent: #0A6E9E;
+            --accent-dark: #003B5C;
+            --accent-light: rgba(10, 110, 158, 0.15);
+            --accent-glow: rgba(10, 110, 158, 0.4);
+            --cgi-red: #003B5C;
+            --cgi-red-dark: #002A45;
+            --cgi-red-light: rgba(0, 59, 92, 0.15);
+            --cgi-red-glow: rgba(0, 59, 92, 0.30);
+            --success: #3FB950;
+            --warning: #D29922;
+            --info: #58A6FF;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -1611,6 +1635,23 @@
                             </div>
                         </div>
                         <div class="settings-card">
+                            <div class="settings-card-title">SitaWare Interoperabilität</div>
+                            <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">
+                                Schnittstelle zu SitaWare Edge / Frontline / Headquarters (D-LBO).<br>
+                                Protokolle: CoT 2.0, NVG 2.0.2 | Standards: APP-6D, MIL-STD-2525D, MIP 4.3+
+                            </div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                <span style="font-size:9px;padding:2px 6px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Edge 2.0</span>
+                                <span style="font-size:9px;padding:2px 6px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Frontline</span>
+                                <span style="font-size:9px;padding:2px 6px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">ATAK / WinTAK</span>
+                                <span style="font-size:9px;padding:2px 6px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">NATO JCOP</span>
+                            </div>
+                            <div class="btn-group" style="margin-top:8px">
+                                <button class="btn" onclick="exportSitawareCot()" style="font-size:11px;padding:5px 10px">CoT XML Export</button>
+                                <button class="btn" onclick="exportSitawareNvg()" style="font-size:11px;padding:5px 10px">NVG Overlay</button>
+                            </div>
+                        </div>
+                        <div class="settings-card">
                             <div class="settings-card-title">Audio-Eingang</div>
                             <div class="field">
                                 <label>Eingabegerät</label>
@@ -2641,6 +2682,28 @@
         }
     }
 
+    // ---- SitaWare Export ----
+    async function exportSitawareCot() {
+        const res = await fetch('/api/sitaware/cot');
+        if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'safir_medevac_cot.xml'; a.click();
+            URL.revokeObjectURL(url);
+            showToast('CoT XML exportiert', '&#9989;');
+        } else { showToast('Keine Patienten für Export', '&#9888;'); }
+    }
+    async function exportSitawareNvg() {
+        const res = await fetch('/api/sitaware/nvg');
+        if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'safir_overlay.nvg'; a.click();
+            URL.revokeObjectURL(url);
+            showToast('NVG Overlay exportiert', '&#9989;');
+        } else { showToast('Keine Patienten für Export', '&#9888;'); }
+    }
+
     // ---- Model Management ----
     let currentModelRamMb = 0;
 
@@ -2816,10 +2879,10 @@
         document.addEventListener('mouseup', function() { dragging = false; });
     })();
 
-    // ---- Theme (3-state: dark → saphir → light → dark) ----
-    const THEMES = ['dark', 'saphir', 'light'];
-    const THEME_ICONS = {dark: '🌙', saphir: '💎', light: '☀️'};
-    const THEME_LABELS = {dark: 'Dark', saphir: 'Saphir', light: 'Light'};
+    // ---- Theme (4-state: dark → saphir → light → bundeswehr → dark) ----
+    const THEMES = ['dark', 'saphir', 'light', 'bundeswehr'];
+    const THEME_ICONS = {dark: '🌙', saphir: '💎', light: '☀️', bundeswehr: '★'};
+    const THEME_LABELS = {dark: 'Dark', saphir: 'Saphir', light: 'Light', bundeswehr: 'Bundeswehr'};
 
     function toggleTheme() {
         const current = document.body.getAttribute('data-theme') || 'dark';
@@ -3135,9 +3198,11 @@
 
             if (count === 0) { container.innerHTML = emptyHtml; return; }
 
-            // Offene Details merken
+            // Offene Details und Analyse-Status merken
             const openPids = new Set();
+            const analyzingPids = new Set();
             container.querySelectorAll('details[open]').forEach(d => openPids.add(d.dataset.pid));
+            container.querySelectorAll('details.analyzing').forEach(d => analyzingPids.add(d.dataset.pid));
             // Vorherige PIDs merken um neue Karten zu erkennen
             const prevPids = new Set();
             container.querySelectorAll('details[data-pid]').forEach(d => prevPids.add(d.dataset.pid));
@@ -3184,7 +3249,7 @@
                 const deleteIcon = isFz ? `<span onclick="event.stopPropagation();deletePatient('${p.patient_id}')" style="cursor:pointer;color:var(--text-dim);font-size:14px;padding:0 4px" title="Patient löschen">&#128465;</span>` : '';
 
                 return `
-                <details class="patient-card-details ${isActive ? 'active-patient' : ''}" data-pid="${p.patient_id}" ${isOpen ? 'open' : ''} onclick="if(event.target.closest('summary'))selectPatient('${p.patient_id}')">
+                <details class="patient-card-details ${isActive ? 'active-patient' : ''} ${analyzingPids.has(p.patient_id) ? 'analyzing' : ''}" data-pid="${p.patient_id}" ${isOpen ? 'open' : ''} onclick="if(event.target.closest('summary'))selectPatient('${p.patient_id}')">
                     <summary>
                         <div class="triage-dot" style="background:${color}">${p.triage || '--'}</div>
                         <span class="p-name">${p.name || 'Unbekannt'}${p.rank ? ' (' + p.rank + ')' : ''}</span>
