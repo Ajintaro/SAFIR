@@ -3,7 +3,7 @@
     "unit_name": "Rettungsstation Nord",
     "role": "role1",
     "role_label": "Rettungsstation (Role 1)",
-    "default_medic": "",
+    "default_medic": "OFA Meier",
     "ui": {
         "theme": "dark",
         "language": "de"
@@ -13,8 +13,46 @@
         "model": "qwen2.5:7b"
     },
     "navigation": [
-        {"id": "role1", "label": "Role 1", "icon": "&#9769;", "subtitle": "Rettungsstation", "default": true},
-        {"id": "patients", "label": "Patienten", "icon": "&#9764;"},
-        {"id": "settings", "label": "Einstellungen", "icon": "&#9881;"}
+        {
+            "id": "role1",
+            "label": "Role 1",
+            "icon": "&#9769;",
+            "subtitle": "Rettungsstation",
+            "default": true
+        },
+        {
+            "id": "phase0",
+            "label": "Phase 0",
+            "icon": "&#9873;",
+            "subtitle": "Feldgerät"
+        },
+        {
+            "id": "role2",
+            "label": "Role 2",
+            "icon": "&#9879;",
+            "subtitle": "Rettungszentrum"
+        },
+        {
+            "id": "role3",
+            "label": "Role 3",
+            "icon": "&#127973;",
+            "subtitle": "Einsatzlazarett"
+        },
+        {
+            "id": "role4",
+            "label": "Role 4",
+            "icon": "&#127963;",
+            "subtitle": "BW-Krankenhaus"
+        },
+        {
+            "id": "patients",
+            "label": "Patienten",
+            "icon": "&#9764;"
+        },
+        {
+            "id": "settings",
+            "label": "Einstellungen",
+            "icon": "&#9881;"
+        }
     ]
 }
