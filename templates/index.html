@@ -199,11 +199,13 @@
         /* Bracket corners on cards/panels */
         [data-theme="bundeswehr"] .settings-card,
         [data-theme="bundeswehr"] .patient-card-details,
-        [data-theme="bundeswehr"] .hw-overlay,
         [data-theme="bundeswehr"] .role1-transport-card,
         [data-theme="bundeswehr"] .activity-bar {
             border-radius: 0;
             position: relative;
+        }
+        [data-theme="bundeswehr"] dialog.hw-overlay {
+            border-radius: 0;
         }
         [data-theme="bundeswehr"] .settings-card::before,
         [data-theme="bundeswehr"] .patient-card-details::before {
@@ -348,15 +350,25 @@
         .theme-toggle:hover, .hw-toggle:hover { border-color: var(--cgi-red); }
         .hw-toggle.active { border-color: var(--cgi-red); color: var(--cgi-red); }
 
-        /* Hardware Overlay */
-        .hw-overlay {
-            display: none; position: fixed; top: 52px; right: 12px;
-            width: 300px; max-height: calc(100vh - 70px); overflow-y: auto;
-            background: var(--bg-surface); border: 1px solid var(--border);
-            border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-            z-index: 1000; padding: 16px;
+        /* Hardware Overlay — <dialog> basiert, garantiert aus dem Layout-Flow */
+        dialog.hw-overlay {
+            position: fixed;
+            top: 52px;
+            right: 12px;
+            left: auto;
+            width: 300px;
+            max-height: calc(100vh - 70px);
+            overflow-y: auto;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            z-index: 1000;
+            padding: 16px;
+            color: var(--text-primary);
+            margin: 0;
         }
-        .hw-overlay.open { display: block; }
+        dialog.hw-overlay::backdrop { background: transparent; }
         .hw-overlay-header {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
@@ -1811,8 +1823,8 @@
 
 <div class="footer-badge">SAFIR v2.1 &middot; CGI Deutschland &middot; AFCEA 2026</div>
 
-<!-- HARDWARE OVERLAY (nach app-layout, vor script — position:fixed) -->
-<div class="hw-overlay" id="hw-overlay">
+<!-- HARDWARE OVERLAY — <dialog> Element, komplett außerhalb des Layout-Flows -->
+<dialog class="hw-overlay" id="hw-overlay">
     <div class="hw-overlay-header">
         <div>
             <h3><span class="card-accent"></span>Hardware Monitor</h3>
@@ -1894,7 +1906,7 @@
             </div>
         </div>
     </div>
-</div>
+</dialog>
 
 <script>
     let ws = null;
@@ -3031,41 +3043,47 @@
 
     // ---- Hardware Overlay ----
     function toggleHwOverlay() {
-        const overlay = document.getElementById('hw-overlay');
+        const dlg = document.getElementById('hw-overlay');
         const btn = document.getElementById('hw-toggle');
-        overlay.classList.toggle('open');
-        btn.classList.toggle('active');
+        if (dlg.open) {
+            dlg.close();
+            btn.classList.remove('active');
+        } else {
+            dlg.show();  // show() = non-modal, kein Backdrop-Block
+            btn.classList.add('active');
+        }
     }
 
-    // Dragging
+    // Drag-Handler für <dialog>
     (function() {
-        const overlay = document.getElementById('hw-overlay');
-        const header = overlay.querySelector('.hw-overlay-header');
-        let dragging = false, startX, startY, startLeft, startTop;
+        const dlg = document.getElementById('hw-overlay');
+        const header = dlg.querySelector('.hw-overlay-header');
+        let dragging = false, ox, oy;
 
-        header.addEventListener('mousedown', function(e) {
+        header.addEventListener('pointerdown', function(e) {
             if (e.target.closest('.hw-overlay-close')) return;
             dragging = true;
-            const rect = overlay.getBoundingClientRect();
-            startX = e.clientX; startY = e.clientY;
-            startLeft = rect.left; startTop = rect.top;
-            // Position von right/top auf left/top umstellen beim ersten Drag
-            overlay.style.left = rect.left + 'px';
-            overlay.style.top = rect.top + 'px';
-            overlay.style.right = 'auto';
+            header.setPointerCapture(e.pointerId);
+            const rect = dlg.getBoundingClientRect();
+            // Beim ersten Drag: von CSS right/top auf explizite left/top wechseln
+            dlg.style.left = rect.left + 'px';
+            dlg.style.top = rect.top + 'px';
+            dlg.style.right = 'auto';
+            ox = e.clientX - rect.left;
+            oy = e.clientY - rect.top;
             e.preventDefault();
         });
 
-        document.addEventListener('mousemove', function(e) {
+        header.addEventListener('pointermove', function(e) {
             if (!dragging) return;
-            const dx = e.clientX - startX, dy = e.clientY - startY;
-            const newLeft = Math.max(0, Math.min(startLeft + dx, window.innerWidth - overlay.offsetWidth));
-            const newTop = Math.max(0, Math.min(startTop + dy, window.innerHeight - 60));
-            overlay.style.left = newLeft + 'px';
-            overlay.style.top = newTop + 'px';
+            const x = Math.max(0, Math.min(e.clientX - ox, window.innerWidth - dlg.offsetWidth));
+            const y = Math.max(0, Math.min(e.clientY - oy, window.innerHeight - 60));
+            dlg.style.left = x + 'px';
+            dlg.style.top = y + 'px';
         });
 
-        document.addEventListener('mouseup', function() { dragging = false; });
+        header.addEventListener('pointerup', function() { dragging = false; });
+        header.addEventListener('pointercancel', function() { dragging = false; });
     })();
 
     // ---- Theme (4-state: dark → saphir → light → bundeswehr → dark) ----
