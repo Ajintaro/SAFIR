@@ -657,7 +657,7 @@ async def voice_set_triage(level: str):
 
 
 async def voice_patient_ready():
-    """Sprachbefehl: Patient fertig — Aufnahme stoppen und abschließen (KEINE Analyse)."""
+    """Sprachbefehl: Patient fertig — Aufnahme stoppen, RFID zuweisen, abschließen."""
     if not state.active_patient or state.active_patient not in state.patients:
         tts.announce_error()
         return
@@ -671,6 +671,19 @@ async def voice_patient_ready():
 
     patient = state.patients[state.active_patient]
     patient["flow_status"] = "inbound"
+
+    # RFID-Tag automatisch zuweisen (wenn noch keiner vorhanden)
+    if not patient.get("rfid_tag_id") or patient["rfid_tag_id"] not in state.rfid_map:
+        tag_id = generate_rfid_tag()
+        patient["rfid_tag_id"] = tag_id
+        state.rfid_map[tag_id] = state.active_patient
+        patient["timeline"].append({
+            "time": datetime.now().isoformat(),
+            "role": patient["current_role"],
+            "event": "rfid_assigned",
+            "details": f"RFID-Tag {tag_id} zugewiesen",
+        })
+
     patient["timeline"].append({
         "time": datetime.now().isoformat(),
         "role": patient["current_role"],
@@ -679,7 +692,7 @@ async def voice_patient_ready():
     })
     await broadcast({"type": "patient_update", "patient": patient})
     tts.announce_patient_ready()
-    await broadcast({"type": "rfid_prompt", "patient_id": state.active_patient})
+    tts.announce_rfid_linked()
 
 
 async def voice_delete_last():
@@ -733,17 +746,36 @@ async def voice_analyze_all():
 
 
 async def _run_batch_analysis(pending: list):
-    """Analysiert mehrere Patienten sequentiell — Whisper wird nur 1x entladen."""
-    whisper_was_loaded = state.model_loaded
-    try:
-        # Whisper entladen um RAM für Ollama freizugeben (~1GB)
-        if whisper_was_loaded:
-            print("Batch-Analyse: Whisper-Server wird temporär entladen...")
-            stop_whisper_server()
-            await asyncio.sleep(2)
+    """Analysiert Patienten sequentiell auf GPU.
 
+    Speichermanagement:
+    1. Vosk pausieren (kein Sprachbefehl während Analyse)
+    2. Whisper-Server entladen (GPU-RAM freigeben, ~500-1000MB)
+    3. Ollama lädt Modell auf GPU (num_gpu=99)
+    4. Alle Patienten analysieren
+    5. Ollama-Modell entladen (keep_alive=0)
+    6. Whisper-Server neu laden auf GPU
+    7. Vosk reaktivieren
+    TTS (Piper, CPU) bleibt durchgehend verfügbar.
+    """
+    whisper_was_loaded = state.model_loaded
+    vosk_was_listening = state.vosk_listening
+    loop = asyncio.get_event_loop()
+
+    try:
+        # 1. Vosk pausieren — keine Sprachbefehle während Analyse
+        state.vosk_listening = False
+        await broadcast({"type": "vosk_status", "enabled": state.vosk_enabled, "listening": False})
+
+        # 2. Whisper-Server entladen → GPU-RAM freigeben
+        if whisper_was_loaded:
+            print("GPU-Swap: Whisper-Server wird entladen...")
+            stop_whisper_server()
+            await asyncio.sleep(1)
+
+        # 3. Analyse — Ollama lädt Modell automatisch auf GPU beim ersten Call
+        print(f"GPU-Swap: Ollama {OLLAMA_MODEL} wird auf GPU geladen...")
         for pid, patient in pending:
-            # Session für diesen Patienten finden
             sid = _find_session_for_patient(pid)
             if not sid:
                 print(f"Analyse übersprungen: Keine Session für {pid}")
@@ -752,7 +784,6 @@ async def _run_batch_analysis(pending: list):
             print(f"Analysiere Patient {pid}...")
             await broadcast({"type": "analyzing_patient", "patient_id": pid})
             try:
-                # active_patient temporär setzen damit _run_analysis_for_session korrekt schreibt
                 prev_active = state.active_patient
                 state.active_patient = pid
                 result = await _run_analysis_for_session(sid)
@@ -772,15 +803,25 @@ async def _run_batch_analysis(pending: list):
         await broadcast({"type": "analysis_error", "error": str(e)})
     finally:
         state._analyzing = False
-        # Whisper wieder laden
+
+        # 4. Ollama-Modell aus GPU entladen
+        print("GPU-Swap: Ollama-Modell wird entladen...")
+        await loop.run_in_executor(None, _unload_ollama_model)
+        await asyncio.sleep(1)
+
+        # 5. Whisper-Server wieder laden auf GPU
         if whisper_was_loaded and state.model_path:
-            print("Batch-Analyse fertig: Whisper-Server wird neu geladen...")
-            loop = asyncio.get_event_loop()
+            print("GPU-Swap: Whisper-Server wird neu geladen...")
             success = await loop.run_in_executor(None, start_whisper_server, state.model_path)
             if success:
-                print(f"Whisper wieder bereit ({state.current_model})")
+                print(f"GPU-Swap: Whisper bereit ({state.current_model})")
             else:
                 print("WARNUNG: Whisper konnte nicht neu geladen werden!")
+
+        # 6. Vosk reaktivieren
+        if vosk_was_listening:
+            state.vosk_listening = True
+            await broadcast({"type": "vosk_status", "enabled": state.vosk_enabled, "listening": True})
 
 
 def _find_session_for_patient(patient_id: str) -> str | None:
@@ -1035,47 +1076,51 @@ JSON:"""
 
 
 def _call_ollama(prompt: str, label: str = "LLM") -> dict:
-    """Ruft Ollama auf mit GPU-Fallback auf CPU bei OOM."""
-    for num_gpu in [5, 0]:
-        try:
-            gpu_label = f"GPU:{num_gpu}" if num_gpu > 0 else "CPU"
-            response = httpx.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "format": "json",
-                    "options": {"num_gpu": num_gpu, "temperature": 0.1, "num_predict": 500},
-                },
-                timeout=180,
-            )
-            if response.status_code == 200:
-                result = response.json()
-                if "error" in result:
-                    print(f"{label} ({gpu_label}): Ollama-Fehler: {result['error'][:100]}")
-                    continue
-                raw = result.get("response", "{}")
-                try:
-                    extracted = json.loads(raw)
-                    print(f"{label} ({gpu_label}): {len([v for v in extracted.values() if v])} Felder extrahiert")
-                    return extracted
-                except json.JSONDecodeError:
-                    print(f"{label}: JSON Parse Fehler: {raw[:200]}")
-                    return {}
-            else:
-                print(f"{label} ({gpu_label}): HTTP {response.status_code}")
-                # Bei 500 (oft OOM) → Retry mit CPU
-                if response.status_code == 500 and num_gpu > 0:
-                    print(f"{label}: GPU OOM, Fallback auf CPU...")
-                    continue
+    """Ruft Ollama auf GPU auf (Whisper muss vorher entladen sein)."""
+    try:
+        response = httpx.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "format": "json",
+                "options": {"num_gpu": 99, "temperature": 0.1, "num_predict": 500},
+            },
+            timeout=180,
+        )
+        if response.status_code == 200:
+            result = response.json()
+            if "error" in result:
+                print(f"{label} (GPU): Ollama-Fehler: {result['error'][:100]}")
                 return {}
-        except Exception as e:
-            print(f"{label} ({gpu_label}): Fehler: {e}")
-            if num_gpu > 0:
-                continue
+            raw = result.get("response", "{}")
+            try:
+                extracted = json.loads(raw)
+                print(f"{label} (GPU): {len([v for v in extracted.values() if v])} Felder extrahiert")
+                return extracted
+            except json.JSONDecodeError:
+                print(f"{label}: JSON Parse Fehler: {raw[:200]}")
+                return {}
+        else:
+            print(f"{label} (GPU): HTTP {response.status_code}")
             return {}
-    return {}
+    except Exception as e:
+        print(f"{label} (GPU): Fehler: {e}")
+        return {}
+
+
+def _unload_ollama_model():
+    """Entlädt das Ollama-Modell aus GPU-RAM (keep_alive=0)."""
+    try:
+        httpx.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={"model": OLLAMA_MODEL, "prompt": "", "keep_alive": 0},
+            timeout=10,
+        )
+        print(f"Ollama-Modell {OLLAMA_MODEL} aus GPU entladen")
+    except Exception as e:
+        print(f"Ollama entladen Fehler: {e}")
 
 
 def run_llm_extraction(template_id: str, text: str) -> dict:
@@ -1939,16 +1984,18 @@ def run_patient_enrichment(text: str) -> dict:
 
 
 async def _run_analysis_background(sid: str):
-    """Startet KI-Analyse für eine einzelne Session — entlädt Whisper temporär für RAM."""
+    """Einzelanalyse — GPU-Swap: Whisper → Ollama → Whisper."""
     whisper_was_loaded = state.model_loaded
+    vosk_was_listening = state.vosk_listening
+    loop = asyncio.get_event_loop()
     try:
+        state.vosk_listening = False
         if whisper_was_loaded:
-            print("Analyse: Whisper-Server wird temporär entladen...")
+            print("GPU-Swap: Whisper entladen für Einzelanalyse...")
             stop_whisper_server()
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
 
         result = await _run_analysis_for_session(sid)
-        # Patient über Session-Mapping finden
         pid = state.sessions[sid].get("patient_id", state.active_patient)
         if pid and pid in state.patients:
             state.patients[pid]["analyzed"] = True
@@ -1959,14 +2006,17 @@ async def _run_analysis_background(sid: str):
         await broadcast({"type": "analysis_error", "error": str(e)})
     finally:
         state._analyzing = False
+        await loop.run_in_executor(None, _unload_ollama_model)
+        await asyncio.sleep(1)
         if whisper_was_loaded and state.model_path:
-            print("Analyse fertig: Whisper-Server wird neu geladen...")
-            loop = asyncio.get_event_loop()
+            print("GPU-Swap: Whisper neu laden...")
             success = await loop.run_in_executor(None, start_whisper_server, state.model_path)
             if success:
-                print(f"Whisper wieder bereit ({state.current_model})")
+                print(f"GPU-Swap: Whisper bereit ({state.current_model})")
             else:
                 print("WARNUNG: Whisper konnte nicht neu geladen werden!")
+        if vosk_was_listening:
+            state.vosk_listening = True
 
 
 async def _run_analysis_for_session(sid: str) -> dict:
