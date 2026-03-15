@@ -6,6 +6,7 @@
     <title>SAFIR | CGI Deutschland</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/milsymbol/dist/milsymbol.js"></script>
     <style>
         /* ============================================================
            CGI Corporate Design — SAFIR Dashboard
@@ -859,6 +860,41 @@
             width: 32px; height: 32px; display: flex; align-items: center;
             justify-content: center; font-size: 16px; font-weight: 800;
             box-shadow: 0 0 20px rgba(225,25,55,0.4);
+        }
+        /* Gelände-Layer Minimal-Marker */
+        .terrain-marker {
+            width: 12px; height: 12px; border-radius: 50%;
+            background: #00A8DC; border: 2px solid #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+        }
+        .terrain-marker.station { background: #E11937; width: 16px; height: 16px; }
+        /* Layer-Control auf der Karte */
+        .map-layer-control {
+            background: var(--bg-surface, #141428);
+            border: 1px solid var(--border, rgba(255,255,255,0.08));
+            border-radius: 6px; overflow: hidden;
+            display: flex; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        .map-layer-btn {
+            padding: 5px 10px; font-size: 10px; font-weight: 600;
+            color: var(--text-dim, #6B6B8A); background: none; border: none;
+            cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;
+            border-right: 1px solid var(--border, rgba(255,255,255,0.08));
+            transition: all 0.15s; white-space: nowrap;
+        }
+        .map-layer-btn:last-child { border-right: none; }
+        .map-layer-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
+        .map-layer-btn.active {
+            color: #fff; background: var(--accent, #E11937);
+        }
+        /* milsymbol Marker Wrapper */
+        .milsym-marker { position: relative; }
+        .milsym-marker img { display: block; }
+        .milsym-label {
+            position: absolute; bottom: -14px; left: 50%; transform: translateX(-50%);
+            font-size: 9px; font-weight: 700; color: var(--text-primary, #E0E8F5);
+            white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.5); padding: 1px 4px; border-radius: 3px;
         }
 
         @media (max-width: 900px) {
@@ -2078,12 +2114,7 @@
                         if (role1Markers[key]) {
                             role1Markers[key].setLatLng([lat, lng]);
                         } else {
-                            const icon = L.divIcon({
-                                className: 'bat-marker-wrap',
-                                html: `<div class="bat-marker">${key} <span class="bat-count">?</span></div>`,
-                                iconSize: [120, 28],
-                                iconAnchor: [60, 14],
-                            });
+                            const icon = createBatIcon(key, 0, false);
                             const marker = L.marker([lat, lng], { icon }).addTo(role1Map);
                             marker.bindPopup(`<b>${key}</b>`);
                             role1Markers[key] = marker;
@@ -3106,13 +3137,139 @@
 
     // ---- Init ----
     // ============================================================
-    // Role 1: Taktische Lagekarte
+    // Role 1: Taktische Lagekarte + NATO APP-6 Layer-System
     // ============================================================
     let role1Map = null;
     let role1Markers = {};
     let role1Patients = [];
     let role1Initialized = false;
+    let role1StationMarker = null;
+    let role1ActiveLayer = 'taktisch';  // 'taktisch' | 'medizinisch' | 'gelände'
+    let role1TileLayer = null;
 
+    // Tile-Layer Definitionen
+    const R1_TILE_LAYERS = {
+        taktisch: { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 19 },
+        medizinisch: { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 19 },
+        'gelände': { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', maxZoom: 17 },
+    };
+
+    // ============================================================
+    // NATO APP-6 Symbol-Generator (milsymbol.js)
+    // ============================================================
+    const SAFIR_SIDC = {
+        bat:     'SFGPUSM-------',  // Sanitätseinheit (Trupp)
+        role1:   'SFGPUSMT------',  // Medical Treatment Facility
+        role2:   'SFGPUSMH------',  // Hospital
+        role3:   'SFGPUSMH------',  // Hospital (größer)
+        role4:   'SFGPUSMH------',  // Hospital
+        ccp:     'SFGPUSM-------',  // Verwundetennest
+        medevac: 'SFGPUSME------',  // Medical Evacuation
+    };
+
+    function createMilSymbolIcon(type, designation, options = {}) {
+        const sidc = SAFIR_SIDC[type] || SAFIR_SIDC.bat;
+        const sym = new ms.Symbol(sidc, {
+            size: options.size || 35,
+            uniqueDesignation: designation || '',
+            type: options.typeLabel || '',
+            staffComments: options.staffComments || '',
+            additionalInformation: options.info || '',
+            standard: 'APP6',
+        });
+        const anchor = sym.getAnchor();
+        const svgUrl = sym.toDataURL();
+        return L.icon({
+            iconUrl: svgUrl,
+            iconSize: [sym.getSize().width, sym.getSize().height],
+            iconAnchor: [anchor.x, anchor.y],
+            popupAnchor: [0, -anchor.y],
+        });
+    }
+
+    function createMedicalIcon(name, patientCount, isArrived) {
+        const statusLabel = isArrived ? ' ✓' : '';
+        return L.divIcon({
+            className: 'bat-marker-wrap',
+            html: `<div class="bat-marker">${name}${statusLabel} <span class="bat-count">${patientCount}</span></div>`,
+            iconSize: [140, 28],
+            iconAnchor: [70, 14],
+        });
+    }
+
+    function createTerrainIcon(isStation) {
+        const cls = isStation ? 'terrain-marker station' : 'terrain-marker';
+        const size = isStation ? 16 : 12;
+        return L.divIcon({
+            className: '',
+            html: `<div class="${cls}"></div>`,
+            iconSize: [size, size],
+            iconAnchor: [size/2, size/2],
+        });
+    }
+
+    function createStationIcon() {
+        if (role1ActiveLayer === 'taktisch') {
+            return createMilSymbolIcon('role1', 'RettSta', { size: 45, info: 'Role 1' });
+        } else if (role1ActiveLayer === 'medizinisch') {
+            return L.divIcon({
+                className: 'station-marker-wrap',
+                html: '<div class="station-marker">R1</div>',
+                iconSize: [32, 32],
+                iconAnchor: [16, 16],
+            });
+        } else {
+            return createTerrainIcon(true);
+        }
+    }
+
+    function createBatIcon(name, patientCount, isArrived) {
+        if (role1ActiveLayer === 'taktisch') {
+            const designation = name.replace(/^BAT\s*/i, '');
+            return createMilSymbolIcon('bat', designation, {
+                size: 30,
+                info: patientCount + ' Pat.',
+                staffComments: isArrived ? 'EINGETROFFEN' : '',
+            });
+        } else if (role1ActiveLayer === 'medizinisch') {
+            return createMedicalIcon(name, patientCount, isArrived);
+        } else {
+            return createTerrainIcon(false);
+        }
+    }
+
+    // ============================================================
+    // Layer-Wechsel
+    // ============================================================
+    function role1SwitchLayer(layerName) {
+        if (layerName === role1ActiveLayer) return;
+        role1ActiveLayer = layerName;
+
+        // Buttons aktualisieren
+        document.querySelectorAll('.map-layer-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.layer === layerName);
+        });
+
+        // Tile-Layer wechseln
+        if (role1TileLayer && role1Map) {
+            role1Map.removeLayer(role1TileLayer);
+        }
+        const tileConf = R1_TILE_LAYERS[layerName] || R1_TILE_LAYERS.taktisch;
+        role1TileLayer = L.tileLayer(tileConf.url, { maxZoom: tileConf.maxZoom }).addTo(role1Map);
+
+        // Station-Marker aktualisieren
+        if (role1StationMarker) {
+            role1StationMarker.setIcon(createStationIcon());
+        }
+
+        // Alle BAT-Marker mit neuem Stil neu erzeugen
+        role1MarkerPatientCounts = {};  // Force rebuild
+        role1UpdateUI();
+    }
+
+    // ============================================================
+    // Karte initialisieren
+    // ============================================================
     function initRole1Map() {
         if (role1Initialized) {
             if (role1Map) role1Map.invalidateSize();
@@ -3120,28 +3277,36 @@
         }
         role1Initialized = true;
 
-        // Leaflet Karte initialisieren
         role1Map = L.map('role1-map', {
             zoomControl: true,
             attributionControl: false,
-        }).setView([50.7374, 7.0982], 13); // Bonn/Remagen
+        }).setView([50.7374, 7.0982], 13);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-        }).addTo(role1Map);
+        // Standard Tile-Layer
+        const tileConf = R1_TILE_LAYERS[role1ActiveLayer];
+        role1TileLayer = L.tileLayer(tileConf.url, { maxZoom: tileConf.maxZoom }).addTo(role1Map);
+
+        // Layer-Control als Leaflet Custom Control
+        const LayerControl = L.Control.extend({
+            options: { position: 'topleft' },
+            onAdd: function() {
+                const container = L.DomUtil.create('div', 'map-layer-control');
+                container.innerHTML = `
+                    <button class="map-layer-btn active" data-layer="taktisch" onclick="role1SwitchLayer('taktisch')">&#9733; Taktisch</button>
+                    <button class="map-layer-btn" data-layer="medizinisch" onclick="role1SwitchLayer('medizinisch')">&#9764; Medizinisch</button>
+                    <button class="map-layer-btn" data-layer="gelände" onclick="role1SwitchLayer('gelände')">&#9968; Gelände</button>
+                `;
+                L.DomEvent.disableClickPropagation(container);
+                return container;
+            }
+        });
+        new LayerControl().addTo(role1Map);
 
         // Rettungsstation Marker (Role 1 Position)
-        const stationIcon = L.divIcon({
-            className: 'station-marker-wrap',
-            html: '<div class="station-marker">R1</div>',
-            iconSize: [32, 32],
-            iconAnchor: [16, 16],
-        });
-        L.marker([50.7374, 7.0982], { icon: stationIcon })
+        role1StationMarker = L.marker([50.7374, 7.0982], { icon: createStationIcon() })
             .bindPopup('<b>SAFIR Rettungsstation (Role 1)</b><br>Truppenverbandsplatz')
             .addTo(role1Map);
 
-        // Daten laden
         setTimeout(() => role1Map.invalidateSize(), 200);
         role1LoadData();
         setInterval(role1LoadData, 5000);
@@ -3154,14 +3319,14 @@
                 role1Patients = res.patients;
                 role1UpdateUI();
             }
-        } catch (e) { /* Backend hat ggf. keinen /api/patients Endpunkt */ }
+        } catch (e) {}
     }
 
     // R1 Station Position
     const R1_POS = { lat: 50.7374, lng: 7.0982 };
-    let role1CollapsedCards = {};  // Explizit geöffnete Cards merken (Standard: eingeklappt)
-    let role1DefaultCollapsed = true;  // Standard: alle eingeklappt
-    let role1Positions = {};      // Cached positions
+    let role1CollapsedCards = {};
+    let role1DefaultCollapsed = true;
+    let role1Positions = {};
 
     function haversineKm(lat1, lon1, lat2, lon2) {
         const R = 6371;
@@ -3248,18 +3413,17 @@
         role1CollapsedCards[unit] = card.classList.contains('collapsed');
     }
 
-    let role1MarkerPatientCounts = {};  // Cached count per unit to avoid icon rebuild flicker
+    let role1MarkerPatientCounts = {};
 
     async function role1UpdateMapMarkers(bySource) {
         if (!role1Map) return;
 
-        // Positionen vom Backend holen
         let positions = {};
         try {
             const posRes = await api('/api/positions');
             positions = posRes.positions || {};
         } catch(e) {}
-        role1Positions = positions;  // Cache for distance display
+        role1Positions = positions;
 
         Object.entries(bySource).forEach(([src, pts]) => {
             const pos = positions[src];
@@ -3279,37 +3443,25 @@
             const km = haversineKm(lat, lng, R1_POS.lat, R1_POS.lng);
             const distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
             const isArrived = role1ArrivedBats && role1ArrivedBats[src];
-            const statusLabel = isArrived ? ' ✓' : '';
 
             const popupContent = `<b>${src}</b>${isArrived ? ' — <span style="color:#2ECC71">Eingetroffen</span>' : ''}<br>${distStr} bis R1<br>${pts.length} Patient(en)<br>${pts.map(p => (p.triage || '?') + ' ' + (p.name || p.patient_id || '')).join('<br>')}`;
 
+            // Cache-Key: Patientenzahl + Layer + Ankunft
+            const cacheKey = `${pts.length}_${role1ActiveLayer}_${isArrived ? 1 : 0}`;
+
             if (role1Markers[src]) {
-                // Position sanft aktualisieren (kein Flackern)
                 role1Markers[src].setLatLng([lat, lng]);
-                // Icon NUR neu setzen wenn sich Patientenzahl oder Ankunftsstatus geändert hat
-                const prevCount = role1MarkerPatientCounts[src];
-                if (prevCount !== pts.length + statusLabel) {
-                    const icon = L.divIcon({
-                        className: 'bat-marker-wrap',
-                        html: `<div class="bat-marker">${src}${statusLabel} <span class="bat-count">${pts.length}</span></div>`,
-                        iconSize: [140, 28],
-                        iconAnchor: [70, 14],
-                    });
-                    role1Markers[src].setIcon(icon);
-                    role1MarkerPatientCounts[src] = pts.length + statusLabel;
+                if (role1MarkerPatientCounts[src] !== cacheKey) {
+                    role1Markers[src].setIcon(createBatIcon(src, pts.length, isArrived));
+                    role1MarkerPatientCounts[src] = cacheKey;
                 }
                 role1Markers[src].setPopupContent(popupContent);
             } else {
-                const icon = L.divIcon({
-                    className: 'bat-marker-wrap',
-                    html: `<div class="bat-marker">${src}${statusLabel} <span class="bat-count">${pts.length}</span></div>`,
-                    iconSize: [140, 28],
-                    iconAnchor: [70, 14],
-                });
+                const icon = createBatIcon(src, pts.length, isArrived);
                 const marker = L.marker([lat, lng], { icon }).addTo(role1Map);
                 marker.bindPopup(popupContent);
                 role1Markers[src] = marker;
-                role1MarkerPatientCounts[src] = pts.length + statusLabel;
+                role1MarkerPatientCounts[src] = cacheKey;
             }
         });
 
