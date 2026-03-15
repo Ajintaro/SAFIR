@@ -13,6 +13,7 @@
            Primary: #E11937 (CGI Red)
            ============================================================ */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap');
 
         :root {
             --accent: #E11937;
@@ -89,27 +90,191 @@
         }
 
         [data-theme="bundeswehr"] {
-            --bg-primary: #0D1117;
-            --bg-surface: #161B22;
-            --bg-surface2: #1A2332;
-            --bg-elevated: #1E293B;
-            --border: #1E3A5F;
-            --border-light: #264A6E;
-            --text-primary: #C9D1D9;
-            --text-secondary: #8B949E;
-            --text-dim: #6B7D8E;
-            --logo-color: #0A6E9E;
-            --accent: #0A6E9E;
-            --accent-dark: #003B5C;
-            --accent-light: rgba(10, 110, 158, 0.15);
-            --accent-glow: rgba(10, 110, 158, 0.4);
-            --cgi-red: #003B5C;
-            --cgi-red-dark: #002A45;
-            --cgi-red-light: rgba(0, 59, 92, 0.15);
-            --cgi-red-glow: rgba(0, 59, 92, 0.30);
-            --success: #3FB950;
-            --warning: #D29922;
-            --info: #58A6FF;
+            --bg-primary: #0f1209;
+            --bg-surface: #1a1f14;
+            --bg-surface2: #222a1a;
+            --bg-elevated: #2a3420;
+            --border: #3a4a2e;
+            --border-light: #5a7a3e;
+            --text-primary: #b8c4a0;
+            --text-secondary: #8a9a72;
+            --text-dim: #6a7a58;
+            --logo-color: #c8b878;
+            --accent: #c8b878;
+            --accent-dark: #a09060;
+            --accent-light: rgba(200, 184, 120, 0.12);
+            --accent-glow: rgba(200, 184, 120, 0.25);
+            --cgi-red: #c8b878;
+            --cgi-red-dark: #a09060;
+            --cgi-red-light: rgba(200, 184, 120, 0.10);
+            --cgi-red-glow: rgba(200, 184, 120, 0.20);
+            --success: #5a9e3a;
+            --warning: #d4871a;
+            --danger: #cc2222;
+            --info: #c8b878;
+            --radius: 0px;
+            --radius-lg: 0px;
+        }
+
+        /* Bundeswehr Tactical HUD — Typografie + Komponenten-Override */
+        [data-theme="bundeswehr"] body,
+        [data-theme="bundeswehr"] {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+            background-image: repeating-linear-gradient(
+                0deg, transparent, transparent 28px,
+                rgba(58,74,46,0.05) 28px, rgba(58,74,46,0.05) 29px
+            );
+        }
+        [data-theme="bundeswehr"] input,
+        [data-theme="bundeswehr"] select,
+        [data-theme="bundeswehr"] textarea,
+        [data-theme="bundeswehr"] .badge,
+        [data-theme="bundeswehr"] code,
+        [data-theme="bundeswehr"] .pt-time,
+        [data-theme="bundeswehr"] .metric-value,
+        [data-theme="bundeswehr"] .toast {
+            font-family: 'Share Tech Mono', monospace;
+        }
+        [data-theme="bundeswehr"] .btn,
+        [data-theme="bundeswehr"] .nav-label,
+        [data-theme="bundeswehr"] .settings-nav-item,
+        [data-theme="bundeswehr"] .settings-card-title,
+        [data-theme="bundeswehr"] .settings-title,
+        [data-theme="bundeswehr"] summary,
+        [data-theme="bundeswehr"] .panel-header,
+        [data-theme="bundeswehr"] .unit-name,
+        [data-theme="bundeswehr"] .app-title .name {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+        [data-theme="bundeswehr"] .header {
+            border-bottom: 1px solid #3a4a2e;
+        }
+        [data-theme="bundeswehr"] .btn {
+            border-radius: 0;
+        }
+        [data-theme="bundeswehr"] .btn:hover {
+            background: rgba(58,74,46,0.4);
+            border-color: #c8b878;
+        }
+        [data-theme="bundeswehr"] .btn-cgi,
+        [data-theme="bundeswehr"] .btn-cgi:hover {
+            background: #c8b878;
+            color: #0f1209;
+            border-color: #c8b878;
+        }
+        [data-theme="bundeswehr"] .badge {
+            border-radius: 0;
+            font-size: 9px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+        [data-theme="bundeswehr"] .sidebar {
+            border-right: 1px solid #3a4a2e;
+            background: #0f1209;
+        }
+        [data-theme="bundeswehr"] .nav-item.active {
+            border-left: 2px solid #c8b878;
+            background: rgba(200, 184, 120, 0.08);
+        }
+        [data-theme="bundeswehr"] .toast {
+            border-radius: 0;
+            border: 1px solid #3a4a2e;
+        }
+        [data-theme="bundeswehr"] input,
+        [data-theme="bundeswehr"] select,
+        [data-theme="bundeswehr"] textarea {
+            border-radius: 0;
+            background: rgba(15,18,9,0.8);
+            border: 1px solid #3a4a2e;
+        }
+        [data-theme="bundeswehr"] input:focus,
+        [data-theme="bundeswehr"] select:focus {
+            border-color: #c8b878;
+            box-shadow: 0 0 0 1px #5a7a3e;
+        }
+        /* Bracket corners on cards/panels */
+        [data-theme="bundeswehr"] .settings-card,
+        [data-theme="bundeswehr"] .patient-card-details,
+        [data-theme="bundeswehr"] .hw-overlay,
+        [data-theme="bundeswehr"] .role1-transport-card,
+        [data-theme="bundeswehr"] .activity-bar {
+            border-radius: 0;
+            position: relative;
+        }
+        [data-theme="bundeswehr"] .settings-card::before,
+        [data-theme="bundeswehr"] .patient-card-details::before {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: -1px;
+            width: 8px;
+            height: 8px;
+            border: 2px solid #c8b878;
+            border-right: none;
+            border-bottom: none;
+            pointer-events: none;
+            z-index: 1;
+        }
+        [data-theme="bundeswehr"] .settings-card::after,
+        [data-theme="bundeswehr"] .patient-card-details::after {
+            content: '';
+            position: absolute;
+            top: -1px;
+            right: -1px;
+            width: 8px;
+            height: 8px;
+            border: 2px solid #c8b878;
+            border-left: none;
+            border-bottom: none;
+            pointer-events: none;
+            z-index: 1;
+        }
+        /* Bar fills */
+        [data-theme="bundeswehr"] .bar-fill {
+            background: #c8b878;
+        }
+        /* Record button */
+        [data-theme="bundeswehr"] .record-btn {
+            border-radius: 0;
+            border: 2px solid #5a7a3e;
+        }
+        [data-theme="bundeswehr"] .record-btn.active {
+            border-color: #cc2222;
+            background: rgba(204,34,34,0.15);
+        }
+        /* Triage dots — keep round */
+        [data-theme="bundeswehr"] .triage-dot {
+            border-radius: 4px;
+        }
+        /* Activity bar */
+        [data-theme="bundeswehr"] .activity-bar {
+            border-bottom: 1px solid #5a7a3e;
+            background: #1a1f14;
+        }
+        [data-theme="bundeswehr"] .activity-bar .activity-progress::after {
+            background: #c8b878;
+        }
+        /* Vosk indicator */
+        [data-theme="bundeswehr"] .vosk-indicator {
+            border-radius: 0;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+        /* Scrollbar */
+        [data-theme="bundeswehr"] ::-webkit-scrollbar {
+            width: 4px;
+        }
+        [data-theme="bundeswehr"] ::-webkit-scrollbar-track {
+            background: #0f1209;
+        }
+        [data-theme="bundeswehr"] ::-webkit-scrollbar-thumb {
+            background: #3a4a2e;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
