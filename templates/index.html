@@ -3340,6 +3340,8 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
+    let role1PrevBySource = {};  // Cache für inkrementelle Updates
+
     function role1UpdateUI() {
         const patients = role1Patients;
 
@@ -3363,48 +3365,129 @@
         });
 
         const list = document.getElementById('r1-transport-list');
+        const triageColors = { T1: '#FF0000', T2: '#FF8800', T3: '#00AA00', T4: '#4444AA' };
+
         if (Object.keys(bySource).length === 0) {
             list.innerHTML = '<div class="empty"><div class="icon">&#9877;</div><div>Warte auf Meldungen von Feldgeraeten...</div></div>';
+            role1PrevBySource = {};
+            role1UpdateMapMarkers(bySource);
             return;
         }
 
-        const triageColors = { T1: '#FF0000', T2: '#FF8800', T3: '#00AA00', T4: '#4444AA' };
-        list.innerHTML = Object.entries(bySource).map(([src, pts]) => {
-            // Standard: eingeklappt, außer der User hat explizit aufgeklappt
-            const isCollapsed = (role1CollapsedCards[src] !== undefined) ? role1CollapsedCards[src] : role1DefaultCollapsed;
-            const collapsed = isCollapsed ? ' collapsed' : '';
+        // Leere-Platzhalter entfernen falls vorhanden
+        const emptyEl = list.querySelector('.empty');
+        if (emptyEl) emptyEl.remove();
+
+        // Inkrementelles Update: Bestehende Cards updaten, neue hinzufügen
+        const existingCards = {};
+        list.querySelectorAll('.role1-transport-card').forEach(card => {
+            existingCards[card.dataset.unit] = card;
+        });
+
+        Object.entries(bySource).forEach(([src, pts]) => {
+            const isArrived = role1ArrivedBats && role1ArrivedBats[src];
             const pos = role1Positions[src];
-            let distHtml = '';
+            let distStr = '';
             if (pos && pos.lat && pos.lon) {
                 const km = haversineKm(pos.lat, pos.lon, R1_POS.lat, R1_POS.lng);
-                distHtml = `<span class="unit-dist">${km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km'}</span>`;
+                distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
             }
-            const plist = pts.map(p => {
-                const t = (p.triage || 'T3').toUpperCase();
-                const tClass = t === 'T1' ? ' t1' : '';
-                const injuries = (p.injuries || []).join(', ') || p.status || '';
-                const pid = p.patient_id || '';
-                return `<div class="role1-tp-patient${tClass}" onclick="role1ShowPatientDetail('${pid}')" title="Details anzeigen">
-                    <div class="role1-tp-triage" style="background:${triageColors[t] || '#666'}">${t}</div>
-                    <span class="role1-tp-name">${p.name || pid || '?'}</span>
-                    <span class="role1-tp-injury">${injuries}</span>
-                </div>`;
-            }).join('');
-            const isArrived = role1ArrivedBats && role1ArrivedBats[src];
-            const arrivedClass = isArrived ? ' arrived' : '';
-            const arrivedBadge = isArrived ? '<span class="role1-arrived-badge">✓ Eingetroffen</span>' : '';
-            return `<div class="role1-transport-card${collapsed}${arrivedClass}" data-unit="${src}">
-                <div class="role1-transport-header" onclick="role1ToggleCard(this)">
-                    <div class="unit-icon">&#9873;</div>
-                    <span class="unit-name">${src}</span>
-                    ${arrivedBadge}
-                    ${distHtml}
-                    <span class="unit-meta">${pts.length} Pat.</span>
-                    <span class="toggle-arrow">&#9660;</span>
-                </div>
-                <div class="role1-transport-patients">${plist}</div>
-            </div>`;
-        }).join('');
+
+            const existingCard = existingCards[src];
+            if (existingCard) {
+                // Card existiert — nur Inhalte aktualisieren (kein DOM-Rebuild)
+                const metaEl = existingCard.querySelector('.unit-meta');
+                if (metaEl) metaEl.textContent = pts.length + ' Pat.';
+
+                // Distanz aktualisieren
+                let distEl = existingCard.querySelector('.unit-dist');
+                if (distStr) {
+                    if (distEl) {
+                        distEl.textContent = distStr;
+                    } else {
+                        distEl = document.createElement('span');
+                        distEl.className = 'unit-dist';
+                        distEl.textContent = distStr;
+                        const meta = existingCard.querySelector('.unit-meta');
+                        if (meta) meta.parentNode.insertBefore(distEl, meta);
+                    }
+                }
+
+                // Arrived-Badge
+                if (isArrived && !existingCard.classList.contains('arrived')) {
+                    existingCard.classList.add('arrived');
+                    const header = existingCard.querySelector('.role1-transport-header');
+                    if (header && !header.querySelector('.role1-arrived-badge')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'role1-arrived-badge';
+                        badge.textContent = '✓ Eingetroffen';
+                        const nameEl = header.querySelector('.unit-name');
+                        if (nameEl) nameEl.after(badge);
+                    }
+                }
+
+                // Patientenliste NUR aktualisieren wenn sich Anzahl geändert hat
+                const prevPts = role1PrevBySource[src] || [];
+                if (prevPts.length !== pts.length) {
+                    const patientsDiv = existingCard.querySelector('.role1-transport-patients');
+                    if (patientsDiv) {
+                        patientsDiv.innerHTML = pts.map(p => {
+                            const t = (p.triage || 'T3').toUpperCase();
+                            const tClass = t === 'T1' ? ' t1' : '';
+                            const injuries = (p.injuries || []).join(', ') || p.status || '';
+                            const pid = p.patient_id || '';
+                            return `<div class="role1-tp-patient${tClass}" onclick="role1ShowPatientDetail('${pid}')" title="Details anzeigen">
+                                <div class="role1-tp-triage" style="background:${triageColors[t] || '#666'}">${t}</div>
+                                <span class="role1-tp-name">${p.name || pid || '?'}</span>
+                                <span class="role1-tp-injury">${injuries}</span>
+                            </div>`;
+                        }).join('');
+                    }
+                }
+
+                delete existingCards[src];  // Verarbeitet
+            } else {
+                // Neue Card erstellen
+                const isCollapsed = (role1CollapsedCards[src] !== undefined) ? role1CollapsedCards[src] : role1DefaultCollapsed;
+                const collapsed = isCollapsed ? ' collapsed' : '';
+                const arrivedClass = isArrived ? ' arrived' : '';
+                const arrivedBadge = isArrived ? '<span class="role1-arrived-badge">✓ Eingetroffen</span>' : '';
+                const distHtml = distStr ? `<span class="unit-dist">${distStr}</span>` : '';
+
+                const plist = pts.map(p => {
+                    const t = (p.triage || 'T3').toUpperCase();
+                    const tClass = t === 'T1' ? ' t1' : '';
+                    const injuries = (p.injuries || []).join(', ') || p.status || '';
+                    const pid = p.patient_id || '';
+                    return `<div class="role1-tp-patient${tClass}" onclick="role1ShowPatientDetail('${pid}')" title="Details anzeigen">
+                        <div class="role1-tp-triage" style="background:${triageColors[t] || '#666'}">${t}</div>
+                        <span class="role1-tp-name">${p.name || pid || '?'}</span>
+                        <span class="role1-tp-injury">${injuries}</span>
+                    </div>`;
+                }).join('');
+
+                const cardDiv = document.createElement('div');
+                cardDiv.className = `role1-transport-card${collapsed}${arrivedClass}`;
+                cardDiv.dataset.unit = src;
+                cardDiv.innerHTML = `
+                    <div class="role1-transport-header" onclick="role1ToggleCard(this)">
+                        <div class="unit-icon">&#9873;</div>
+                        <span class="unit-name">${src}</span>
+                        ${arrivedBadge}
+                        ${distHtml}
+                        <span class="unit-meta">${pts.length} Pat.</span>
+                        <span class="toggle-arrow">&#9660;</span>
+                    </div>
+                    <div class="role1-transport-patients">${plist}</div>
+                `;
+                list.appendChild(cardDiv);
+            }
+        });
+
+        // Cards entfernen deren Einheit nicht mehr existiert
+        Object.values(existingCards).forEach(card => card.remove());
+
+        role1PrevBySource = bySource;
 
         // Map Marker aktualisieren
         role1UpdateMapMarkers(bySource);
@@ -3746,6 +3829,7 @@
         role1Patients = [];
         role1CollapsedCards = {};
         role1MilSymCache = {};
+        role1PrevBySource = {};
         role1UpdateUI();
         showToast('Simulation zurückgesetzt', '&#8634;');
     }
