@@ -140,6 +140,8 @@
     },
     "device_id": "jetson-01",
     "unit_name": "BAT Alpha42",
+    "unit_role": "BAT",
+    "system_name": "Jetson Orin Nano",
     "default_medic": "OFA Hugendubel",
     "ui": {
         "theme": "dark",

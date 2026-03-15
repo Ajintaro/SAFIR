@@ -1792,10 +1792,11 @@ async def receive_heartbeat(body: dict):
         return {"error": "device_id fehlt"}
     state.peers[device_id] = {
         "unit_name": body.get("unit_name", "Unbekannt"),
+        "unit_role": body.get("unit_role", ""),
+        "system_name": body.get("system_name", ""),
         "device_id": device_id,
         "ip": body.get("ip", ""),
         "port": body.get("port", 8080),
-        "role": body.get("role", ""),
         "last_seen": datetime.now().isoformat(),
         "patient_count": body.get("patient_count", 0),
     }
@@ -1817,10 +1818,12 @@ async def get_peers():
     cfg = load_config()
     own = {
         "unit_name": cfg.get("unit_name", ""),
+        "unit_role": cfg.get("unit_role", ""),
+        "system_name": cfg.get("system_name", ""),
         "device_id": cfg.get("device_id", ""),
         "ip": "127.0.0.1",
         "port": 8080,
-        "role": "self",
+        "is_self": True,
         "last_seen": now.isoformat(),
         "patient_count": len(state.patients),
     }
@@ -1843,9 +1846,10 @@ async def _heartbeat_loop():
             payload = {
                 "device_id": own_device_id,
                 "unit_name": own_unit_name,
-                "ip": "",  # Wird vom Empfänger nicht gebraucht
+                "unit_role": cfg.get("unit_role", ""),
+                "system_name": cfg.get("system_name", ""),
+                "ip": "",
                 "port": 8080,
-                "role": "field",
                 "patient_count": len(state.patients),
             }
 

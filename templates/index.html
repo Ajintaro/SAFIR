@@ -1248,11 +1248,6 @@
             <span id="vosk-label">Sprache aus</span>
         </div>
         <span class="badge badge-err" id="badge-status" style="display:none"></span>
-        <span class="badge" id="badge-backend" style="display:none" title="Leitstelle-Verbindung">
-            <span class="ws-dot" id="backend-dot" style="background:#cc0000"></span>
-            <span id="backend-label">Leitstelle</span>
-        </span>
-        <span class="badge badge-ok" id="badge-ws"><span class="ws-dot" id="ws-dot"></span> Server verbunden</span>
         <span class="badge" id="badge-peers" onclick="togglePeersDialog()" style="cursor:pointer" title="Netzwerk-Teilnehmer">
             <span class="ws-dot" style="background:var(--success)"></span>
             <span id="peers-label">1 Teilnehmer</span>
@@ -2299,15 +2294,8 @@
     function connectWS() {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${proto}//${location.host}/ws`);
-        ws.onopen = () => {
-            const b = document.getElementById('badge-ws');
-            b.className = 'badge badge-ok'; b.innerHTML = '<span class="ws-dot" id="ws-dot"></span> Server verbunden';
-        };
-        ws.onclose = () => {
-            const b = document.getElementById('badge-ws');
-            b.className = 'badge badge-err'; b.innerHTML = '<span class="ws-dot" id="ws-dot"></span> Server getrennt';
-            setTimeout(connectWS, 3000);
-        };
+        ws.onopen = () => {};
+        ws.onclose = () => { setTimeout(connectWS, 3000); };
         ws.onmessage = (event) => handleWSMessage(JSON.parse(event.data));
     }
 
@@ -3097,18 +3085,23 @@
         list.innerHTML = res.peers.map(p => {
             const lastSeen = new Date(p.last_seen);
             const ageSec = (now - lastSeen.getTime()) / 1000;
-            const isSelf = p.role === 'self';
+            const isSelf = p.is_self;
             const isOnline = isSelf || ageSec < 60;
             const dotColor = isOnline ? 'var(--success)' : ageSec < 300 ? 'var(--warning)' : 'var(--text-dim)';
             const statusText = isSelf ? 'LOKAL' : isOnline ? 'ONLINE' : ageSec < 3600 ? Math.floor(ageSec / 60) + 'm' : Math.floor(ageSec / 3600) + 'h';
             const patients = p.patient_count ? `${p.patient_count} Pat.` : '';
-            return `<div style="display:flex;align-items:center;gap:8px;padding:4px 6px;background:var(--bg-surface2);border-left:2px solid ${dotColor}">
+            const role = p.unit_role || '';
+            const sys = p.system_name || p.device_id;
+            return `<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;background:var(--bg-surface2);border-left:2px solid ${dotColor}">
                 <span class="ws-dot" style="background:${dotColor};flex-shrink:0"></span>
                 <div style="flex:1;min-width:0">
-                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.unit_name || p.device_id}</div>
-                    <div style="font-size:9px;color:var(--text-dim)">${p.device_id} ${patients}</div>
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.unit_name || p.device_id}</span>
+                        ${role ? `<span style="font-size:8px;padding:1px 4px;border:1px solid var(--border-light);color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;flex-shrink:0">${role}</span>` : ''}
+                    </div>
+                    <div style="font-size:9px;color:var(--text-dim)">${sys} ${patients ? '· ' + patients : ''}</div>
                 </div>
-                <span style="font-size:9px;font-weight:600;color:${dotColor}">${statusText}</span>
+                <span style="font-size:9px;font-weight:600;color:${dotColor};flex-shrink:0">${statusText}</span>
             </div>`;
         }).join('');
         // Badge aktualisieren
@@ -3647,23 +3640,7 @@
     }
 
     function updateBackendBadge(reachable) {
-        const badge = document.getElementById('badge-backend');
-        const dot = document.getElementById('backend-dot');
-        const label = document.getElementById('backend-label');
-        badge.style.display = '';
-        if (reachable === true) {
-            badge.className = 'badge badge-ok';
-            dot.style.background = '#00cc44';
-            label.textContent = 'Leitstelle';
-        } else if (reachable === false) {
-            badge.className = 'badge badge-err';
-            dot.style.background = '#cc0000';
-            label.textContent = 'Leitstelle offline';
-        } else {
-            badge.className = 'badge badge-warn';
-            dot.style.background = '#ff8800';
-            label.textContent = 'Leitstelle';
-        }
+        // Backend-Status wird jetzt über Peers angezeigt
     }
 
     // ---- Init ----
