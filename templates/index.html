@@ -2112,13 +2112,20 @@
                     }
 
                     if (role1Map) {
+                        const posKey = `${lat.toFixed(6)}_${lng.toFixed(6)}`;
                         if (role1Markers[key]) {
-                            role1Markers[key].setLatLng([lat, lng]);
+                            // Position nur setzen wenn sie sich bewegt hat
+                            if (role1MarkerPositions[key] !== posKey) {
+                                role1Markers[key].setLatLng([lat, lng]);
+                                role1MarkerPositions[key] = posKey;
+                            }
                         } else {
-                            const icon = createBatIcon(key, 0, false);
+                            const icon = createBatIconCached(key, 0, false);
                             const marker = L.marker([lat, lng], { icon }).addTo(role1Map);
                             marker.bindPopup(`<b>${key}</b>`);
                             role1Markers[key] = marker;
+                            role1MarkerPositions[key] = posKey;
+                            role1MarkerPatientCounts[key] = `0_${role1ActiveLayer}_0`;
                         }
                     }
                 }
@@ -3265,8 +3272,11 @@
 
         // Alle BAT-Marker mit neuem Stil neu erzeugen
         role1MarkerPatientCounts = {};  // Force rebuild
+        role1MarkerPositions = {};
         role1MilSymCache = {};  // SVG-Cache leeren
-        role1UpdateUI();
+        if (Object.keys(role1LastBySource).length > 0) {
+            role1UpdateMapMarkers(role1LastBySource);
+        }
     }
 
     // ============================================================
@@ -3341,6 +3351,7 @@
     }
 
     let role1PrevBySource = {};  // Cache für inkrementelle Updates
+    let role1LastBySource = {};  // Aktuellste Gruppierung für Marker-Updates
 
     function role1UpdateUI() {
         const patients = role1Patients;
@@ -3370,7 +3381,7 @@
         if (Object.keys(bySource).length === 0) {
             list.innerHTML = '<div class="empty"><div class="icon">&#9877;</div><div>Warte auf Meldungen von Feldgeraeten...</div></div>';
             role1PrevBySource = {};
-            role1UpdateMapMarkers(bySource);
+            role1LastBySource = {};
             return;
         }
 
@@ -3488,9 +3499,7 @@
         Object.values(existingCards).forEach(card => card.remove());
 
         role1PrevBySource = bySource;
-
-        // Map Marker aktualisieren
-        role1UpdateMapMarkers(bySource);
+        role1LastBySource = bySource;  // Für Marker-Updates verfügbar halten
     }
 
     function role1ToggleCard(headerEl) {
@@ -3516,20 +3525,20 @@
         return role1MilSymCache[cacheKey];
     }
 
+    let role1MarkerPositions = {};  // Letzte bekannte Position pro Marker
+
     function role1UpdateMapMarkers(bySource) {
         if (!role1Map) return;
-
-        // Positionen aus Cache verwenden (werden via WebSocket aktualisiert)
         const positions = role1Positions;
 
         Object.entries(bySource).forEach(([src, pts]) => {
             const pos = positions[src];
             if (!pos) {
-                // Kein GPS — Marker nur entfernen wenn vorher vorhanden
                 if (role1Markers[src]) {
                     role1Map.removeLayer(role1Markers[src]);
                     delete role1Markers[src];
                     delete role1MarkerPatientCounts[src];
+                    delete role1MarkerPositions[src];
                 }
                 return;
             }
@@ -3538,29 +3547,31 @@
             const lng = pos.lon || pos.lng || 0;
             if (lat === 0 && lng === 0) return;
 
-            const km = haversineKm(lat, lng, R1_POS.lat, R1_POS.lng);
-            const distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
             const isArrived = role1ArrivedBats && role1ArrivedBats[src];
-
-            const popupContent = `<b>${src}</b>${isArrived ? ' — <span style="color:#2ECC71">Eingetroffen</span>' : ''}<br>${distStr} bis R1<br>${pts.length} Patient(en)<br>${pts.map(p => (p.triage || '?') + ' ' + (p.name || p.patient_id || '')).join('<br>')}`;
-
-            // Cache-Key: Nur Icon neu setzen wenn sich wirklich etwas geändert hat
             const cacheKey = `${pts.length}_${role1ActiveLayer}_${isArrived ? 1 : 0}`;
+            const posKey = `${lat.toFixed(6)}_${lng.toFixed(6)}`;
 
             if (role1Markers[src]) {
-                role1Markers[src].setLatLng([lat, lng]);
-                // Icon NUR tauschen wenn Cache-Key anders ist
+                // Position nur setzen wenn sie sich tatsächlich geändert hat
+                if (role1MarkerPositions[src] !== posKey) {
+                    role1Markers[src].setLatLng([lat, lng]);
+                    role1MarkerPositions[src] = posKey;
+                }
+                // Icon nur tauschen wenn Cache-Key anders ist
                 if (role1MarkerPatientCounts[src] !== cacheKey) {
                     role1Markers[src].setIcon(createBatIconCached(src, pts.length, isArrived));
                     role1MarkerPatientCounts[src] = cacheKey;
                 }
-                role1Markers[src].setPopupContent(popupContent);
             } else {
+                // Neuer Marker
                 const icon = createBatIconCached(src, pts.length, isArrived);
                 const marker = L.marker([lat, lng], { icon }).addTo(role1Map);
-                marker.bindPopup(popupContent);
+                const km = haversineKm(lat, lng, R1_POS.lat, R1_POS.lng);
+                const distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
+                marker.bindPopup(`<b>${src}</b><br>${distStr} bis R1<br>${pts.length} Patient(en)`);
                 role1Markers[src] = marker;
                 role1MarkerPatientCounts[src] = cacheKey;
+                role1MarkerPositions[src] = posKey;
             }
         });
 
@@ -3569,16 +3580,21 @@
                 role1Map.removeLayer(role1Markers[key]);
                 delete role1Markers[key];
                 delete role1MarkerPatientCounts[key];
+                delete role1MarkerPositions[key];
             }
         });
     }
 
-    // Positionen periodisch vom Backend holen (nicht bei jedem UI-Update)
+    // Positionen periodisch vom Backend holen — einziger Ort für Marker-Updates
     async function role1FetchPositions() {
         try {
             const posRes = await api('/api/positions');
             role1Positions = posRes.positions || {};
         } catch(e) {}
+        // Marker nur hier aktualisieren (nicht in role1UpdateUI)
+        if (Object.keys(role1LastBySource).length > 0) {
+            role1UpdateMapMarkers(role1LastBySource);
+        }
     }
 
     function role1AddEvent(text, unitName, isPatient) {
@@ -3825,11 +3841,13 @@
         });
         role1Markers = {};
         role1MarkerPatientCounts = {};
+        role1MarkerPositions = {};
         role1Positions = {};
         role1Patients = [];
         role1CollapsedCards = {};
         role1MilSymCache = {};
         role1PrevBySource = {};
+        role1LastBySource = {};
         role1UpdateUI();
         showToast('Simulation zurückgesetzt', '&#8634;');
     }
