@@ -47,6 +47,7 @@ class AppState:
         self.positions: dict = {}         # unit_name -> {lat, lon, timestamp, ...}
         self.ws_clients: list = []
         self.events: list = []            # Chronologischer Event-Feed
+        self.peers: dict = {}             # device_id -> {unit_name, ip, port, ...}
 
 state = AppState()
 
@@ -161,6 +162,7 @@ async def websocket_endpoint(ws: WebSocket):
         "transports": state.transports,
         "positions": state.positions,
         "events": state.events[-20:],
+        "peers": list(state.peers.values()),
     })
     try:
         while True:
@@ -525,6 +527,37 @@ async def simulation_reset():
     return {"status": "ok", "removed": len(sim_ids)}
 
 
+@app.post("/api/data/reset")
+async def data_reset():
+    """Löscht ALLE Patientendaten, Transporte, Positionen und Events.
+    Für einen sauberen Demo-Neustart."""
+    # Alle Patienten-Dateien löschen
+    count = len(state.patients)
+    for filepath in PATIENTS_DIR.glob("*.json"):
+        filepath.unlink()
+    state.patients.clear()
+
+    # Transporte, Positionen, Events leeren
+    state.transports.clear()
+    state.positions.clear()
+    state.events.clear()
+
+    # state.json zurücksetzen
+    save_state()
+
+    # Alle Clients über leeren Zustand informieren
+    await broadcast({
+        "type": "init",
+        "patients": [],
+        "transports": {},
+        "positions": {},
+        "events": [],
+    })
+
+    print(f"Daten-Reset: {count} Patienten gelöscht")
+    return {"status": "ok", "removed": count}
+
+
 # ---------------------------------------------------------------------------
 # LLM: Vorbereitungshinweise für eintreffende Patienten
 # ---------------------------------------------------------------------------
@@ -571,6 +604,96 @@ Maximal 6 Punkte. Deutsch. Knapp und präzise."""
 
 
 # ---------------------------------------------------------------------------
+# Peer Discovery / Netzwerk-Teilnehmer
+# ---------------------------------------------------------------------------
+PEER_TIMEOUT_HOURS = 5
+
+
+@app.post("/api/heartbeat")
+async def receive_heartbeat(body: dict, request: Request):
+    """Empfängt Heartbeat von einem Netzwerk-Teilnehmer (z.B. Jetson)."""
+    device_id = body.get("device_id", "")
+    if not device_id:
+        return {"error": "device_id fehlt"}
+    # IP aus Request extrahieren falls nicht im Body
+    ip = body.get("ip", "") or (request.client.host if request.client else "")
+    state.peers[device_id] = {
+        "unit_name": body.get("unit_name", "Unbekannt"),
+        "unit_role": body.get("unit_role", ""),
+        "system_name": body.get("system_name", ""),
+        "device_id": device_id,
+        "ip": ip,
+        "port": body.get("port", 8080),
+        "last_seen": datetime.now().isoformat(),
+        "patient_count": body.get("patient_count", 0),
+    }
+    return {"status": "ok", "peers": len(state.peers)}
+
+
+@app.get("/api/peers")
+async def get_peers():
+    """Gibt alle bekannten Netzwerk-Teilnehmer zurück."""
+    now = datetime.now()
+    # Alte Peers entfernen
+    expired = [k for k, v in state.peers.items()
+               if (now - datetime.fromisoformat(v["last_seen"])).total_seconds() > PEER_TIMEOUT_HOURS * 3600]
+    for k in expired:
+        del state.peers[k]
+
+    peers_list = list(state.peers.values())
+    # Eigene Instanz immer mit aufnehmen
+    cfg = load_backend_config()
+    own = {
+        "unit_name": cfg.get("unit_name", "Rettungsstation"),
+        "unit_role": cfg.get("role", "role1"),
+        "system_name": "Surface Pro",
+        "device_id": cfg.get("device_id", "surface-01"),
+        "ip": "127.0.0.1",
+        "port": 8080,
+        "is_self": True,
+        "last_seen": now.isoformat(),
+        "patient_count": len(state.patients),
+    }
+    # Eigene Instanz nicht doppelt
+    peers_list = [p for p in peers_list if p["device_id"] != own["device_id"]]
+    peers_list.insert(0, own)
+    return {"peers": peers_list}
+
+
+async def _heartbeat_loop():
+    """Sendet periodisch Heartbeats an alle bekannten Peers (alle 30s)."""
+    import httpx
+    await asyncio.sleep(5)
+    while True:
+        try:
+            cfg = load_backend_config()
+            payload = {
+                "device_id": cfg.get("device_id", "surface-01"),
+                "unit_name": cfg.get("unit_name", "Rettungsstation"),
+                "unit_role": cfg.get("role", "role1"),
+                "system_name": "Surface Pro",
+                "ip": "",
+                "port": 8080,
+                "patient_count": len(state.patients),
+            }
+            # An alle bekannten Peers senden
+            for peer in list(state.peers.values()):
+                if peer["device_id"] == payload["device_id"]:
+                    continue
+                ip = peer.get("ip", "")
+                port = peer.get("port", 8080)
+                if ip and ip != "127.0.0.1":
+                    try:
+                        async with httpx.AsyncClient(timeout=3) as client:
+                            await client.post(f"http://{ip}:{port}/api/heartbeat", json=payload)
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"Heartbeat Fehler: {e}")
+        await asyncio.sleep(30)
+
+
+# ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------
 @app.on_event("startup")
@@ -581,4 +704,5 @@ async def startup():
     print(f"  Geladene Patienten: {len(state.patients)}")
     print(f"  Aktive Transporte: {len(state.transports)}")
     print(f"  Aktive Positionen: {len(state.positions)}")
+    asyncio.create_task(_heartbeat_loop())
     print("Warte auf Verbindungen von Feldgeräten...")

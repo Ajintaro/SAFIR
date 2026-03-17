@@ -1741,6 +1741,24 @@ async def reset_simulation():
     return {"status": "ok"}
 
 
+@app.post("/api/data/reset")
+async def data_reset():
+    """Löscht ALLE Patientendaten für einen sauberen Demo-Neustart."""
+    count = len(state.patients)
+    state.patients.clear()
+    state.rfid_map.clear()
+    state.active_patient = ""
+    state.sync_queue_depth = 0
+    await broadcast({
+        "type": "init",
+        "model": state.current_model,
+        "patients": [],
+        "backend_reachable": state.backend_reachable,
+    })
+    print(f"Daten-Reset: {count} Patienten gelöscht")
+    return {"status": "ok", "removed": count}
+
+
 # ---------------------------------------------------------------------------
 # Peer Discovery / Netzwerk-Teilnehmer
 # ---------------------------------------------------------------------------

@@ -1812,6 +1812,15 @@
                                 <button class="btn" onclick="exportConfig()">config.json herunterladen</button>
                             </div>
                         </div>
+                        <div class="settings-card" style="border:1px solid var(--warning)">
+                            <div class="settings-card-title" style="color:var(--warning)">Daten zurücksetzen</div>
+                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">
+                                Löscht alle Patientendaten, Transporte, Positionen und Events auf diesem Gerät. Für einen sauberen Demo-Neustart.
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn" style="background:var(--warning);color:#000" onclick="resetAllData()">Alle Daten löschen</button>
+                            </div>
+                        </div>
                     </div>
 
                 </div>
@@ -2214,6 +2223,16 @@
         a.download = 'safir-config.json';
         a.click();
         URL.revokeObjectURL(url);
+    }
+
+    async function resetAllData() {
+        if (!confirm('Alle Patientendaten, Transporte und Events auf diesem Gerät löschen?\n\nDies kann nicht rückgängig gemacht werden.')) return;
+        try {
+            const res = await api('/api/data/reset', { method: 'POST' });
+            showToast(`${res.removed || 0} Patienten gelöscht — System bereit`, 'success');
+        } catch(e) {
+            showToast('Fehler beim Zurücksetzen: ' + e.message, 'error');
+        }
     }
 
     // ============================================================
