@@ -2228,7 +2228,7 @@
     async function resetAllData() {
         if (!confirm('Alle Patientendaten, Transporte und Events auf diesem Gerät löschen?\n\nDies kann nicht rückgängig gemacht werden.')) return;
         try {
-            const res = await api('/api/data/reset', { method: 'POST' });
+            const res = await api('/api/data/reset', 'POST');
             showToast(`${res.removed || 0} Patienten gelöscht — System bereit`, 'success');
         } catch(e) {
             showToast('Fehler beim Zurücksetzen: ' + e.message, 'error');
