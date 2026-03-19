@@ -1089,7 +1089,7 @@ JSON:"""
 
 def _call_ollama(prompt: str, label: str = "LLM") -> dict:
     """Ruft Ollama auf mit GPU-Fallback auf CPU bei OOM."""
-    for num_gpu in [28, 0]:
+    for num_gpu in [20, 0]:
         gpu_label = f"GPU:{num_gpu}" if num_gpu > 0 else "CPU"
         try:
             response = httpx.post(
@@ -1583,7 +1583,7 @@ async def update_patient(patient_id: str, body: dict):
 async def delete_patient(patient_id: str):
     """Patient löschen."""
     if patient_id not in state.patients:
-        return {"error": "Patient nicht gefunden"}
+        return {"status": "ok", "patient_id": patient_id}
     # Aus State entfernen
     patient = state.patients.pop(patient_id)
     # RFID-Mapping entfernen

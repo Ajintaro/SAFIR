@@ -2,17 +2,17 @@
 
 ## Was ist SAFIR?
 Sprachgestützte Assistenz für Informationserfassung in der Rettungskette. KI-gestütztes Dokumentationssystem
-entlang der Rettungskette der Bundeswehr. Demo für AFCEA Bonn / Bundeswehr-Delegation am **19.03.2026**.
+entlang der Rettungskette der Bundeswehr. Erste Demo für Bundeswehr-Delegation war am **19.03.2026**.
 
 Auftraggeber: CGI Deutschland. Zielgruppe: Bundeswehr Sanitätsdienst.
 
 ## Zwei Geräte
 
 ### Jetson Orin Nano (`jetson/`) — Feldgerät
-- Hardware: NVIDIA Jetson Orin Nano, 7.4GB shared CPU/GPU RAM, CUDA 12.6
-- Whisper small (whisper.cpp, GPU) für Echtzeit-Transkription
+- Hardware: NVIDIA Jetson Orin Nano Super, 7.4GB shared CPU/GPU RAM (Unified Memory), CUDA 12.6
+- Whisper small (whisper.cpp, GPU, ~862 MB GPU-RAM) für Echtzeit-Transkription
 - Vosk (CPU) für Sprachbefehle ("Aufnahme starten/stoppen")
-- Ollama Qwen2.5-1.5B (CPU) für 9-Liner Feldextraktion
+- Ollama Qwen2.5-1.5B (GPU, ~1.5 GB GPU-RAM) für 9-Liner Feldextraktion
 - FastAPI + WebSocket Dashboard auf Port 8080
 - Simuliert den Sanitäter im Feld (Phase 0 / Role 1)
 - **Status: funktionsfähig** — Spracheingabe, Transkription, 9-Liner Extraktion laufen
@@ -47,11 +47,12 @@ Kernprinzip: Verwundete müssen innerhalb von 60 Minuten medizinisch versorgt we
 - pyannote-audio: Speaker Diarization nur auf Alienware
 - python-docx: DOCX-Export für Protokolle
 
-## CGI Corporate Design
-- Primärfarbe: Rot #E11937
-- Font: Inter (Google Fonts)
-- Dark Mode als Standard, Light Mode optional
-- Professionell, militärisch-sachlich, keine verspielten Elemente
+## UI Design — Military Tactical HUD
+- Farben: --mil-bg #0f1209, --mil-tan #c8b878, --mil-green #5a9e3a, --mil-amber #d4871a, --mil-red #cc2222
+- Fonts: Share Tech Mono (Daten), Rajdhani (Labels/Buttons), beide Google Fonts
+- Labels: UPPERCASE, letter-spacing 0.12-0.18em
+- Panels: KEIN border-radius, stattdessen Bracket-Corners (L-förmige Ecken in --mil-tan)
+- Verboten: Tailwind, Inter/Roboto, border-radius>2px, weiße Hintergründe, Material Design
 
 ## Datenfluss
 1. Sanitäter spricht im Feld → Jetson nimmt auf
@@ -111,6 +112,55 @@ Siehe `shared/models.py`:
 - Jetson und Alienware im gleichen WLAN/LAN
 - Alienware-IP muss auf dem Jetson als `BACKEND_URL` gesetzt werden
 - Port 8080 muss erreichbar sein
+
+## GPU-Speicher-Management (Jetson Orin Nano)
+
+Das Jetson hat 7.99 GB Unified Memory (CPU+GPU shared). Beide Modelle laufen auf der GPU:
+- Whisper small: ~862 MB GPU
+- Ollama qwen2.5:1.5b: ~1.5 GB GPU
+- CUDA Overhead + Display: ~4.5 GB
+- Verfügbar nach beiden Modellen: ~2.5 GB
+
+### Kritisch: Startreihenfolge
+**Ollama MUSS vor Whisper gestartet werden!** Andernfalls schlägt `cudaMalloc` fehl (Speicherfragmentierung).
+Korrekte Reihenfolge in `scripts/safir-start.sh`:
+1. Ollama starten + Modell vorladen (`ollama run qwen2.5:1.5b`)
+2. Whisper-Server starten (`whisper-server`)
+3. SAFIR FastAPI App starten
+
+### Speicher sparen
+- Desktop (GNOME + Xorg) kostet ~510 MB → Headless-Boot für Messe empfohlen
+- Claude Code kostet ~340 MB → Remote von MacBook per `claude ssh jetson@jetson-orin` starten
+- `update-manager`, `snapd`, `aptd` sind deaktiviert (spart ~470 MB)
+- Powerbank: 20.000 mAh / 15V / 65W — reicht für ganzen Demo-Tag (~20h bei 15W)
+
+### Tailscale SSH
+Tailscale SSH ist aktiviert auf dem Jetson (`sudo tailscale set --ssh`).
+MacBook kann sich verbinden: `ssh jetson@jetson-orin` oder `ssh jetson@100.126.179.27`
+
+## Offene Aufgaben nach Bundeswehr-Demo (19.03.2026)
+
+### 1. Aufnahmedauer erhöhen (Feedback Hauptmann)
+- Aktuell: MAX_RECORD_SECONDS = 300 (5 Min) in `app.py:1910`
+- Anforderung: Unterbrechungsfreies Sprechen über mehrere Verwundete
+- Audio wird bereits in 25s-Chunks verarbeitet (CHUNK_SECONDS = 25)
+- TODO: Limit erhöhen + 30s-Countdown-Warnung vor Ablauf einbauen
+- TODO: KI muss mehrere Patienten aus einem Diktat selbst separieren können
+
+### 2. NFC Abstrahlsicherheit prüfen (Feedback Bundeswehr)
+- Prüfung ob NFC-Konfiguration TEMPEST/EmSec-konform ist
+- Erfordert zertifiziertes Labor (BWB, Rohde & Schwarz)
+- Relevante Normen: SDIP-27 / NATO AMSG-720B
+- Für Prototyp nicht blockierend, für Beschaffung schon
+
+### 3. Backend-Sync finalisieren
+- Jetson → Backend HTTP POST noch nicht final getestet
+- Siehe Abschnitt "Jetson → Backend Anbindung"
+
+### 4. Headless-Boot für Messe
+- `sudo systemctl set-default multi-user.target` → spart ~510 MB GPU+RAM
+- Dashboard nur noch remote im Browser
+- safir-start.sh muss Startreihenfolge anpassen (Ollama vor Whisper)
 
 ## Konventionen
 - Deutsche Umlaute verwenden (ä, ö, ü, ß) — NICHT ae, oe, ue, ss

@@ -3127,8 +3127,13 @@
         document.getElementById('peers-label').textContent = res.peers.length + ' Teilnehmer';
     }
 
-    // Peers alle 30s aktualisieren
-    setInterval(() => { if (document.getElementById('peers-dialog').open) refreshPeers(); }, 30000);
+    // Peers-Badge beim Start und alle 30s aktualisieren
+    async function updatePeersBadge() {
+        const res = await api('/api/peers');
+        if (res.peers) document.getElementById('peers-label').textContent = res.peers.length + ' Teilnehmer';
+    }
+    updatePeersBadge();
+    setInterval(() => { if (document.getElementById('peers-dialog').open) refreshPeers(); else updatePeersBadge(); }, 30000);
 
     function hwTabSwitch(btn) {
         const tabId = btn.dataset.tab;

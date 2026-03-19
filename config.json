@@ -135,7 +135,7 @@
         "model": "qwen2.5:1.5b"
     },
     "backend": {
-        "url": "http://100.101.80.64:9090",
+        "url": "http://100.101.80.64:8080",
         "auto_sync": true
     },
     "device_id": "jetson-01",
