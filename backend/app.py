@@ -179,7 +179,7 @@ async def websocket_endpoint(ws: WebSocket):
 # ---------------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "config": load_backend_config()})
 
 
 @app.get("/api/status")

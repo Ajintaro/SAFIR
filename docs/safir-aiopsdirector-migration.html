@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAFIR → AIOps Director — Architektur & Migrationsplan</title>
+<style>
+  :root {
+    --cgi-red: #E11937;
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  header {
+    border-bottom: 3px solid var(--cgi-red);
+    padding-bottom: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  header h1 span { color: var(--cgi-red); }
+  header .subtitle {
+    color: var(--muted);
+    font-size: 1rem;
+    margin-top: 0.25rem;
+  }
+  header .meta {
+    display: flex;
+    gap: 2rem;
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  header .meta span { display: flex; align-items: center; gap: 0.35rem; }
+  h2 {
+    font-size: 1.4rem;
+    margin: 2.5rem 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    color: #fff;
+  }
+  h2 .num {
+    display: inline-block;
+    background: var(--cgi-red);
+    color: #fff;
+    width: 1.8rem;
+    height: 1.8rem;
+    text-align: center;
+    line-height: 1.8rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    margin-right: 0.5rem;
+  }
+  h3 {
+    font-size: 1.1rem;
+    margin: 1.5rem 0 0.75rem;
+    color: var(--accent);
+  }
+  p, li { color: var(--text); margin-bottom: 0.5rem; }
+  ul, ol { padding-left: 1.5rem; }
+  code {
+    background: #1c2129;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--accent);
+  }
+  pre {
+    background: #1c2129;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 1rem 0;
+  }
+  pre code { background: none; padding: 0; color: var(--text); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--border);
+  }
+  th { background: #1c2129; color: var(--accent); font-weight: 600; }
+  tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.25rem;
+    margin: 1rem 0;
+  }
+  .card-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+  @media (max-width: 768px) { .grid, .grid-3 { grid-template-columns: 1fr; } }
+  .tag {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .tag-red { background: rgba(225,25,55,0.2); color: #ff6b7b; border: 1px solid rgba(225,25,55,0.3); }
+  .tag-green { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .tag-orange { background: rgba(210,153,34,0.15); color: var(--orange); border: 1px solid rgba(210,153,34,0.3); }
+  .tag-purple { background: rgba(188,140,255,0.15); color: var(--purple); border: 1px solid rgba(188,140,255,0.3); }
+  .tag-blue { background: rgba(88,166,255,0.15); color: var(--accent); border: 1px solid rgba(88,166,255,0.3); }
+  .arrow { font-size: 1.5rem; color: var(--cgi-red); text-align: center; padding: 0.5rem; }
+  .diagram {
+    background: #1c2129;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    line-height: 1.8;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .highlight { background: rgba(225,25,55,0.1); border-left: 3px solid var(--cgi-red); padding: 1rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1.25rem; margin: 1.5rem 0; }
+  .toc ol { padding-left: 1.5rem; }
+  .toc li { margin-bottom: 0.35rem; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .logo { display: flex; align-items: center; gap: 1rem; }
+  .logo-cgi { font-size: 2.5rem; font-weight: 900; color: var(--cgi-red); letter-spacing: -1px; }
+  .checklist li { list-style: none; padding-left: 0; }
+  .checklist li::before { content: "☐ "; color: var(--muted); }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8rem; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-cgi">CGI</span>
+    <div>
+      <h1><span>SAFIR</span> → AIOps Director Migration</h1>
+      <div class="subtitle">Architektur-Dokumentation für das Entwicklerteam</div>
+    </div>
+  </div>
+  <div class="meta">
+    <span>&#128197; 19.03.2026</span>
+    <span>&#128100; Julian Reuter — CGI</span>
+    <span>&#127991; Vertraulich / Intern</span>
+  </div>
+</header>
+
+<div class="toc">
+  <strong>Inhalt</strong>
+  <ol>
+    <li><a href="#s1">Was ist SAFIR?</a></li>
+    <li><a href="#s2">Aktuelle Architektur (Ist-Zustand)</a></li>
+    <li><a href="#s3">Geräte & Hardware</a></li>
+    <li><a href="#s4">API-Übersicht</a></li>
+    <li><a href="#s5">Datenmodell & Datenfluss</a></li>
+    <li><a href="#s6">KI-Modelle & GPU-Anforderungen</a></li>
+    <li><a href="#s7">Ziel-Architektur auf AIOps Director</a></li>
+    <li><a href="#s8">Migrations-Workstreams</a></li>
+    <li><a href="#s9">Offene Fragen an das AIOps-Team</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="s1"><span class="num">1</span> Was ist SAFIR?</h2>
+
+<p><strong>S</strong>prachgestützte <strong>A</strong>ssistenz für <strong>I</strong>nformationserfassung in der <strong>R</strong>ettungskette.
+Ein KI-gestütztes Dokumentationssystem entlang der Rettungskette der Bundeswehr (Sanitätsdienst).</p>
+
+<div class="highlight">
+  <strong>Kernprinzip:</strong> Verwundete müssen innerhalb der <em>Goldenen Stunde</em> (60 Min.) medizinisch versorgt werden.
+  SAFIR digitalisiert die Patientenerfassung per Sprache und leitet die Daten automatisch durch die Rettungskette weiter.
+</div>
+
+<table>
+  <tr><th>Stufe</th><th>Name</th><th>Einrichtung</th><th>KI-Unterstützung</th></tr>
+  <tr><td><span class="tag tag-red">Phase 0</span></td><td>Selbst-/Kameradenhilfe</td><td>Vor Ort (Feld)</td><td>Spracheingabe, 9-Liner MEDEVAC, TCCC Card</td></tr>
+  <tr><td><span class="tag tag-orange">Role 1</span></td><td>Erste ärztl. Behandlung</td><td>Rettungsstation</td><td>Triage, Vitalwerte, taktische Lagekarte</td></tr>
+  <tr><td><span class="tag tag-green">Role 2</span></td><td>Chirurgische Akutversorgung</td><td>Rettungszentrum / OP</td><td>Übergabeberichte, OP-Vorbereitung</td></tr>
+  <tr><td><span class="tag tag-blue">Role 3</span></td><td>Erweiterte Versorgung</td><td>Einsatzlazarett</td><td>Patientenakte, Diagnose-KI</td></tr>
+  <tr><td><span class="tag tag-purple">Role 4</span></td><td>Rehabilitation</td><td>BW-Krankenhaus</td><td>Statistik, Auswertung</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s2"><span class="num">2</span> Aktuelle Architektur (Ist-Zustand)</h2>
+
+<div class="diagram">┌─────────────────────────────────────────────────────────────────────────────────┐
+│                            SAFIR System — Ist-Zustand                           │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  ┌──────────────────────┐    HTTP POST     ┌──────────────────────────────────┐ │
+│  │   JETSON ORIN NANO    │   /api/ingest   │   SURFACE PRO / ALIENWARE        │ │
+│  │   (Feldgerät)         │ ───────────────→│   (Leitstelle / Dashboard)       │ │
+│  │                        │                 │                                  │ │
+│  │  ┌─────────────────┐  │    Heartbeat    │  ┌──────────────────────────┐    │ │
+│  │  │ Mikrofon/Audio  │  │ ←──────────────→│  │ FastAPI + WebSocket      │    │ │
+│  │  │ (Logitech G430) │  │   /api/heartbeat│  │ Port 8080                │    │ │
+│  │  └───────┬─────────┘  │                 │  └──────────┬───────────────┘    │ │
+│  │          │             │                 │             │                    │ │
+│  │  ┌───────▼─────────┐  │                 │  ┌──────────▼───────────────┐    │ │
+│  │  │ Vosk (CPU)      │  │                 │  │ Whisper large-v3 (GPU)   │    │ │
+│  │  │ Sprachbefehle   │  │                 │  │ + pyannote Diarization   │    │ │
+│  │  └───────┬─────────┘  │                 │  └──────────┬───────────────┘    │ │
+│  │          │             │                 │             │                    │ │
+│  │  ┌───────▼─────────┐  │                 │  ┌──────────▼───────────────┐    │ │
+│  │  │ Whisper small   │  │                 │  │ Ollama Qwen2.5-32B (GPU)│    │ │
+│  │  │ (GPU, 862 MB)   │  │                 │  │ Analyse & Berichte       │    │ │
+│  │  └───────┬─────────┘  │                 │  └──────────┬───────────────┘    │ │
+│  │          │             │                 │             │                    │ │
+│  │  ┌───────▼─────────┐  │                 │  ┌──────────▼───────────────┐    │ │
+│  │  │ Ollama          │  │                 │  │ Taktische Lagekarte      │    │ │
+│  │  │ Qwen2.5-1.5B    │  │                 │  │ NATO APP-6D Symbole      │    │ │
+│  │  │ (GPU, 1.5 GB)   │  │                 │  │ SitaWare-kompatibel      │    │ │
+│  │  └───────┬─────────┘  │                 │  └──────────────────────────┘    │ │
+│  │          │             │                 │                                  │ │
+│  │  ┌───────▼─────────┐  │                 │                                  │ │
+│  │  │ FastAPI + WS    │  │                 │                                  │ │
+│  │  │ Port 8080       │  │                 │                                  │ │
+│  │  └─────────────────┘  │                 │                                  │ │
+│  └──────────────────────┘                 └──────────────────────────────────┘ │
+│           │                                            │                        │
+│           └──── Tailscale VPN / LAN ───────────────────┘                        │
+└─────────────────────────────────────────────────────────────────────────────────┘</div>
+
+<h3>Tech Stack</h3>
+<table>
+  <tr><th>Komponente</th><th>Technologie</th><th>Rolle</th></tr>
+  <tr><td>Web-Framework</td><td><code>FastAPI</code> + <code>uvicorn</code></td><td>REST API + WebSocket auf jedem Gerät</td></tr>
+  <tr><td>Templates</td><td><code>Jinja2</code> + reines HTML/JS</td><td>Kein React/Vue — alles serverseitig + Vanilla JS</td></tr>
+  <tr><td>Speech-to-Text</td><td><code>whisper.cpp</code> (Jetson) / <code>faster-whisper</code> (Backend)</td><td>Echtzeit-Transkription</td></tr>
+  <tr><td>Sprachbefehle</td><td><code>Vosk</code> (offline, CPU)</td><td>"Aufnahme starten", "Triage Rot", etc.</td></tr>
+  <tr><td>LLM</td><td><code>Ollama</code> — Qwen2.5 (1.5B/32B)</td><td>Feldextraktion, Analyse, Übergabeberichte</td></tr>
+  <tr><td>Diarization</td><td><code>pyannote-audio 3.1</code></td><td>Sprechererkennung (nur Backend)</td></tr>
+  <tr><td>Dokument-Export</td><td><code>python-docx</code></td><td>DOCX-Protokolle, TCCC Cards</td></tr>
+  <tr><td>Interop</td><td>CoT XML / NVG</td><td>NATO-konforme Meldungen (SitaWare, ATAK)</td></tr>
+  <tr><td>Netzwerk</td><td>Tailscale VPN (aktuell) / LAN</td><td>Mesh-Vernetzung der Geräte</td></tr>
+  <tr><td>Peer Discovery</td><td>Heartbeat <code>/api/heartbeat</code></td><td>Gegenseitige Registrierung alle 30s</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s3"><span class="num">3</span> Geräte & Hardware</h2>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-title">&#9873; Jetson Orin Nano — Feldgerät</div>
+    <table>
+      <tr><td>CPU/GPU</td><td>NVIDIA Orin (Unified Memory)</td></tr>
+      <tr><td>RAM</td><td>7.4 GB shared (CPU + GPU)</td></tr>
+      <tr><td>CUDA</td><td>12.6</td></tr>
+      <tr><td>OS</td><td>Ubuntu 22.04 (JetPack 6)</td></tr>
+      <tr><td>Python</td><td>3.10</td></tr>
+      <tr><td>Rolle</td><td>Phase 0 — Sanitäter im Feld</td></tr>
+      <tr><td>App</td><td><code>app.py</code> (2664 Zeilen)</td></tr>
+      <tr><td>Port</td><td>8080</td></tr>
+      <tr><td>Peripherie</td><td>Logitech G430 Headset, NFC-Reader</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-title">&#9883; Surface Pro / Alienware — Leitstelle</div>
+    <table>
+      <tr><td>GPU</td><td>RTX 5090 (24 GB VRAM)</td></tr>
+      <tr><td>OS</td><td>Windows 11 / macOS (portabel)</td></tr>
+      <tr><td>Python</td><td>3.12</td></tr>
+      <tr><td>Rolle</td><td>Role 1–4 Lagekarte & Koordination</td></tr>
+      <tr><td>App</td><td><code>backend/app.py</code> (708 Zeilen)</td></tr>
+      <tr><td>Port</td><td>8080</td></tr>
+      <tr><td>Besonderheit</td><td>Empfängt Daten von N Feldgeräten</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="s4"><span class="num">4</span> API-Übersicht</h2>
+
+<h3>Jetson (Feldgerät) — Endpunkte</h3>
+<table>
+  <tr><th>Methode</th><th>Pfad</th><th>Beschreibung</th></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/</code></td><td>HTML Dashboard (Jinja2 Template)</td></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/api/status</code></td><td>Systemstatus (Whisper, Ollama, RAM, GPU)</td></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/api/config</code></td><td>Gerätekonfiguration</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/record/start</code></td><td>Audioaufnahme starten</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/record/stop</code></td><td>Aufnahme stoppen → Whisper transkribiert</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/session/analyze</code></td><td>LLM-Analyse einer Aufnahme (9-Liner Extraktion)</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/patients/analyze</code></td><td>Batch-Analyse aller Patienten</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/export/docx</code></td><td>DOCX-Protokoll generieren</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/models/load</code></td><td>Whisper/Ollama-Modell laden</td></tr>
+  <tr><td><span class="tag tag-purple">WS</span></td><td><code>/ws</code></td><td>WebSocket: Live-Transkription, Status, Events</td></tr>
+</table>
+
+<h3>Backend (Leitstelle) — Endpunkte</h3>
+<table>
+  <tr><th>Methode</th><th>Pfad</th><th>Beschreibung</th></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/</code></td><td>HTML Dashboard mit taktischer Lagekarte</td></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/api/patients</code></td><td>Alle Patienten (aus allen Feldgeräten)</td></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/api/patients/{id}</code></td><td>Einzelner Patient</td></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/api/transports</code></td><td>Aktive Transporte in der Rettungskette</td></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/api/positions</code></td><td>GPS-Positionen aller Einheiten</td></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/api/events</code></td><td>Event-Log (Timeline)</td></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/api/peers</code></td><td>Verbundene Geräte im Mesh</td></tr>
+  <tr><td><span class="tag tag-green">GET</span></td><td><code>/api/dashboard/stats</code></td><td>Triage-Statistiken</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/ingest</code></td><td>&#9733; Patientendaten von Feldgerät empfangen</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/heartbeat</code></td><td>Peer-Discovery (alle 30s)</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/position</code></td><td>GPS-Position melden</td></tr>
+  <tr><td><span class="tag tag-red">POST</span></td><td><code>/api/llm/prepare</code></td><td>LLM-Übergabebericht erstellen</td></tr>
+  <tr><td><span class="tag tag-purple">WS</span></td><td><code>/ws</code></td><td>WebSocket: patient_new, status, position Events</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s5"><span class="num">5</span> Datenmodell & Datenfluss</h2>
+
+<h3>Patientendatensatz (PATIENT_SCHEMA)</h3>
+<pre><code>{
+  "patient_id": "PAT-A1B2C3D4",          // UUID-basiert
+  "timestamp_created": "2026-03-19T...",  // Ersterfassung
+  "current_role": "phase0",              // phase0 | role1 | role2 | role3 | role4
+  "flow_status": "registered",           // registered → inbound → arrived → in_treatment → stabilized → outbound → transferred
+  "synced": false,                        // An Leitstelle übermittelt?
+  "analyzed": false,                      // KI-Analyse durchgeführt?
+  "rfid_tag_id": "RFID-...",             // NFC-Tag Kennung
+  "device_id": "jetson-01",              // Erfassendes Gerät
+
+  // Stammdaten
+  "name": "Müller, Hans",
+  "rank": "Obergefreiter",
+  "triage": "T1",                        // T1 (Sofort) bis T4 (Abwartend)
+  "injuries": ["Schusswunde li. Oberschenkel"],
+  "vitals": {
+    "pulse": "120", "bp": "90/60", "spo2": "92",
+    "resp_rate": "22", "avpu": "V", "pain": "7"
+  },
+
+  // TCCC Card Felder
+  "template_data": { "tccc": {...}, "9liner": {...} },
+
+  // Transkripte (Rohtext vom Sanitäter)
+  "transcripts": ["Patient hat Schusswunde am linken Oberschenkel..."],
+
+  // Timeline (Events durch die Rettungskette)
+  "timeline": [
+    {"time": "...", "role": "phase0", "event": "registered", "details": "..."},
+    {"time": "...", "role": "role1", "event": "arrived", "details": "..."}
+  ]
+}</code></pre>
+
+<h3>Datenfluss: Feld → Leitstelle</h3>
+<div class="diagram">  Sanitäter spricht ins Mikrofon
+          │
+          ▼
+  ┌───────────────┐
+  │   Vosk (CPU)  │──→ Sprachbefehl erkannt? → Aktion auslösen
+  └───────┬───────┘     ("Aufnahme starten", "Triage Rot")
+          │
+          ▼
+  ┌───────────────┐
+  │ whisper.cpp   │──→ Transkript (deutsch)
+  │ small (GPU)   │    "Patient hat Schusswunde am linken..."
+  └───────┬───────┘
+          │
+          ▼
+  ┌───────────────┐
+  │ Ollama LLM    │──→ Strukturierte Daten extrahiert:
+  │ Qwen 1.5B     │    { triage: "T1", injuries: [...], vitals: {...} }
+  └───────┬───────┘
+          │
+          ▼
+  POST /api/ingest ──→ Backend (Leitstelle)
+          │
+          ▼
+  ┌───────────────────────────┐
+  │ Backend speichert Patient │
+  │ WebSocket: patient_new    │──→ Alle Dashboards aktualisieren
+  │ Lagekarte + Triage-Board  │
+  └───────────────────────────┘</code></pre></div>
+
+<h3>Ingest-Payload (Jetson → Backend)</h3>
+<pre><code>POST /api/ingest
+Content-Type: application/json
+
+{
+  "patient": {
+    "patient_id": "PAT-A1B2C3D4",
+    "name": "Müller, Hans",
+    "triage": "T1",
+    "injuries": ["Schusswunde li. Oberschenkel"],
+    "vitals": {"pulse": "120", "spo2": "92", "bp": "90/60"},
+    "nine_liner": { "line1": "48.1351 N 11.5820 E", ... },
+    "transcripts": ["Patient hat Schusswunde..."],
+    "current_role": "phase0",
+    "flow_status": "registered",
+    "template_data": { "tccc": {...} }
+  },
+  "unit_name": "BAT Alpha42",
+  "device_id": "jetson-01"
+}</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="s6"><span class="num">6</span> KI-Modelle & GPU-Anforderungen</h2>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-title">&#9873; Feldgerät (Edge/Jetson)</div>
+    <table>
+      <tr><th>Modell</th><th>Aufgabe</th><th>GPU-RAM</th><th>Framework</th></tr>
+      <tr><td>Whisper small</td><td>Transkription DE</td><td>~862 MB</td><td>whisper.cpp (CUDA)</td></tr>
+      <tr><td>Qwen2.5-1.5B</td><td>9-Liner Extraktion</td><td>~1.5 GB</td><td>Ollama (CUDA)</td></tr>
+      <tr><td>Vosk small-de</td><td>Sprachbefehle</td><td>CPU only</td><td>Vosk</td></tr>
+      <tr><td colspan="2"><strong>Gesamt GPU</strong></td><td><strong>~2.4 GB</strong></td><td></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-title">&#9883; Leitstelle (Backend/GPU-Server)</div>
+    <table>
+      <tr><th>Modell</th><th>Aufgabe</th><th>GPU-RAM</th><th>Framework</th></tr>
+      <tr><td>Whisper large-v3</td><td>Transkription (beste Qualität)</td><td>~3 GB</td><td>faster-whisper (CUDA)</td></tr>
+      <tr><td>pyannote 3.1</td><td>Speaker Diarization</td><td>~2 GB</td><td>PyTorch (CUDA)</td></tr>
+      <tr><td>Qwen2.5-32B Q4</td><td>Analyse, Berichte, Übergabe</td><td>~18 GB</td><td>Ollama (CUDA)</td></tr>
+      <tr><td colspan="2"><strong>Gesamt GPU</strong></td><td><strong>~23 GB</strong></td><td></td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="highlight">
+  <strong>Wichtig für AIOps Director:</strong> Die KI-Modelle laufen aktuell als lokale Prozesse (Ollama, whisper.cpp).
+  Für Kubernetes müssen sie als <strong>Microservices</strong> gekapselt werden, die über HTTP/gRPC angesprochen werden.
+  Ollama hat bereits eine REST-API (<code>POST /api/generate</code>), whisper.cpp hat einen HTTP-Server-Modus.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="s7"><span class="num">7</span> Ziel-Architektur auf AIOps Director</h2>
+
+<div class="diagram">┌─────────────────────────────────────────────────────────────────────────────────┐
+│                     AIOps Director (Azure Kubernetes)                            │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  ┌─ Core Services ────────────────────────────────────────────────────────────┐ │
+│  │                                                                            │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │ │
+│  │  │ Service      │  │ Message      │  │ Monitoring   │  │ Logging      │  │ │
+│  │  │ Registry     │  │ Queue        │  │ (Prometheus) │  │ (ELK/Loki)  │  │ │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│  ┌─ SAFIR Microservices ──────────────────────────────────────────────────────┐ │
+│  │                                                                            │ │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐ │ │
+│  │  │ safir-api         │  │ safir-whisper     │  │ safir-llm              │ │ │
+│  │  │ (FastAPI)         │  │ (whisper-server)  │  │ (Ollama / vLLM)        │ │ │
+│  │  │                   │  │                   │  │                        │ │ │
+│  │  │ • /api/ingest     │  │ • /inference      │  │ • /api/generate        │ │ │
+│  │  │ • /api/patients   │  │ • GPU: 3-6 GB     │  │ • GPU: 18-20 GB        │ │ │
+│  │  │ • /ws             │  │ • Replicas: 1-2   │  │ • Replicas: 1          │ │ │
+│  │  │ • CPU only        │  │                   │  │                        │ │ │
+│  │  └────────┬─────────┘  └────────┬─────────┘  └────────┬───────────────┘ │ │
+│  │           │                      │                      │                 │ │
+│  │  ┌────────▼──────────────────────▼──────────────────────▼───────────────┐ │ │
+│  │  │                    safir-worker (Async Task Queue)                    │ │ │
+│  │  │  • Transkription orchestrieren (Audio → Whisper → LLM → Patient)    │ │ │
+│  │  │  • Batch-Analyse, DOCX-Export, Übergabeberichte                     │ │ │
+│  │  └─────────────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                            │ │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐ │ │
+│  │  │ safir-diarize     │  │ safir-dashboard   │  │ safir-sitaware          │ │ │
+│  │  │ (pyannote)        │  │ (Nginx + Static)  │  │ (CoT/NVG Gateway)      │ │ │
+│  │  │ GPU: 2 GB         │  │ CPU only          │  │ CPU only               │ │ │
+│  │  └──────────────────┘  └──────────────────┘  └──────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│  ┌─ Storage ──────────────────────────────────────────────────────────────────┐ │
+│  │  MongoDB (Patienten)    │ Redis (Cache/PubSub) │ Azure Blob (Audio/DOCX) │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│  ┌─ Ingress ──────────────────────────────────────────────────────────────────┐ │
+│  │  Azure VPN Gateway ←── Jetson Feldgeräte (WireGuard/IPsec statt Tailscale)│ │
+│  │  HTTPS Ingress     ←── Browser Dashboards (Role 1-4)                      │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘</div>
+
+<h3>Mapping: Ist → Soll</h3>
+<table>
+  <tr><th>Aktuell</th><th>AIOps Director</th><th>Änderung</th></tr>
+  <tr><td>Ollama lokal (Port 11434)</td><td><code>safir-llm</code> Pod mit GPU NodePool</td><td>Ollama als Container, GPU-Scheduling via <code>nvidia.com/gpu</code></td></tr>
+  <tr><td>whisper.cpp lokal</td><td><code>safir-whisper</code> Pod mit GPU</td><td>whisper-server als Container, HTTP-API bleibt gleich</td></tr>
+  <tr><td>pyannote lokal</td><td><code>safir-diarize</code> Pod mit GPU</td><td>PyTorch Container mit pyannote</td></tr>
+  <tr><td>FastAPI monolith</td><td><code>safir-api</code> + <code>safir-worker</code></td><td>API und async Processing trennen</td></tr>
+  <tr><td>Jinja2 Templates</td><td><code>safir-dashboard</code> (Nginx)</td><td>Static Files oder SSR Container</td></tr>
+  <tr><td>JSON-Dateien (Speicher)</td><td>MongoDB + Redis</td><td>Dokumentenorientiert — PATIENT_SCHEMA passt 1:1</td></tr>
+  <tr><td>WebSocket direkt</td><td>WebSocket via Ingress + Redis PubSub</td><td>Skalierbar über mehrere API-Replicas</td></tr>
+  <tr><td>Tailscale VPN</td><td>Azure VPN Gateway / WireGuard</td><td>Feldgeräte verbinden sich per VPN zu Azure</td></tr>
+  <tr><td>Heartbeat P2P</td><td>Service Registry / Health Checks</td><td>Kubernetes-native Service Discovery</td></tr>
+  <tr><td>CoT/NVG Export</td><td><code>safir-sitaware</code> Pod</td><td>NATO-Gateway als eigener Service</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s8"><span class="num">8</span> Migrations-Workstreams</h2>
+
+<div class="card">
+  <div class="card-title"><span class="tag tag-red">WS1</span> Containerisierung</div>
+  <p>Jede Komponente bekommt ein eigenes <code>Dockerfile</code>:</p>
+  <ul>
+    <li><code>safir-api</code> — Python 3.12, FastAPI, uvicorn, httpx, python-docx</li>
+    <li><code>safir-whisper</code> — CUDA Base Image + whisper.cpp (oder faster-whisper)</li>
+    <li><code>safir-llm</code> — Ollama Container (offizielles Image: <code>ollama/ollama</code>)</li>
+    <li><code>safir-diarize</code> — PyTorch + pyannote-audio</li>
+    <li><code>safir-dashboard</code> — Nginx + statische HTML/JS/CSS Dateien</li>
+    <li><code>safir-sitaware</code> — Python + CoT/NVG Generator</li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="tag tag-orange">WS2</span> Kubernetes Deployment</div>
+  <ul>
+    <li>Helm Charts oder AIOps Director Devenor Templates für jedes Microservice</li>
+    <li>GPU Node Pool (Azure NC-Series oder ND-Series) für Whisper, LLM, Diarization</li>
+    <li><code>nvidia.com/gpu: 1</code> Resource Requests für GPU-Pods</li>
+    <li>Horizontal Pod Autoscaler für <code>safir-api</code></li>
+    <li>Persistent Volume Claims für Audio-Dateien und Protokolle</li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="tag tag-green">WS3</span> Storage Migration</div>
+  <ul>
+    <li>JSON-Dateien → <strong>MongoDB</strong> (Patienten, Events, Timeline) — dokumentenorientiert, passt ideal zum verschachtelten PATIENT_SCHEMA</li>
+    <li>WebSocket State → <strong>Redis PubSub</strong> (für Multi-Replica API)</li>
+    <li>Audio-Dateien + DOCX → <strong>Azure Blob Storage</strong></li>
+    <li>Migrationsscript für bestehende JSON-Daten → MongoDB Collections</li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="tag tag-blue">WS4</span> Netzwerk & VPN</div>
+  <ul>
+    <li>Tailscale ersetzen durch <strong>Azure VPN Gateway</strong> (IPsec/WireGuard)</li>
+    <li>Jetson Feldgeräte verbinden sich per VPN-Client zum Azure VNET</li>
+    <li>Ingress Controller (Nginx/Traefik) für HTTPS-Zugriff auf Dashboards</li>
+    <li>mTLS zwischen Services (Kubernetes Network Policies)</li>
+    <li>Jetson <code>BACKEND_URL</code> zeigt auf Azure-Ingress statt auf lokale IP</li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="tag tag-purple">WS5</span> AIOps Director Integration</div>
+  <ul>
+    <li>Registrierung der SAFIR Microservices in der <strong>Service Registry</strong></li>
+    <li>Integration mit AIOps Director <strong>Message Queue</strong> für async Processing</li>
+    <li>AIOps Director <strong>Monitoring</strong> (Prometheus/Grafana) für GPU-Auslastung</li>
+    <li>AIOps Director <strong>Admin Microservice</strong> für Konfiguration</li>
+    <li>SDK-Template (Devenor) für SAFIR Microservice-Basis</li>
+    <li>Optional: SAFIR als "Customer AI Orchestration" in AIOps Director einbinden</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="s9"><span class="num">9</span> Offene Fragen an das AIOps-Team</h2>
+
+<div class="card" style="border-color: var(--cgi-red);">
+  <div class="card-title" style="color: var(--cgi-red);">&#10067; Klärungsbedarf</div>
+  <ol>
+    <li><strong>GPU-Verfügbarkeit:</strong> Welche GPU-Instanzen stehen im Azure-Cluster zur Verfügung? (Min. 24 GB VRAM für alle Modelle, idealerweise A100/A10G)</li>
+    <li><strong>Ollama vs. vLLM:</strong> Wird Ollama auf Kubernetes unterstützt, oder soll auf vLLM / TGI (Text Generation Inference) umgestellt werden?</li>
+    <li><strong>Devenor SDK:</strong> Können wir das Microservice-Template für SAFIR nutzen? Wie sieht das Basis-Template aus?</li>
+    <li><strong>Service Registry:</strong> Wie registrieren sich neue Microservices? REST? gRPC? Auto-Discovery?</li>
+    <li><strong>Message Queue:</strong> Welches System? (RabbitMQ, Kafka, NATS?) — Für async Audio-Processing wichtig</li>
+    <li><strong>Ingress & Auth:</strong> Wie werden externe Clients (Jetson im Feld) authentifiziert? mTLS? API-Keys? OAuth?</li>
+    <li><strong>Air-Gapped Support:</strong> SAFIR muss in Einsatzgebieten ohne Internet funktionieren. Unterstützt AIOps Director On-Prem / Air-Gapped Deployment?</li>
+    <li><strong>WebSocket Support:</strong> Unterstützt der Ingress Controller WebSocket-Verbindungen (für Live-Transkription)?</li>
+    <li><strong>Storage:</strong> Gibt es einen managed MongoDB (z.B. CosmosDB mit Mongo-API) und Redis im Cluster, oder müssen wir eigene deployen?</li>
+    <li><strong>CI/CD Pipeline:</strong> Wie werden neue Container-Images gebaut und deployed? GitLab CI? Azure DevOps?</li>
+    <li><strong>NATO-Compliance:</strong> Gibt es Anforderungen an Verschlüsselung / Zertifizierung (VS-NfD, GEHEIM)?</li>
+    <li><strong>CLARA Integration:</strong> SAFIR's Speech-to-Text und CLARA (AIOps Director) haben Überschneidungen. Sollen wir CLARA als Whisper-Ersatz evaluieren?</li>
+  </ol>
+</div>
+
+<h3>Nächste Schritte (Vorschlag)</h3>
+<table>
+  <tr><th>Phase</th><th>Aufgabe</th><th>Wer</th><th>Dauer</th></tr>
+  <tr><td>1</td><td>Zugang zum AIOps Director Cluster einrichten (Azure VPN + kubectl)</td><td>AIOps-Team</td><td>1 Tag</td></tr>
+  <tr><td>2</td><td>Dockerfiles für alle SAFIR-Komponenten erstellen</td><td>SAFIR-Team</td><td>2-3 Tage</td></tr>
+  <tr><td>3</td><td>Devenor SDK Template für SAFIR anpassen</td><td>Gemeinsam</td><td>1-2 Tage</td></tr>
+  <tr><td>4</td><td>GPU Node Pool provisionieren + Ollama deployen</td><td>AIOps-Team</td><td>1 Tag</td></tr>
+  <tr><td>5</td><td>safir-api + safir-whisper auf Cluster deployen</td><td>Gemeinsam</td><td>2 Tage</td></tr>
+  <tr><td>6</td><td>VPN-Anbindung Jetson → Azure testen</td><td>Gemeinsam</td><td>1 Tag</td></tr>
+  <tr><td>7</td><td>End-to-End Test: Jetson → Azure → Dashboard</td><td>Gemeinsam</td><td>1 Tag</td></tr>
+</table>
+
+<footer>
+  SAFIR v2.1 &middot; CGI Deutschland &middot; Vertraulich / Intern &middot; 19.03.2026
+</footer>
+
+</body>
+</html>
