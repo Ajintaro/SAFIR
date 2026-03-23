@@ -74,7 +74,7 @@ def load_patients():
                 pid = patient.get("patient_id")
                 if pid:
                     # Simulations-/Test-Patienten beim Start entfernen
-                    if pid.startswith("SIM-") or pid.startswith("TEST-"):
+                    if pid.startswith("SIM-") or pid.startswith("TEST-") or pid.startswith("P0-"):
                         filepath.unlink()
                         print(f"  Simulations-Patient {pid} entfernt")
                         continue
@@ -204,7 +204,7 @@ async def get_status():
         # Feature-Flags für die einheitliche UI
         "has_whisper": False,
         "has_vosk": False,
-        "has_audio": False,
+        "has_audio": True,
         "has_map": True,
         "default_page": "role1",
     }
@@ -273,7 +273,40 @@ async def get_models():
 
 @app.get("/api/devices")
 async def get_devices():
-    return {"devices": []}
+    """Listet verfügbare Audio-Eingabegeräte."""
+    devices = []
+    try:
+        import sounddevice as sd
+        for i, dev in enumerate(sd.query_devices()):
+            if dev["max_input_channels"] > 0:
+                devices.append({
+                    "id": i,
+                    "name": dev["name"],
+                    "channels": dev["max_input_channels"],
+                    "sample_rate": int(dev["default_samplerate"]),
+                    "is_default": i == sd.default.device[0],
+                })
+    except ImportError:
+        # sounddevice nicht installiert — pyaudio als Fallback
+        try:
+            import pyaudio
+            pa = pyaudio.PyAudio()
+            for i in range(pa.get_device_count()):
+                dev = pa.get_device_info_by_index(i)
+                if dev["maxInputChannels"] > 0:
+                    devices.append({
+                        "id": i,
+                        "name": dev["name"],
+                        "channels": dev["maxInputChannels"],
+                        "sample_rate": int(dev["defaultSampleRate"]),
+                        "is_default": i == pa.get_default_input_device_info()["index"],
+                    })
+            pa.terminate()
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return {"devices": devices}
 
 
 @app.get("/api/files")
@@ -334,9 +367,8 @@ async def get_events():
 # ---------------------------------------------------------------------------
 # Jetson → Backend: Patientendaten empfangen
 # ---------------------------------------------------------------------------
-@app.post("/api/ingest")
-async def ingest_from_device(body: dict):
-    """Empfängt Patientendaten von einem Feldgerät (Jetson/BAT)."""
+async def _do_ingest(body: dict) -> dict:
+    """Kernlogik für Patientenaufnahme. Wird von /api/ingest und /api/phase0/send genutzt."""
     patient = body.get("patient", {})
     pid = patient.get("patient_id")
     if not pid:
@@ -349,22 +381,21 @@ async def ingest_from_device(body: dict):
     # Patient speichern/aktualisieren
     if pid in state.patients:
         existing = state.patients[pid]
-        # Felder aktualisieren (nicht-leere überschreiben)
         for key in ["name", "rank", "triage", "flow_status", "unit", "blood_type"]:
             val = patient.get(key)
             if val:
                 existing[key] = val
-        # Arrays mergen
         for key in ["transcripts", "timeline", "injuries", "treatments", "medications"]:
             new_items = patient.get(key, [])
             if new_items:
-                existing.setdefault(key, []).extend(new_items)
-        # Vitals überschreiben
+                existing_list = existing.setdefault(key, [])
+                for item in new_items:
+                    if item not in existing_list:
+                        existing_list.append(item)
         if patient.get("vitals"):
             for k, v in patient["vitals"].items():
                 if v:
                     existing.setdefault("vitals", {})[k] = v
-        # 9-Liner überschreiben
         if patient.get("nine_liner"):
             existing["nine_liner"] = patient["nine_liner"]
         existing["synced"] = True
@@ -373,7 +404,10 @@ async def ingest_from_device(body: dict):
         patient["synced"] = True
         state.patients[pid] = patient
 
-    # Persistieren
+    # Unit-Name am Patienten speichern (für UI-Gruppierung)
+    if unit_name and unit_name != "Unbekannt":
+        state.patients[pid]["unit_name"] = unit_name
+
     save_patient(state.patients[pid])
 
     # Transport-Cluster aktualisieren
@@ -412,7 +446,139 @@ async def ingest_from_device(body: dict):
         "event": event,
     })
 
+    cfg = load_backend_config()
+    ack_id = f"ACK-{pid}-{int(time.time())}"
+    return {
+        "status": "ok",
+        "patient_id": pid,
+        "ack_id": ack_id,
+        "received_at": datetime.now().isoformat(),
+        "unit_name": cfg.get("unit_name", ""),
+        "role": cfg.get("role", "role1"),
+    }
+
+
+@app.post("/api/ingest")
+async def ingest_from_device(body: dict):
+    """Empfängt Patientendaten von einem Feldgerät (Jetson/BAT)."""
+    return await _do_ingest(body)
+
+
+# ---------------------------------------------------------------------------
+# Phase 0 — Simulation (Patienten ohne Spracheingabe erstellen & senden)
+# ---------------------------------------------------------------------------
+@app.post("/api/phase0/create")
+async def phase0_create_patient(body: dict):
+    """Erstellt einen Patienten in der Phase 0 Simulation (ohne Spracheingabe)."""
+    pid = f"P0-{int(time.time() * 1000)}"
+    patient = {
+        "patient_id": pid,
+        "name": body.get("name", "Unbekannt"),
+        "triage": body.get("triage", ""),
+        "injuries": body.get("injuries", []),
+        "vitals": body.get("vitals", {}),
+        "current_role": "phase0",
+        "flow_status": "registered",
+        "synced": False,
+        "transfer_state": "pending",
+        "timestamp_created": datetime.now().isoformat(),
+        "transcripts": [],
+        "timeline": [],
+        "treatments": [],
+        "medications": [],
+    }
+    state.patients[pid] = patient
+    save_patient(patient)
+    await broadcast({"type": "patient_new", "patient": patient})
     return {"status": "ok", "patient_id": pid}
+
+
+@app.post("/api/phase0/send")
+async def phase0_send_patient(body: dict):
+    """Sendet einen Phase-0-Patienten an die nächste Rolle (Self-Ingest oder Remote)."""
+    pid = body.get("patient_id")
+    patient = state.patients.get(pid)
+    if not patient:
+        return {"error": "Patient nicht gefunden"}
+
+    # Status auf GESENDET setzen
+    patient["transfer_state"] = "sent"
+    patient["transfer_time"] = datetime.now().isoformat()
+    save_patient(patient)
+    await broadcast({"type": "transfer_update", "patient_id": pid, "transfer_state": "sent"})
+
+    cfg = load_backend_config()
+    target_url = cfg.get("phase0_target_url", "")
+
+    # Self-Ingest: gleicher Server → direkte Verarbeitung
+    if not target_url or target_url.startswith("http://127.0.0.1") or target_url.startswith("http://localhost"):
+        try:
+            payload = {
+                "patient": patient,
+                "unit_name": cfg.get("phase0_unit_name", "BAT Simulation"),
+                "device_id": cfg.get("device_id", "phase0-sim"),
+            }
+            result = await _do_ingest(payload)
+            if result.get("status") == "ok":
+                patient["transfer_state"] = "acknowledged"
+                patient["transfer_ack_id"] = result.get("ack_id", "")
+                patient["transfer_ack_time"] = datetime.now().isoformat()
+                save_patient(patient)
+                await broadcast({
+                    "type": "transfer_update",
+                    "patient_id": pid,
+                    "transfer_state": "acknowledged",
+                    "ack_id": result.get("ack_id"),
+                })
+                return {"status": "ok", "ack_id": result.get("ack_id")}
+            else:
+                patient["transfer_state"] = "failed"
+                patient["transfer_error"] = result.get("error", "Unbekannter Fehler")
+                save_patient(patient)
+                await broadcast({"type": "transfer_update", "patient_id": pid, "transfer_state": "failed"})
+                return {"status": "error", "detail": result.get("error")}
+        except Exception as e:
+            patient["transfer_state"] = "failed"
+            patient["transfer_error"] = str(e)
+            save_patient(patient)
+            await broadcast({"type": "transfer_update", "patient_id": pid, "transfer_state": "failed", "error": str(e)})
+            return {"status": "error", "detail": str(e)}
+    else:
+        # Remote-Ingest: HTTP POST an externes Gerät
+        import httpx
+        try:
+            payload = {
+                "patient": patient,
+                "unit_name": cfg.get("phase0_unit_name", "BAT Simulation"),
+                "device_id": cfg.get("device_id", "phase0-sim"),
+            }
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(f"{target_url}/api/ingest", json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    patient["transfer_state"] = "acknowledged"
+                    patient["transfer_ack_id"] = data.get("ack_id", "")
+                    patient["transfer_ack_time"] = datetime.now().isoformat()
+                    save_patient(patient)
+                    await broadcast({
+                        "type": "transfer_update",
+                        "patient_id": pid,
+                        "transfer_state": "acknowledged",
+                        "ack_id": data.get("ack_id"),
+                    })
+                    return {"status": "ok", "ack_id": data.get("ack_id")}
+                else:
+                    patient["transfer_state"] = "failed"
+                    patient["transfer_error"] = f"HTTP {resp.status_code}"
+                    save_patient(patient)
+                    await broadcast({"type": "transfer_update", "patient_id": pid, "transfer_state": "failed"})
+                    return {"status": "error", "detail": f"HTTP {resp.status_code}"}
+        except Exception as e:
+            patient["transfer_state"] = "failed"
+            patient["transfer_error"] = str(e)
+            save_patient(patient)
+            await broadcast({"type": "transfer_update", "patient_id": pid, "transfer_state": "failed", "error": str(e)})
+            return {"status": "error", "detail": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -660,6 +826,99 @@ async def get_peers():
     return {"peers": peers_list}
 
 
+async def _system_stats_loop():
+    """Sendet periodisch System-Stats (CPU, RAM, Disk) an alle WebSocket-Clients."""
+    try:
+        import psutil
+    except ImportError:
+        print("psutil nicht installiert — Hardware-Monitor deaktiviert")
+        return
+
+    import platform
+    await asyncio.sleep(2)
+    while True:
+        try:
+            cpu = psutil.cpu_percent(interval=None)
+            mem = psutil.virtual_memory()
+            disk = psutil.disk_usage("/")
+
+            # CPU-Frequenz ermitteln
+            cpu_freq = psutil.cpu_freq()
+            cpu_freq_mhz = round(cpu_freq.current) if cpu_freq else 0
+
+            # Temperatur (falls verfügbar)
+            temperatures = {}
+            try:
+                temps = psutil.sensors_temperatures()
+                if temps:
+                    for name, entries in temps.items():
+                        for entry in entries:
+                            key = entry.label or name
+                            temperatures[key] = round(entry.current)
+            except (AttributeError, Exception):
+                pass  # macOS hat keine sensors_temperatures
+
+            ram_used_mb = round(mem.used / 1024 / 1024)
+            ram_total_mb = round(mem.total / 1024 / 1024)
+            ram_percent = round((ram_used_mb / ram_total_mb) * 100, 1) if ram_total_mb > 0 else 0
+
+            stats = {
+                "cpu_percent": cpu,
+                "cpu_freq_mhz": cpu_freq_mhz,
+                "ram_used_mb": ram_used_mb,
+                "ram_total_mb": ram_total_mb,
+                "ram_percent": ram_percent,
+                "gpu_usage": "N/A",
+                "disk_used_gb": round(disk.used / 1024 / 1024 / 1024, 1),
+                "disk_total_gb": round(disk.total / 1024 / 1024 / 1024, 1),
+                "disk_percent": round(disk.percent),
+                "temperatures": temperatures,
+                "system_name": platform.node(),
+                "platform": platform.system(),
+                "cpu_name": platform.processor() or platform.machine(),
+            }
+
+            # GPU-Info (NVIDIA via nvidia-smi)
+            if platform.system() != "Darwin":
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ["nvidia-smi", "--query-gpu=name,memory.used,memory.total,temperature.gpu,utilization.gpu",
+                         "--format=csv,noheader,nounits"],
+                        capture_output=True, text=True, timeout=3
+                    )
+                    if result.returncode == 0:
+                        parts = result.stdout.strip().split(", ")
+                        if len(parts) >= 5:
+                            stats["gpu_name"] = parts[0]
+                            stats["gpu_vram_used_mb"] = int(parts[1])
+                            stats["gpu_vram_total_mb"] = int(parts[2])
+                            stats["temperatures"]["gpu-thermal"] = int(parts[3])
+                            stats["gpu_usage"] = parts[4]
+                except Exception:
+                    pass
+
+            # Top-Prozesse nach RAM
+            procs = []
+            for proc in psutil.process_iter(["name", "memory_info"]):
+                try:
+                    mi = proc.info.get("memory_info")
+                    if mi is None:
+                        continue
+                    rss = mi.rss / 1024 / 1024
+                    if rss > 50:
+                        procs.append({"name": proc.info["name"] or "?", "rss_mb": round(rss)})
+                except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+                    pass
+            procs.sort(key=lambda x: x["rss_mb"], reverse=True)
+            stats["ram_processes"] = procs[:8]
+
+            await broadcast({"type": "system_stats", "stats": stats})
+        except Exception as e:
+            print(f"System-Stats Fehler: {e}")
+        await asyncio.sleep(3)
+
+
 async def _heartbeat_loop():
     """Sendet periodisch Heartbeats an alle bekannten Peers (alle 30s)."""
     import httpx
@@ -694,6 +953,145 @@ async def _heartbeat_loop():
 
 
 # ---------------------------------------------------------------------------
+# OLED-Display Simulator
+# ---------------------------------------------------------------------------
+# Import der OLED-Engine (funktioniert ohne I2C-Hardware)
+import sys
+sys.path.insert(0, str(ROOT_DIR / "jetson"))
+try:
+    from oled import oled_menu
+    _oled_available = True
+    print(f"OLED: Modul geladen (Software-Simulator)")
+except Exception as e:
+    _oled_available = False
+    print(f"OLED-Modul nicht verfügbar: {e}")
+
+
+@app.get("/api/oled/state")
+async def oled_get_state():
+    """Gibt OLED-Daten für die aktuelle Seite zurück."""
+    if not _oled_available:
+        return {"error": "OLED nicht verfügbar"}
+    return {
+        "page": oled_menu.current_page,
+        "page_name": ["system", "audio", "network", "patients", "power", "models"][oled_menu.current_page],
+        "stats": oled_menu.stats,
+        "audio": oled_menu.audio_info,
+        "network": oled_menu.network_info,
+        "patients": oled_menu.patient_info,
+        "power": oled_menu.power_info,
+        "models": oled_menu.model_info,
+    }
+
+
+@app.post("/api/oled/button")
+async def oled_button(body: dict):
+    """Simuliert einen Tastendruck auf dem OLED-Display."""
+    if not _oled_available:
+        return {"error": "OLED nicht verfügbar"}
+    button = body.get("button", "")
+    result = {}
+    if button == "up":
+        oled_menu.button_up()
+    elif button == "down":
+        oled_menu.button_down()
+    elif button == "ok":
+        result = oled_menu.button_ok() or {}
+    else:
+        return {"error": f"Unbekannter Button: {button}"}
+    return {
+        "status": "ok",
+        "page": oled_menu.current_page,
+        "page_name": ["system", "audio", "network", "patients", "power", "models"][oled_menu.current_page],
+        **result,
+    }
+
+
+async def _oled_loop():
+    """Aktualisiert das OLED-Display alle 1s mit aktuellen Daten und broadcastet an Clients."""
+    if not _oled_available:
+        return
+    await asyncio.sleep(3)
+    while True:
+        try:
+            # System-Stats aktualisieren
+            cfg = load_backend_config()
+            import psutil
+            cpu = psutil.cpu_percent(interval=None)
+            mem = psutil.virtual_memory()
+            disk = psutil.disk_usage("/")
+            oled_menu.update_stats({
+                "cpu_percent": cpu,
+                "ram_percent": round((mem.used / mem.total) * 100, 1) if mem.total > 0 else 0,
+                "ram_used_mb": round(mem.used / 1024 / 1024),
+                "ram_total_mb": round(mem.total / 1024 / 1024),
+                "gpu_usage": "N/A",
+                "disk_percent": round(disk.percent),
+                "temperatures": {},
+                "unit_name": cfg.get("unit_name", ""),
+                "patient_count": len(state.patients),
+            })
+
+            # Patienten-Info
+            triage = {"t1": 0, "t2": 0, "t3": 0, "t4": 0}
+            synced = 0
+            last_name = "---"
+            for p in state.patients.values():
+                t = p.get("triage", "").upper()
+                if t in ["T1", "T2", "T3", "T4"]:
+                    triage[t.lower()] += 1
+                if p.get("synced"):
+                    synced += 1
+                last_name = p.get("name", last_name)
+            oled_menu.update_patients({
+                "total": len(state.patients),
+                **triage,
+                "synced": synced,
+                "last_patient": last_name,
+            })
+
+            # Netzwerk-Info
+            peers = len(state.peers)
+            role1_connected = any(
+                p.get("unit_role") in ("role1", "Role 1")
+                for p in state.peers.values()
+            )
+            oled_menu.update_network({
+                "ssid": "---",
+                "ip": "---",
+                "tailscale_ip": "---",
+                "role1_status": "verbunden" if role1_connected else "getrennt",
+                "peers": peers,
+            })
+
+            # Modelle-Info (Platzhalter)
+            oled_menu.update_models({
+                "whisper_model": "---",
+                "whisper_loaded": False,
+                "ollama_model": cfg.get("ollama", {}).get("model", "---"),
+                "ollama_loaded": False,
+                "vosk_active": False,
+                "ok_action": "Nicht verfügbar",
+            })
+
+            # Daten broadcasten
+            await broadcast({
+                "type": "oled_frame",
+                "page": oled_menu.current_page,
+                "page_name": ["system", "audio", "network", "patients", "power", "models"][oled_menu.current_page],
+                "stats": oled_menu.stats,
+                "audio": oled_menu.audio_info,
+                "network": oled_menu.network_info,
+                "patients": oled_menu.patient_info,
+                "models": oled_menu.model_info,
+            })
+
+        except Exception as e:
+            print(f"OLED-Loop Fehler: {e}")
+        await asyncio.sleep(1)
+
+
+# ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------
 @app.on_event("startup")
@@ -705,4 +1103,6 @@ async def startup():
     print(f"  Aktive Transporte: {len(state.transports)}")
     print(f"  Aktive Positionen: {len(state.positions)}")
     asyncio.create_task(_heartbeat_loop())
+    asyncio.create_task(_system_stats_loop())
+    asyncio.create_task(_oled_loop())
     print("Warte auf Verbindungen von Feldgeräten...")

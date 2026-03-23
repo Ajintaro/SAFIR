@@ -12,19 +12,21 @@
         "url": "http://127.0.0.1:11434",
         "model": "qwen2.5:7b"
     },
+    "phase0_target_url": "",
+    "phase0_unit_name": "BAT Simulation",
     "navigation": [
+        {
+            "id": "phase0",
+            "label": "Phase 0",
+            "icon": "&#9873;",
+            "subtitle": "Feldgerät"
+        },
         {
             "id": "role1",
             "label": "Role 1",
             "icon": "&#9769;",
             "subtitle": "Rettungsstation",
             "default": true
-        },
-        {
-            "id": "phase0",
-            "label": "Phase 0",
-            "icon": "&#9873;",
-            "subtitle": "Feldgerät"
         },
         {
             "id": "role2",
