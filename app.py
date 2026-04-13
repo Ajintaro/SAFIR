@@ -6,11 +6,18 @@ FastAPI Backend mit WebSocket, Templates und Vosk-Sprachsteuerung.
 
 import asyncio
 import json
+import logging
 import os
 import subprocess
 import tempfile
 import time
 import threading
+
+# Logging für SAFIR-interne Logger (safir.hardware, safir.rfid, ...)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+)
 from datetime import datetime
 from pathlib import Path
 
@@ -36,6 +43,8 @@ from shared.rfid import generate_patient_id, generate_rfid_tag, lookup_by_rfid, 
 from shared.models import PATIENT_SCHEMA, TRANSFER_SCHEMA, PatientFlowStatus, FLOW_STATUS_LABELS, TRIAGE_COLORS
 from shared import tts
 from shared import sitaware
+from jetson.oled import oled_menu
+from jetson.hardware import HardwareService, SystemState
 
 PROJECT_DIR = Path(__file__).parent
 CONFIG_PATH = PROJECT_DIR / "config.json"
@@ -297,6 +306,9 @@ class AppState:
         self.persistent_stream = None
         self.event_loop = None
         self.vosk_command_queue = []  # thread-safe command queue
+        # Hardware-Integration (Phase 6+)
+        self.current_operator: dict | None = None  # None oder {uid, label, name, role, since}
+        self.last_rfid_uid: str = "---"
 
     def available_models(self):
         models = []
@@ -326,6 +338,177 @@ class AppState:
 
 
 state = AppState()
+
+# Hardware-Service (Buttons + LEDs + Shutdown-Geste). Wird im Startup gestartet.
+# RFID-Scan-Callback wird unten definiert und nach Instanzierung zugewiesen.
+hardware_service = HardwareService(_config, oled_menu, on_rfid_scan=None)
+
+
+# ---------------------------------------------------------------------------
+# RFID-Scan-Routing (Phase 6) — Login vs Patient-Karte
+# ---------------------------------------------------------------------------
+def _find_operator(uid: str) -> dict | None:
+    """Sucht eine UID in der config.rfid.operators Whitelist."""
+    rfid_cfg = _config.get("rfid", {})
+    for op in rfid_cfg.get("operators", []):
+        if op.get("uid", "").upper() == uid.upper():
+            return op
+    return None
+
+
+def _role_has_permission(role: str, permission: str) -> bool:
+    """Prüft ob eine Rolle eine Permission hat (unterstützt Wildcard '*')."""
+    roles = _config.get("rfid", {}).get("roles", {})
+    perms = roles.get(role, [])
+    return "*" in perms or permission in perms
+
+
+def check_permission(permission: str):
+    """Hilfsfunktion für Endpoints — wirft HTTPException(403) wenn fehlend.
+
+    Verwendung in einem Endpoint:
+        from fastapi import HTTPException
+        check_permission("patient_delete")
+    """
+    from fastapi import HTTPException
+    op = state.current_operator
+    if op is None:
+        raise HTTPException(status_code=401, detail="Kein Bediener eingeloggt")
+    role = op.get("role", "")
+    if not _role_has_permission(role, permission):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Rolle '{role}' hat keine Berechtigung für '{permission}'",
+        )
+
+
+def _handle_rfid_scan(uid: str):
+    """Callback aus dem RfidService — läuft im asyncio-Task-Kontext.
+
+    Entscheidet ob die UID ein Bediener-Login (blaue Karte) oder eine
+    Patientenkarte (weiße Karte) ist und handled beide Fälle async.
+    """
+    state.last_rfid_uid = uid
+    op = _find_operator(uid)
+    if op is not None:
+        asyncio.create_task(_handle_operator_scan(uid, op))
+    else:
+        asyncio.create_task(_handle_patient_scan(uid))
+
+
+def _handle_oled_action(action: dict):
+    """Callback vom Hardware-Service: Taster B auf einer OLED-Seite gedrückt.
+
+    Wird als async-Aufruf zurückgegeben — der Hardware-Service scheduled die
+    Coroutine automatisch. Routing erfolgt anhand des page-Feldes.
+    """
+    page = action.get("page", "")
+    if page == "cardwrite":
+        return voice_write_card()
+    if page == "operator":
+        # Taster B auf der BEDIENER-Seite = manueller Logout
+        return _manual_logout()
+    return None
+
+
+async def _manual_logout():
+    """OK-Druck auf OPERATOR-Seite = manueller Logout des aktuellen Bedieners."""
+    op = state.current_operator
+    if op is None:
+        return
+    state.current_operator = None
+    oled_menu.show_status("LOGOUT", f"{op.get('name', '')}")
+    try:
+        tts.speak(f"Abmeldung {op.get('name', '')}")
+    except Exception:
+        pass
+    await asyncio.sleep(1.5)
+    oled_menu.clear_status()
+    await broadcast({"type": "operator_logout", "uid": op.get("uid"), "name": op.get("name")})
+
+
+async def _handle_operator_scan(uid: str, op: dict):
+    """Login / Logout Toggle für blaue Operator-Transponder."""
+    now_iso = datetime.now().strftime("%H:%M")
+    current = state.current_operator
+    if current and current.get("uid", "").upper() == uid.upper():
+        # Gleicher Bediener scannt erneut → Logout
+        state.current_operator = None
+        oled_menu.show_status("LOGOUT", f"{op.get('name', '')}")
+        await asyncio.sleep(1.5)
+        oled_menu.clear_status()
+        await broadcast({"type": "operator_logout", "uid": uid, "name": op.get("name")})
+        try:
+            from shared import tts
+            tts.speak(f"Abmeldung {op.get('name', '')}")
+        except Exception:
+            pass
+        print(f"Operator-Logout: {op.get('label')} {op.get('name')}")
+        return
+
+    # Anderer Login → direkt ersetzen (kein zweistufiger Handover nötig)
+    state.current_operator = {
+        "uid": uid,
+        "label": op.get("label", "?"),
+        "name": op.get("name", ""),
+        "role": op.get("role", ""),
+        "since": now_iso,
+    }
+    oled_menu.show_status(
+        f"LOGIN [{op.get('label', '?')}]",
+        f"{op.get('name', '')} / {op.get('role', '')}",
+    )
+    await hardware_service.flash_success(1.2)
+    await asyncio.sleep(0.3)
+    oled_menu.clear_status()
+    # Auf OPERATOR-Seite springen (Index in PAGES)
+    try:
+        from jetson.oled import PAGES
+        if "operator" in PAGES:
+            oled_menu.current_page = PAGES.index("operator")
+    except Exception:
+        pass
+    await broadcast({
+        "type": "operator_login",
+        "uid": uid,
+        "label": op.get("label"),
+        "name": op.get("name"),
+        "role": op.get("role"),
+    })
+    try:
+        from shared import tts
+        tts.speak(f"Willkommen {op.get('name', '')}")
+    except Exception:
+        pass
+    print(f"Operator-Login: {op.get('label')} {op.get('name')} (Rolle {op.get('role')})")
+
+
+async def _handle_patient_scan(uid: str):
+    """Weiße Karte → Patient-Lookup oder Platzhalter-Event.
+
+    Die bisherige HTTP-API /api/rfid/scan bleibt als manueller Fallback
+    erhalten. Dieser Pfad hier ist der automatische Weg via Hardware-Reader.
+    """
+    existing_pid = lookup_by_rfid(state.rfid_map, uid)
+    if existing_pid and existing_pid in state.patients:
+        state.active_patient = existing_pid
+        patient = state.patients[existing_pid]
+        await broadcast({"type": "rfid_scan", "action": "found", "patient": patient})
+        oled_menu.show_status("PATIENT", patient.get("name", existing_pid)[:18])
+        await asyncio.sleep(1.5)
+        oled_menu.clear_status()
+        try:
+            from shared import tts
+            tts.announce_rfid_linked()
+        except Exception:
+            pass
+        return
+
+    # Unbekannte Karte → WebSocket-Event, User kann im UI neuen Patient anlegen
+    await broadcast({"type": "rfid_scan", "action": "unknown", "uid": uid})
+    oled_menu.show_status("NEUE KARTE", f"UID {uid[:12]}")
+    await asyncio.sleep(1.5)
+    oled_menu.clear_status()
 
 
 async def broadcast(msg: dict):
@@ -625,6 +808,8 @@ async def process_vosk_commands():
                 elif action == "export_docx":
                     tts.announce_confirmed()
                     await broadcast({"type": "voice_command", "action": "export_docx"})
+                elif action == "rfid_write_patient":
+                    await voice_write_card()
             except Exception as e:
                 print(f"Vosk Befehl Fehler: {e}")
                 tts.announce_error()
@@ -668,6 +853,7 @@ async def voice_new_patient():
     await create_session_internal("Unbekannt", "Feld", default_medic, "tccc")
 
     await broadcast({"type": "patient_registered", "patient": patient})
+    oled_menu.show_status("NEUER PATIENT", f"#{len(state.patients)}")
     tts.announce_patient_created()
     # Patientennummer ansagen (1-basiert)
     num = list(state.patients.keys()).index(pid) + 1
@@ -783,6 +969,7 @@ async def voice_analyze_all():
 
     tts.speak(f"{len(pending)} Patienten werden analysiert")
     state._analyzing = True
+    oled_menu.show_status("ANALYSE", f"{len(pending)} Patient(en)...", 0)
     await broadcast({"type": "analyzing_batch", "count": len(pending)})
     asyncio.create_task(_run_batch_analysis(pending))
 
@@ -809,6 +996,8 @@ async def _run_batch_analysis(pending: list):
                 print(f"Analyse übersprungen: Keine Session für {pid}")
                 continue
 
+            idx = [i for i, (p, _) in enumerate(pending) if p == pid][0]
+            oled_menu.show_status("ANALYSE", f"Patient {idx + 1}/{len(pending)}", int((idx + 1) / len(pending) * 100))
             print(f"Analysiere Patient {pid}...")
             await broadcast({"type": "analyzing_patient", "patient_id": pid})
             try:
@@ -823,6 +1012,7 @@ async def _run_batch_analysis(pending: list):
                 await broadcast({"type": "analyzing_patient_done", "patient_id": pid, "error": True})
 
         analyzed_count = sum(1 for _, p in pending if p.get("analyzed"))
+        oled_menu.show_status("ANALYSE FERTIG", f"{analyzed_count} Patient(en)")
         tts.speak(f"{analyzed_count} Patienten analysiert")
         await broadcast({"type": "batch_analysis_complete", "analyzed": analyzed_count, "total": len(pending)})
 
@@ -839,6 +1029,7 @@ async def _run_batch_analysis(pending: list):
         await asyncio.sleep(1)
 
         # Whisper wieder starten
+        oled_menu.show_status("GPU-SWAP", "Whisper laden...", 50)
         print("GPU-Swap: Whisper wird neu gestartet...")
         if state.model_path and state.model_path.exists():
             success = await loop.run_in_executor(None, start_whisper_server, state.model_path)
@@ -846,8 +1037,12 @@ async def _run_batch_analysis(pending: list):
                 print(f"GPU-Swap: Whisper bereit ({state.current_model})")
                 await broadcast({"type": "status", "message": "Whisper bereit — Aufnahme möglich"})
                 await broadcast({"type": "model_loaded", "model": state.current_model, "ram_mb": state.model_ram_mb})
+                oled_menu.show_status("SAFIR BEREIT", "Warte auf Befehl...")
+                await asyncio.sleep(2)
+                oled_menu.clear_status()
             else:
                 print("WARNUNG: Whisper konnte nach Analyse nicht neu gestartet werden!")
+                oled_menu.show_status("FEHLER", "Whisper nicht geladen")
                 await broadcast({"type": "status", "message": "Fehler: Whisper nicht verfügbar"})
         else:
             print("WARNUNG: Kein Whisper-Modellpfad gespeichert!")
@@ -879,13 +1074,120 @@ async def voice_send_backend():
             tts.speak("Alle Patienten bereits übermittelt")
         return
 
+    oled_menu.show_status("SENDEN", "An Leitstelle...", 50)
     result = await sync_all_patients()
     if result["sent"] > 0:
+        oled_menu.show_status("GESENDET", f"{result['sent']} Patient(en)")
         tts.speak(f"{result['sent']} Patienten übermittelt")
     elif result.get("error"):
+        oled_menu.show_status("FEHLER", "Keine Verbindung")
         tts.speak("Leitstelle nicht erreichbar")
     elif result["failed"] > 0:
+        oled_menu.show_status("FEHLER", f"{result['failed']} fehlgeschlagen")
         tts.speak(f"{result['failed']} Patienten nicht übermittelt. Leitstelle nicht erreichbar.")
+
+
+async def voice_write_card():
+    """Sprachbefehl 'karte schreiben': Patientendaten auf weiße MIFARE-Karte schreiben.
+
+    Flow:
+      1. Permission-Check (current_operator Rolle muss 'rfid_write_patient' haben)
+      2. Aktiven Patient ermitteln
+      3. OLED "Karte auflegen" + Rot-LED BLINK_SLOW
+      4. Auf RFID-Scan warten (10 s Timeout)
+      5. Wenn Operator-Karte → abweisen
+      6. Sonst: schreiben über rc522_write_patient_to_card (im Executor)
+      7. Feedback via OLED, LED und TTS
+    """
+    from shared.rfid import rc522_write_patient_to_card
+    from jetson.hardware import LedPattern
+
+    # Permission-Gate
+    op = state.current_operator
+    if op is None:
+        tts.speak("Bitte zuerst einloggen")
+        oled_menu.show_status("KEIN LOGIN", "Blaue Karte auflegen")
+        await asyncio.sleep(2.0)
+        oled_menu.clear_status()
+        return
+    role = op.get("role", "")
+    if not _role_has_permission(role, "rfid_write_patient"):
+        tts.speak("Keine Berechtigung")
+        oled_menu.show_status("VERBOTEN", f"Rolle {role}")
+        await asyncio.sleep(2.0)
+        oled_menu.clear_status()
+        return
+
+    # Aktiver Patient
+    if not state.active_patient or state.active_patient not in state.patients:
+        tts.speak("Kein aktiver Patient")
+        oled_menu.show_status("FEHLER", "Kein aktiver Patient")
+        await asyncio.sleep(2.0)
+        oled_menu.clear_status()
+        return
+    patient = state.patients[state.active_patient]
+
+    # UI: Karte auflegen
+    oled_menu.show_status("KARTE AUFLEGEN", "Weiße Karte…")
+    if hardware_service._leds:
+        hardware_service._leds.set(red=LedPattern.BLINK_SLOW)
+    tts.speak("Karte auflegen")
+
+    # Exklusiv auf nächsten Scan warten (max 10 s)
+    uid = await hardware_service.await_rfid_scan(timeout=10.0)
+    if uid is None:
+        oled_menu.show_status("TIMEOUT", "Keine Karte")
+        if hardware_service._leds:
+            hardware_service._leds.set(red=LedPattern.OFF)
+        hardware_service.set_system_state(hardware_service.get_system_state())  # refresh
+        tts.speak("Keine Karte erkannt")
+        await asyncio.sleep(2.0)
+        oled_menu.clear_status()
+        return
+
+    # Prüfen ob es eine Operator-Karte ist (blaue Transponder nicht beschreiben)
+    if _find_operator(uid) is not None:
+        oled_menu.show_status("OPERATOR", "Weiße Karte bitte")
+        tts.speak("Keine Patientenkarte")
+        await hardware_service.flash_error(1.5)
+        await asyncio.sleep(1.0)
+        oled_menu.clear_status()
+        return
+
+    # Schreiben (blocking → in Executor)
+    oled_menu.show_status("SCHREIBE", f"UID {uid[:8]}", progress=50)
+    loop = asyncio.get_event_loop()
+    try:
+        success, result = await loop.run_in_executor(
+            None, rc522_write_patient_to_card, patient, 8.0
+        )
+    except Exception as e:
+        success, result = False, str(e)
+
+    if success:
+        oled_menu.show_status("GESPEICHERT", f"UID {result[:8]}")
+        await hardware_service.flash_success(1.5)
+        tts.speak("Patient gespeichert")
+        state.last_rfid_uid = result
+        # Timeline-Event
+        patient["timeline"].append({
+            "time": datetime.now().isoformat(),
+            "role": patient["current_role"],
+            "event": "rfid_written",
+            "details": f"Auf Karte geschrieben (UID {result}) von {op.get('name', '')}",
+        })
+        await broadcast({
+            "type": "rfid_written",
+            "patient_id": patient["patient_id"],
+            "uid": result,
+        })
+    else:
+        oled_menu.show_status("SCHREIBFEHLER", str(result)[:18])
+        await hardware_service.flash_error(2.0)
+        tts.speak("Schreibfehler")
+
+    await asyncio.sleep(1.5)
+    oled_menu.clear_status()
 
 
 # ---------------------------------------------------------------------------
@@ -1347,6 +1649,7 @@ async def start_recording_internal():
 
     asyncio.create_task(_auto_stop_timer())
     await broadcast({"type": "recording_started"})
+    oled_menu.show_status("AUFNAHME", "Sprechen...")
 
 
 async def create_session_internal(patient_name, location, medic, template_id):
@@ -1958,6 +2261,7 @@ async def start_recording():
 
     asyncio.create_task(_auto_stop_timer())
     await broadcast({"type": "recording_started"})
+    oled_menu.show_status("AUFNAHME", "Sprechen...")
     return {"status": "recording", "max_seconds": MAX_RECORD_SECONDS}
 
 
@@ -2016,6 +2320,7 @@ async def stop_recording():
 
     state.transcribing = True
     await broadcast({"type": "transcribing", "chunks": total_chunks})
+    oled_menu.show_status("TRANSKRIPTION", f"{total_chunks} Chunk(s)...", 0)
 
     loop = asyncio.get_event_loop()
 
@@ -2025,6 +2330,7 @@ async def stop_recording():
             "chunk": idx + 1,
             "total": total_chunks,
         })
+        oled_menu.show_status("TRANSKRIPTION", f"Chunk {idx + 1}/{total_chunks}", int((idx + 1) / total_chunks * 100))
 
         result = await loop.run_in_executor(None, run_transcribe, chunk, state.language)
 
@@ -2059,6 +2365,9 @@ async def stop_recording():
         state.vosk_listening = True
 
     if not all_texts:
+        oled_menu.show_status("FEHLER", "Keine Sprache erkannt")
+        await asyncio.sleep(2)
+        oled_menu.clear_status()
         await broadcast({"type": "transcription_error", "error": "Keine Sprache erkannt"})
         return {"error": "Keine Sprache erkannt"}
 
@@ -2092,6 +2401,10 @@ async def stop_recording():
         "session_id": state.active_session,
         "patient_id": state.active_patient,
     })
+
+    oled_menu.show_status("TRANSKRIPT OK", f"{len(full_text)} Zeichen")
+    await asyncio.sleep(2)
+    oled_menu.clear_status()
 
     return {"status": "ok", "result": record_entry}
 
@@ -2647,7 +2960,12 @@ async def stop_gps_sim():
 async def startup():
     state.event_loop = asyncio.get_event_loop()
 
+    # OLED Display initialisieren
+    oled_menu.init_hardware()
+    oled_menu.show_status("SAFIR", "System startet...", 0)
+
     # Vosk initialisieren
+    oled_menu.show_status("SAFIR", "Vosk laden...", 10)
     init_vosk()
 
     # Whisper-Modell laden
@@ -2656,15 +2974,19 @@ async def startup():
         best = next((m for m in models if m["name"] == "small"), models[0])
         path = MODELS_DIR / f"ggml-{best['name']}.bin"
         print(f"Lade Modell: {best['name']} ({best['size_mb']} MB)...")
+        oled_menu.show_status("SAFIR", f"Whisper {best['name']}...", 30)
         success = start_whisper_server(path)
         if success:
             state.model_path = path
             state.current_model = best["name"]
             print(f"Modell bereit: {best['name']} (~{state.model_ram_mb} MB RAM)")
+            oled_menu.show_status("SAFIR", "Whisper geladen", 60)
         else:
             print("WARNUNG: Modell konnte nicht geladen werden!")
+            oled_menu.show_status("FEHLER", "Whisper fehlgeschlagen")
 
     # Audio-Device automatisch erkennen: bevorzugt USB-Mikrofon
+    oled_menu.show_status("SAFIR", "Audio suchen...", 70)
     devices = state.audio_devices()
     usb_device = next((d for d in devices if "USB" in d["name"] or "Logitech" in d["name"]), None)
     if usb_device:
@@ -2681,6 +3003,7 @@ async def startup():
     asyncio.create_task(process_vosk_commands())
 
     # Piper TTS laden
+    oled_menu.show_status("SAFIR", "TTS laden...", 85)
     tts.init_tts()
 
     # GPS-Simulation starten (für Demo)
@@ -2689,9 +3012,206 @@ async def startup():
     # Peer Discovery Heartbeat
     asyncio.create_task(_heartbeat_loop())
 
+    # SAFIR bereit!
+    oled_menu.show_status("SAFIR BEREIT", "Warte auf Befehl...")
+    await asyncio.sleep(3)
+    oled_menu.clear_status()
+
+    # Hardware-Service: Taster, LEDs, Shutdown-Geste starten
+    hardware_service.set_rfid_callback(_handle_rfid_scan)
+    hardware_service.set_oled_action_callback(_handle_oled_action)
+    await hardware_service.start()
+
+    # Starte OLED-Update-Loop für Menü-Seiten
+    asyncio.create_task(_oled_update_loop())
+
+
+async def _oled_update_loop():
+    """Aktualisiert das OLED-Menü alle ~500 ms mit Systemdaten.
+
+    Kürzerer Intervall weil der Shutdown-Countdown bei 3 s Gesamtdauer
+    mehrmals gerendert werden muss. Normale Seiten-Daten werden aber nur
+    alle 2 s neu erfasst (Rate-Limiting über _last_stats_refresh).
+    """
+    import psutil
+    import socket
+    print("[OLED] _oled_update_loop gestartet", flush=True)
+    last_stats_refresh = 0.0
+    last_debug_print = 0.0
+    STATS_INTERVAL = 2.0
+
+    while True:
+        # Burn-in Schutz: nach 5 Min Inaktivität Display ausschalten
+        oled_menu.check_screensaver()
+
+        # Shutdown-Countdown hat Vorrang — rendert sich selbst via show_status()
+        if hardware_service.render_shutdown_countdown_if_active():
+            await asyncio.sleep(0.1)
+            continue
+
+        # Diagnose: alle 5 s den aktuellen Zustand loggen
+        _dbg_now = time.monotonic()
+        if _dbg_now - last_debug_print > 5.0:
+            last_debug_print = _dbg_now
+            print(f"[OLED] tick status_mode={oled_menu._status_mode} display_off={oled_menu._display_off} page={oled_menu.current_page}", flush=True)
+
+        if not oled_menu._status_mode and not oled_menu._display_off:
+            now = time.monotonic()
+            try:
+                # Stats nur alle 2 s erneuern (teuer)
+                if now - last_stats_refresh >= STATS_INTERVAL:
+                    last_stats_refresh = now
+                    mem = psutil.virtual_memory()
+                    disk = psutil.disk_usage("/")
+                    oled_menu.update_stats({
+                        "cpu_percent": psutil.cpu_percent(),
+                        "ram_percent": mem.percent,
+                        "ram_used_mb": mem.used // (1024 * 1024),
+                        "ram_total_mb": mem.total // (1024 * 1024),
+                        "gpu_usage": "N/A",
+                        "disk_percent": disk.percent,
+                        "unit_name": _config.get("unit_name", ""),
+                        "patient_count": len(state.patients),
+                    })
+                    # Netzwerk-Info
+                    try:
+                        hostname = socket.gethostname()
+                    except Exception:
+                        hostname = "jetson"
+                    ip = _get_primary_ip()
+                    oled_menu.update_network({
+                        "hostname": hostname,
+                        "ip": ip,
+                        "tailscale_ip": _get_tailscale_ip(),
+                        "peers": len(state.peers),
+                    })
+                    # Operator-Info
+                    op = getattr(state, "current_operator", None)
+                    if op:
+                        oled_menu.update_operator({
+                            "logged_in": True,
+                            "label": op.get("label", "?"),
+                            "name": op.get("name", ""),
+                            "role": op.get("role", ""),
+                            "since": op.get("since", ""),
+                        })
+                    else:
+                        oled_menu.update_operator({"logged_in": False})
+
+                    # KI-Modelle-Status: beide müssen im RAM UND auf der GPU sein
+                    whisper_ok = bool(state.model_loaded)  # whisper-server läuft mit CUDA
+                    qwen_ok = False
+                    try:
+                        _ps = httpx.get(f"{OLLAMA_URL}/api/ps", timeout=1.5)
+                        if _ps.status_code == 200:
+                            for _m in _ps.json().get("models", []):
+                                name = _m.get("name", "")
+                                vram = _m.get("size_vram", 0) or 0
+                                # Match gegen das konfigurierte Modell und prüfen
+                                # dass es tatsächlich im VRAM liegt (size_vram > 0)
+                                if OLLAMA_MODEL.split(":")[0] in name and vram > 0:
+                                    qwen_ok = True
+                                    break
+                    except Exception:
+                        qwen_ok = False
+                    oled_menu.update_models_status({
+                        "whisper_ok": whisper_ok,
+                        "qwen_ok": qwen_ok,
+                    })
+
+                    # Aktiver Patient für PATIENT-Seite
+                    active_pat = None
+                    if state.active_patient and state.active_patient in state.patients:
+                        active_pat = state.patients[state.active_patient]
+                    if active_pat:
+                        oled_menu.update_active_patient({
+                            "patient_id": active_pat.get("patient_id", ""),
+                            "name": active_pat.get("name", ""),
+                            "triage": active_pat.get("triage", ""),
+                            "flow_status": active_pat.get("flow_status", ""),
+                        })
+                    else:
+                        oled_menu.update_active_patient({})
+
+                    # Power-Info (Uptime)
+                    uptime_s = time.monotonic() - _hardware_start_ts
+                    oled_menu.update_power({
+                        "uptime_hours": uptime_s / 3600.0,
+                        "current_watts": 0,  # TODO: tegrastats-Parsing
+                    })
+                    # Cardwrite-Info (für die KARTE-SCHREIBEN-Seite)
+                    active_p = None
+                    if state.active_patient and state.active_patient in state.patients:
+                        active_p = state.patients[state.active_patient]
+                    cw_op_ok = op is not None
+                    cw_perm_ok = cw_op_ok and _role_has_permission(
+                        op.get("role", ""), "rfid_write_patient"
+                    )
+                    oled_menu.update_cardwrite({
+                        "operator_logged_in": cw_op_ok,
+                        "has_permission": cw_perm_ok,
+                        "has_active_patient": active_p is not None,
+                        "patient_name": (active_p or {}).get("name", ""),
+                        "patient_id": (active_p or {}).get("patient_id", ""),
+                        "triage": (active_p or {}).get("triage", ""),
+                    })
+
+                    # Hardware-Info
+                    from shared import rfid as _rfid
+                    hw_uptime = time.monotonic() - _hardware_start_ts
+                    btn_counts = hardware_service.get_button_counts()
+                    oled_menu.update_hardware({
+                        "rfid_available": _rfid.is_rc522_available(),
+                        "last_uid": getattr(state, "last_rfid_uid", "---"),
+                        "button_a_count": btn_counts["A_short"] + btn_counts["A_long"],
+                        "button_b_count": btn_counts["B_short"] + btn_counts["B_long"],
+                        "system_state": hardware_service.get_system_state().value,
+                        "uptime_s": hw_uptime,
+                    })
+                oled_menu.render()
+            except Exception as e:
+                print(f"OLED update error: {e}")
+        await asyncio.sleep(0.5)
+
+
+def _get_primary_ip() -> str:
+    """Ermittelt die primäre IP-Adresse des Jetson (ohne 127.0.0.1)."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "---"
+
+
+def _get_tailscale_ip() -> str:
+    """Liest die Tailscale-IP aus der tailscale CLI, falls verfügbar."""
+    try:
+        out = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True, text=True, timeout=1.0,
+        )
+        ip = out.stdout.strip().split("\n")[0]
+        return ip or "---"
+    except Exception:
+        return "---"
+
+
+# Startzeit für Hardware-Service-Uptime
+_hardware_start_ts = time.monotonic()
+
 
 @app.on_event("shutdown")
 async def shutdown():
+    oled_menu.show_status("SAFIR", "Herunterfahren...")
+    try:
+        await hardware_service.stop()
+    except Exception as e:
+        print(f"Hardware-Service stop error: {e}")
     stop_persistent_stream()
     stop_whisper_server()
 

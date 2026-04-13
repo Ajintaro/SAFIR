@@ -13,17 +13,25 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+# SSD1306 Init-Sequenz (Charge Pump aktiv, Kontrast MAX)
+_SSD1306_INIT = [
+    0xAE, 0xD5, 0x80, 0xA8, 0x3F, 0xD3, 0x00, 0x40,
+    0x8D, 0x14,  # Charge Pump ON
+    0x20, 0x00,  # Horizontal Addressing
+    0xA1, 0xC8, 0xDA, 0x12,
+    0x81, 0xFF,  # Kontrast MAX
+    0xD9, 0xF1, 0xDB, 0x40, 0xA4, 0xA6, 0xAF,
+]
+
 # Display-Konstanten
 WIDTH = 128
 HEIGHT = 64
-PAGES = ["system", "audio", "network", "patients", "power", "models"]
+PAGES = ["models", "operator", "patient", "cardwrite"]
 PAGE_TITLES = {
-    "system": "SYSTEM",
-    "audio": "AUDIO",
-    "network": "NETZWERK",
-    "patients": "PATIENTEN",
-    "power": "POWER",
-    "models": "KI-MODELLE",
+    "models": "KI-STATUS",
+    "operator": "BEDIENER",
+    "patient": "PATIENT",
+    "cardwrite": "KARTE",
 }
 
 
@@ -48,6 +56,7 @@ def _load_font(size=10):
 FONT_SM = _load_font(9)
 FONT_MD = _load_font(11)
 FONT_LG = _load_font(13)
+FONT_XL = _load_font(16)
 
 
 class OledMenu:
@@ -55,39 +64,154 @@ class OledMenu:
 
     def __init__(self):
         self.current_page = 0
-        self.stats = {}         # System-Stats (CPU, RAM, GPU, ...)
-        self.audio_info = {}    # Mikrofon-Status
-        self.network_info = {}  # Netzwerk-Info
-        self.patient_info = {}  # Patienten-Übersicht
-        self.model_info = {}    # KI-Modelle Status
-        self.power_info = {}    # Strom/Power
-        self._hw_device = None  # luma.oled Device (None = Software-only)
+        self.stats = {}              # System-Stats (CPU, RAM, GPU, Temperaturen, ...)
+        self.network_info = {}       # Netzwerk-Info (Hostname, IP)
+        self.patient_info = {}       # Patienten-Übersicht (Anzahl, etc.)
+        self.power_info = {}         # Strom/Power (Watt, Modus, Uptime)
+        self.operator_info = {}      # Eingeloggter Bediener (RFID)
+        self.cardwrite_info = {}     # Aktiver Patient für Schreiben auf Karte
+        self.active_patient_info = {}  # Aktiver Patient (Name, Triage, Flow-Status)
+        self.models_status = {}      # KI-Modelle (Whisper/Ollama) geladen + auf GPU?
+        # Altlasten — werden nicht mehr gerendert aber von app.py noch befüllt:
+        self.audio_info = {}
+        self.model_info = {}
+        self.hardware_info = {}
+        self._i2c_bus = None    # smbus2 Bus (None = Software-only)
+        self._i2c_addr = 0x3C
+        self._status_mode = False  # True = Vollbild-Status statt Menü
+        self._status_text = ""
+        self._status_sub = ""
+        self._status_progress = -1  # -1 = kein Balken, 0-100 = Prozent
+        self._last_activity = time.time()  # Burn-in Schutz
+        self._display_off = False
+        self.SCREENSAVER_SECONDS = 300  # 5 Minuten
 
     def init_hardware(self):
         """Versucht SSD1306 über I2C zu initialisieren. Fehlschlag = Software-only."""
         try:
-            from luma.core.interface.serial import i2c
-            from luma.oled.device import ssd1306
-            serial = i2c(port=1, address=0x3C)
-            self._hw_device = ssd1306(serial, width=WIDTH, height=HEIGHT)
-            print("OLED: SSD1306 auf I2C initialisiert")
+            import smbus2
+            self._i2c_bus = smbus2.SMBus(7)
+            for cmd in _SSD1306_INIT:
+                self._i2c_bus.write_byte_data(self._i2c_addr, 0x00, cmd)
+            self._last_activity = time.time()
+            print("OLED: SSD1306 auf I2C initialisiert (Charge Pump aktiv)")
             return True
         except Exception as e:
             print(f"OLED: Kein Hardware-Display ({e}) — Software-Simulator aktiv")
-            self._hw_device = None
+            self._i2c_bus = None
             return False
+
+    def _wake(self):
+        """Aktiviert Display und setzt Inaktivitäts-Timer zurück."""
+        self._last_activity = time.time()
+        if self._display_off and self._i2c_bus:
+            self._i2c_bus.write_byte_data(self._i2c_addr, 0x00, 0xAF)  # Display ON
+            self._display_off = False
+
+    def wake(self):
+        """Public Alias für _wake() — von Hardware-Service/Buttons aufgerufen."""
+        self._wake()
+
+    @property
+    def is_sleeping(self) -> bool:
+        """True wenn das Display im Standby (Burn-in-Schutz) ist."""
+        return self._display_off
+
+    def _sleep_display(self):
+        """Schaltet Display aus (Burn-in Schutz)."""
+        if not self._display_off and self._i2c_bus:
+            self._i2c_bus.write_byte_data(self._i2c_addr, 0x00, 0xAE)  # Display OFF
+            self._display_off = True
+
+    def check_screensaver(self):
+        """Prüft ob Screensaver aktiviert werden soll. Aus _oled_update_loop aufrufen."""
+        if self._display_off:
+            return
+        if time.time() - self._last_activity > self.SCREENSAVER_SECONDS:
+            self._sleep_display()
+
+    def _display_image(self, img: Image.Image):
+        """Sendet ein PIL-Image direkt an das SSD1306 via smbus2."""
+        if not self._i2c_bus:
+            return
+        pixels = list(img.getdata())
+        for page in range(8):
+            self._i2c_bus.write_byte_data(self._i2c_addr, 0x00, 0xB0 + page)
+            self._i2c_bus.write_byte_data(self._i2c_addr, 0x00, 0x00)
+            self._i2c_bus.write_byte_data(self._i2c_addr, 0x00, 0x10)
+            buf = []
+            for x in range(128):
+                byte = 0
+                for bit in range(8):
+                    y = page * 8 + bit
+                    if pixels[y * 128 + x]:
+                        byte |= (1 << bit)
+                buf.append(byte)
+            for i in range(0, 128, 16):
+                self._i2c_bus.write_i2c_block_data(self._i2c_addr, 0x40, buf[i:i + 16])
+
+    # ---- Status-Anzeige (Vollbild) ----
+    def show_status(self, text: str, sub: str = "", progress: int = -1):
+        """Zeigt Vollbild-Status auf dem Display. progress: -1=kein Balken, 0-100=Prozent."""
+        self._wake()
+        self._status_mode = True
+        self._status_text = text
+        self._status_sub = sub
+        self._status_progress = progress
+        self._render_fullscreen_status()
+
+    def clear_status(self):
+        """Schaltet zurück zur normalen Menü-Ansicht."""
+        self._status_mode = False
+
+    def _render_fullscreen_status(self):
+        """Rendert den Vollbild-Status-Overlay und sendet ans Display (für show_status())."""
+        img = Image.new("1", (WIDTH, HEIGHT), 0)
+        draw = ImageDraw.Draw(img)
+
+        # Rand
+        draw.rectangle([0, 0, WIDTH - 1, HEIGHT - 1], outline=1)
+        draw.rectangle([2, 2, WIDTH - 3, HEIGHT - 3], outline=1)
+
+        # Haupttext zentriert
+        bbox = FONT_LG.getbbox(self._status_text)
+        tw = bbox[2] - bbox[0]
+        x = (WIDTH - tw) // 2
+        y_main = 16 if self._status_sub or self._status_progress >= 0 else 22
+        draw.text((x, y_main), self._status_text, font=FONT_LG, fill=1)
+
+        # Untertext
+        if self._status_sub:
+            bbox2 = FONT_SM.getbbox(self._status_sub)
+            tw2 = bbox2[2] - bbox2[0]
+            x2 = (WIDTH - tw2) // 2
+            draw.text((x2, y_main + 18), self._status_sub, font=FONT_SM, fill=1)
+
+        # Fortschrittsbalken
+        if self._status_progress >= 0:
+            bar_y = HEIGHT - 16
+            draw.rectangle([8, bar_y, WIDTH - 9, bar_y + 7], outline=1)
+            fill_w = int((WIDTH - 20) * min(self._status_progress, 100) / 100)
+            if fill_w > 0:
+                draw.rectangle([10, bar_y + 1, 9 + fill_w, bar_y + 6], fill=1)
+
+        self._display_image(img)
+        return img
 
     # ---- Navigation ----
     def button_up(self):
         """Vorherige Seite."""
+        self._wake()
         self.current_page = (self.current_page - 1) % len(PAGES)
 
     def button_down(self):
         """Nächste Seite."""
+        self._wake()
         self.current_page = (self.current_page + 1) % len(PAGES)
 
     def button_ok(self):
         """Aktion auf der aktuellen Seite."""
+        self._wake()
         page = PAGES[self.current_page]
         # Seitenspezifische Aktionen werden vom App-Layer behandelt
         return {"page": page, "action": "ok"}
@@ -111,33 +235,46 @@ class OledMenu:
     def update_models(self, info: dict):
         self.model_info = info
 
+    def update_operator(self, info: dict):
+        self.operator_info = info
+
+    def update_hardware(self, info: dict):
+        self.hardware_info = info
+
+    def update_cardwrite(self, info: dict):
+        self.cardwrite_info = info
+
+    def update_active_patient(self, info: dict):
+        self.active_patient_info = info
+
+    def update_models_status(self, info: dict):
+        self.models_status = info
+
     # ---- Rendering ----
     def render(self) -> Image.Image:
         """Rendert die aktuelle Seite als 128×64 PIL-Image."""
+        # Im Status-Modus: Vollbild-Status anzeigen
+        if self._status_mode:
+            return self._render_fullscreen_status()
+
         img = Image.new("1", (WIDTH, HEIGHT), 0)  # Monochrom, schwarz
         draw = ImageDraw.Draw(img)
         page = PAGES[self.current_page]
 
-        # Header
-        self._draw_header(draw, page)
+        # Kein Header — volle 64 Pixel Höhe für Content
 
-        # Seiteninhalt
-        if page == "system":
-            self._render_system(draw)
-        elif page == "audio":
-            self._render_audio(draw)
-        elif page == "network":
-            self._render_network(draw)
-        elif page == "patients":
-            self._render_patients(draw)
-        elif page == "power":
-            self._render_power(draw)
-        elif page == "models":
-            self._render_models(draw)
+        # Seiteninhalt — 4-Seiten-Design (KI-Status / Bediener / Patient / Karte)
+        if page == "models":
+            self._render_models_status(draw)
+        elif page == "operator":
+            self._render_operator(draw)
+        elif page == "patient":
+            self._render_patient(draw)
+        elif page == "cardwrite":
+            self._render_cardwrite(draw)
 
         # Auf Hardware-Display schreiben (falls vorhanden)
-        if self._hw_device:
-            self._hw_device.display(img)
+        self._display_image(img)
 
         return img
 
@@ -178,223 +315,104 @@ class OledMenu:
         tw = bbox[2] - bbox[0]
         draw.text((x - tw, y), text, font=font, fill=1)
 
-    # ---- Seite 1: System Status ----
-    def _render_system(self, draw: ImageDraw):
-        s = self.stats
-        y = 13
-        cpu = s.get("cpu_percent", 0)
-        ram_pct = s.get("ram_percent", 0)
-        ram_used = s.get("ram_used_mb", 0)
-        ram_total = s.get("ram_total_mb", 0)
-        gpu = s.get("gpu_usage", "N/A")
-        disk_pct = s.get("disk_percent", 0)
+    # ---- Seite: KI-STATUS (Whisper + Qwen Bereitschaft) ----
+    def _render_models_status(self, draw: ImageDraw):
+        m = self.models_status
+        whisper_ok = m.get("whisper_ok", False)
+        qwen_ok = m.get("qwen_ok", False)
 
-        # CPU
-        draw.text((1, y), "CPU", font=FONT_SM, fill=1)
-        self._draw_bar(draw, 24, y, 60, 8, cpu)
-        self._text_r(draw, 126, y, f"{cpu:.0f}%", FONT_SM)
+        # WHISPER-Zeile
+        whisper_text = "WHISPER=OK" if whisper_ok else "WHISPER=??"
+        draw.text((2, 4), whisper_text, font=FONT_XL, fill=1)
 
-        # RAM
-        y += 11
-        draw.text((1, y), "RAM", font=FONT_SM, fill=1)
-        self._draw_bar(draw, 24, y, 60, 8, ram_pct)
-        ram_gb = f"{ram_used / 1024:.1f}/{ram_total / 1024:.0f}G"
-        self._text_r(draw, 126, y, ram_gb, FONT_SM)
+        # QWEN-Zeile
+        qwen_text = "QWEN=OK" if qwen_ok else "QWEN=??"
+        draw.text((2, 30), qwen_text, font=FONT_XL, fill=1)
 
-        # GPU
-        y += 11
-        draw.text((1, y), "GPU", font=FONT_SM, fill=1)
-        if gpu != "N/A":
-            gpu_val = float(gpu)
-            self._draw_bar(draw, 24, y, 60, 8, gpu_val)
-            self._text_r(draw, 126, y, f"{gpu_val:.0f}%", FONT_SM)
+        # Unten: Hinweis wenn beide bereit, oder welches fehlt
+        if whisper_ok and qwen_ok:
+            # Beide OK → invertierter "BEREIT"-Balken unten
+            draw.rectangle([0, 52, WIDTH - 1, 63], fill=1)
+            draw.text((30, 53), "EINSATZBEREIT", font=FONT_MD, fill=0)
         else:
-            draw.text((24, y), "Shared Memory", font=FONT_SM, fill=1)
+            missing = []
+            if not whisper_ok:
+                missing.append("Whisper")
+            if not qwen_ok:
+                missing.append("Qwen")
+            draw.text((2, 54), f"Warte: {' + '.join(missing)}", font=FONT_SM, fill=1)
 
-        # Disk
-        y += 11
-        draw.text((1, y), "DSK", font=FONT_SM, fill=1)
-        self._draw_bar(draw, 24, y, 60, 8, disk_pct)
-        self._text_r(draw, 126, y, f"{disk_pct:.0f}%", FONT_SM)
+    # ---- Seite: BEDIENER (nutzt volle 64 px, kein Header) ----
+    def _render_operator(self, draw: ImageDraw):
+        op = self.operator_info
+        if not op.get("logged_in", False):
+            draw.text((2, 4),  "KEIN",   font=FONT_XL, fill=1)
+            draw.text((2, 24), "LOGIN",  font=FONT_XL, fill=1)
+            draw.text((2, 48), "Blaue Karte auflegen", font=FONT_SM, fill=1)
+            return
 
-        # Untere Zeile: Unit-Info
-        y += 12
-        unit = s.get("unit_name", "")
-        pat_count = s.get("patient_count", 0)
-        if unit:
-            draw.rectangle([0, y, 3, y + 3], fill=1)  # Punkt
-            draw.text((6, y - 1), f"{unit}  {pat_count} Pat.", font=FONT_SM, fill=1)
+        label = op.get("label", "?")
+        name = op.get("name", "")
+        role = op.get("role", "")
+        since = op.get("since", "")
 
-    # ---- Seite 2: Audio ----
-    def _render_audio(self, draw: ImageDraw):
-        a = self.audio_info
-        y = 13
-        rms = a.get("rms", 0)
-        db = max(0, min(99, int(rms * 1000)))
+        # Oben: Label + Name groß (XL)
+        draw.text((2, 2), f"[{label}] {name[:10]}", font=FONT_XL, fill=1)
+        # Mitte: Rolle in MD
+        draw.text((2, 24), role[:20], font=FONT_MD, fill=1)
+        # Unten: Login-Zeit (klein) + OK-Hinweis rechtsbündig
+        if since:
+            draw.text((2, 40), f"seit {since}", font=FONT_MD, fill=1)
+        self._text_r(draw, 126, 54, "[OK] Logout", FONT_SM)
 
-        # Pegelanzeige
-        bar_w = 100
-        draw.text((1, y), "Pegel", font=FONT_SM, fill=1)
-        y += 10
-        self._draw_bar(draw, 1, y, bar_w, 8, db)
-        self._text_r(draw, 126, y, f"{db} dB", FONT_SM)
+    # ---- Seite: PATIENT (aktiver Patient) ----
+    def _render_patient(self, draw: ImageDraw):
+        p = self.active_patient_info
+        if not p or not p.get("patient_id"):
+            draw.text((2, 4),  "KEIN",    font=FONT_XL, fill=1)
+            draw.text((2, 24), "PATIENT", font=FONT_XL, fill=1)
+            return
 
-        # Geräte-Info
-        y += 12
-        device = a.get("device_name", "Kein Gerät")
-        draw.text((1, y), f"Geraet: {device[:18]}", font=FONT_SM, fill=1)
+        name = (p.get("name") or "").strip() or "Unbekannt"
+        triage = p.get("triage", "")
+        flow = p.get("flow_status", "")
 
-        y += 10
-        rate = a.get("sample_rate", 16000)
-        draw.text((1, y), f"Rate:   {rate} Hz", font=FONT_SM, fill=1)
+        # Name oben (XL), max 10 Zeichen
+        draw.text((2, 2), name[:10], font=FONT_XL, fill=1)
+        # Triage mittig, groß
+        if triage:
+            draw.text((2, 24), f"Triage: {triage}", font=FONT_MD, fill=1)
+        # Flow-Status unten
+        if flow:
+            draw.text((2, 44), flow[:20], font=FONT_MD, fill=1)
 
-        y += 10
-        status = a.get("status", "Bereit")
-        duration = a.get("duration", 0)
-        draw.text((1, y), f"Status: {status}", font=FONT_SM, fill=1)
-        if duration > 0:
-            mins, secs = divmod(int(duration), 60)
-            self._text_r(draw, 126, y, f"{mins:02d}:{secs:02d}", FONT_SM)
+    # ---- Seite: KARTE SCHREIBEN ----
+    def _render_cardwrite(self, draw: ImageDraw):
+        c = self.cardwrite_info
+        if not c.get("operator_logged_in", False):
+            draw.text((2, 4),  "KEIN",   font=FONT_XL, fill=1)
+            draw.text((2, 24), "LOGIN",  font=FONT_XL, fill=1)
+            draw.text((2, 48), "Blaue Karte auflegen", font=FONT_SM, fill=1)
+            return
+        if not c.get("has_permission", False):
+            draw.text((2, 4),  "KEINE", font=FONT_XL, fill=1)
+            draw.text((2, 24), "RECHTE", font=FONT_XL, fill=1)
+            return
+        if not c.get("has_active_patient", False):
+            draw.text((2, 4),  "KEIN",    font=FONT_XL, fill=1)
+            draw.text((2, 24), "PATIENT", font=FONT_XL, fill=1)
+            return
 
-    # ---- Seite 3: Netzwerk ----
-    def _render_network(self, draw: ImageDraw):
-        n = self.network_info
-        y = 13
+        name = (c.get("patient_name") or c.get("patient_id", ""))[:10]
+        triage = c.get("triage", "")
 
-        wlan = n.get("ssid", "---")
-        draw.text((1, y), f"WLAN: {wlan[:18]}", font=FONT_SM, fill=1)
-
-        y += 10
-        ip = n.get("ip", "---")
-        draw.text((1, y), f"IP:   {ip}", font=FONT_SM, fill=1)
-
-        y += 10
-        ts_ip = n.get("tailscale_ip", "---")
-        draw.text((1, y), f"TS:   {ts_ip}", font=FONT_SM, fill=1)
-
-        y += 14
-        role1 = n.get("role1_status", "getrennt")
-        indicator = "●" if role1 == "verbunden" else "○"
-        draw.text((1, y), f"Role1: {indicator} {role1}", font=FONT_SM, fill=1)
-
-        y += 10
-        peers = n.get("peers", 0)
-        draw.text((1, y), f"Peers: {peers}", font=FONT_SM, fill=1)
-
-    # ---- Seite 4: Patienten ----
-    def _render_patients(self, draw: ImageDraw):
-        p = self.patient_info
-        total = p.get("total", 0)
-        y = 13
-
-        # Titel rechts: Anzahl
-        self._text_r(draw, 126, 0, f"{total} total", FONT_SM)
-
-        # Triage-Übersicht
-        t1 = p.get("t1", 0)
-        t2 = p.get("t2", 0)
-        t3 = p.get("t3", 0)
-        t4 = p.get("t4", 0)
-
-        draw.text((1, y), f"T1", font=FONT_SM, fill=1)
-        self._draw_bar(draw, 16, y, 30, 7, t1 * 20 if total else 0)
-        draw.text((48, y), f"{t1}", font=FONT_SM, fill=1)
-
-        draw.text((65, y), f"T2", font=FONT_SM, fill=1)
-        self._draw_bar(draw, 80, y, 30, 7, t2 * 20 if total else 0)
-        draw.text((112, y), f"{t2}", font=FONT_SM, fill=1)
-
-        y += 11
-        draw.text((1, y), f"T3", font=FONT_SM, fill=1)
-        self._draw_bar(draw, 16, y, 30, 7, t3 * 20 if total else 0)
-        draw.text((48, y), f"{t3}", font=FONT_SM, fill=1)
-
-        draw.text((65, y), f"T4", font=FONT_SM, fill=1)
-        self._draw_bar(draw, 80, y, 30, 7, t4 * 20 if total else 0)
-        draw.text((112, y), f"{t4}", font=FONT_SM, fill=1)
-
-        # Letzter Patient
-        y += 14
-        last_name = p.get("last_patient", "---")
-        draw.text((1, y), f"Letzt: {last_name[:16]}", font=FONT_SM, fill=1)
-
-        y += 10
-        sync = p.get("synced", 0)
-        draw.text((1, y), f"Sync:  {sync}/{total} uebermittelt", font=FONT_SM, fill=1)
-
-    # ---- Seite 5: Power ----
-    def _render_power(self, draw: ImageDraw):
-        pw = self.power_info
-        y = 13
-
-        mode = pw.get("power_mode", "15W (MaxN)")
-        draw.text((1, y), f"Modus: {mode}", font=FONT_SM, fill=1)
-
-        y += 10
-        watts = pw.get("current_watts", 0)
-        if watts > 0:
-            draw.text((1, y), f"Verb.: ~{watts:.1f} W", font=FONT_SM, fill=1)
-        else:
-            draw.text((1, y), "Verb.: N/A", font=FONT_SM, fill=1)
-
-        # Temperaturen
-        y += 14
-        temps = self.stats.get("temperatures", {})
-        cpu_t = temps.get("cpu-thermal", temps.get("CPU", "?"))
-        gpu_t = temps.get("gpu-thermal", temps.get("GPU", "?"))
-        draw.text((1, y), f"CPU {cpu_t}C  GPU {gpu_t}C", font=FONT_SM, fill=1)
-
-        soc_t = temps.get("soc0-thermal", temps.get("SoC", ""))
-        if soc_t:
-            y += 10
-            draw.text((1, y), f"SoC {soc_t}C", font=FONT_SM, fill=1)
-
-        # Uptime
-        y += 10
-        uptime = pw.get("uptime_hours", 0)
-        if uptime > 0:
-            draw.text((1, y), f"Uptime: {uptime:.1f}h", font=FONT_SM, fill=1)
-
-    # ---- Seite 6: Modelle ----
-    def _render_models(self, draw: ImageDraw):
-        m = self.model_info
-        y = 13
-
-        # Whisper
-        whisper = m.get("whisper_model", "---")
-        whisper_loaded = m.get("whisper_loaded", False)
-        whisper_mb = m.get("whisper_mb", 0)
-        status = "●" if whisper_loaded else "○"
-        draw.text((1, y), f"Whisper: {whisper} {status}", font=FONT_SM, fill=1)
-        if whisper_mb:
-            self._text_r(draw, 126, y, f"{whisper_mb}MB", FONT_SM)
-
-        # Ollama
-        y += 10
-        ollama = m.get("ollama_model", "---")
-        ollama_loaded = m.get("ollama_loaded", False)
-        ollama_mb = m.get("ollama_mb", 0)
-        status = "●" if ollama_loaded else "○"
-        draw.text((1, y), f"Ollama: {ollama} {status}", font=FONT_SM, fill=1)
-        if ollama_mb:
-            self._text_r(draw, 126, y, f"{ollama_mb}MB", FONT_SM)
-
-        # Vosk
-        y += 10
-        vosk_active = m.get("vosk_active", False)
-        status = "● aktiv" if vosk_active else "○ aus"
-        draw.text((1, y), f"Vosk:   de-sm {status}", font=FONT_SM, fill=1)
-
-        # VRAM frei
-        y += 14
-        vram_free = m.get("vram_free_mb", 0)
-        if vram_free > 0:
-            draw.text((1, y), f"VRAM frei: {vram_free / 1024:.1f} GB", font=FONT_SM, fill=1)
-
-        # Aktion
-        y += 10
-        action = m.get("ok_action", "Whisper laden")
-        draw.text((1, y), f"[OK] {action}", font=FONT_SM, fill=1)
+        # Patient oben groß
+        draw.text((2, 2), name, font=FONT_XL, fill=1)
+        if triage:
+            draw.text((2, 24), f"Triage: {triage}", font=FONT_MD, fill=1)
+        # Call-to-Action unten invertiert in einem Kasten
+        draw.rectangle([0, 44, WIDTH - 1, 63], fill=1)
+        draw.text((4, 47), "[OK] SCHREIBEN", font=FONT_MD, fill=0)
 
 
 # Singleton für globalen Zugriff

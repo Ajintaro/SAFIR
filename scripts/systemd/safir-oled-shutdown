@@ -1,0 +1,36 @@
+#!/bin/bash
+# SAFIR OLED Shutdown-Hook
+#
+# Wird von systemd ganz am Ende der Shutdown-Sequenz aufgerufen, nachdem
+# alle regulären Services gestoppt wurden. Zeigt dem Nutzer am OLED dass
+# das System tatsächlich herunterfährt bzw. neu startet.
+#
+# Installation: nach /usr/lib/systemd/system-shutdown/ kopieren, chmod +x,
+# Owner root.
+#
+# systemd übergibt als erstes Argument das Shutdown-Verb:
+#   halt, poweroff, reboot, kexec
+
+VERB="${1:-poweroff}"
+
+case "$VERB" in
+    reboot|kexec)
+        LINE1="NEUSTART"
+        LINE2="System reboot"
+        ;;
+    halt)
+        LINE1="HALT"
+        LINE2="System halt"
+        ;;
+    poweroff|*)
+        LINE1="SHUTDOWN"
+        LINE2="Kernel halt"
+        ;;
+esac
+
+# Direkter Aufruf (kein systemd mehr aktiv zu diesem Zeitpunkt).
+# Fehler werden ignoriert — wenn OLED nicht erreichbar ist soll der Shutdown
+# trotzdem sauber durchlaufen.
+/usr/local/bin/safir-oled-msg "$LINE1" "$LINE2" 2>/dev/null || true
+
+exit 0

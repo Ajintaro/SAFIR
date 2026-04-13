@@ -1,0 +1,17 @@
+[Unit]
+Description=SAFIR OLED Boot-Splash (zeigt System-Start auf OLED)
+# Nach dem i2c-Kernelmodul und basis-filesystem läuft, aber so früh wie möglich
+After=systemd-modules-load.service local-fs.target
+DefaultDependencies=yes
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/safir-oled-msg "STARTE" "Ubuntu laedt"
+# Nach multi-user.target nochmal nachfassen dass Dienste hochkommen
+ExecStartPost=/bin/sh -c 'sleep 2 && /usr/local/bin/safir-oled-msg "STARTE" "SAFIR bereit?"'
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
