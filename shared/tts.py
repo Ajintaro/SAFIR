@@ -18,6 +18,7 @@ PIPER_CONFIG = PIPER_MODEL.with_suffix(".onnx.json")
 _voice = None
 _lock = threading.Lock()
 _enabled = True
+_output_device = None
 
 
 def init_tts() -> bool:
@@ -28,6 +29,17 @@ def init_tts() -> bool:
     try:
         from piper import PiperVoice
         _voice = PiperVoice.load(str(PIPER_MODEL), config_path=str(PIPER_CONFIG))
+        # Audio-Output: USB-Headset bevorzugen
+        global _output_device
+        try:
+            devs = sd.query_devices()
+            for i, d in enumerate(devs):
+                if d["max_output_channels"] > 0 and ("USB" in d["name"] or "Logitech" in d["name"]):
+                    _output_device = i
+                    print(f"TTS Audio-Output: [{i}] {d['name']}")
+                    break
+        except Exception:
+            pass
         print(f"Piper TTS geladen ({PIPER_MODEL.name}, {_voice.config.sample_rate}Hz)")
         return True
     except Exception as e:
@@ -67,7 +79,7 @@ def _speak_internal(text: str):
             sr = _voice.config.sample_rate
             # int16 -> float32 für sounddevice
             audio_float = audio.astype(np.float32) / 32768.0
-            sd.play(audio_float, samplerate=sr)
+            sd.play(audio_float, samplerate=sr, device=_output_device)
             sd.wait()
         except Exception as e:
             print(f"TTS Ausgabe Fehler: {e}")

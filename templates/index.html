@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAFIR — {{ config.get("role_label", "Leitstelle") if config else "Leitstelle" }}</title>
+    <title>SAFIR — {{ config.unit_name or "Feldgerät" }}</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/milsymbol/dist/milsymbol.js"></script>
@@ -890,104 +890,6 @@
         }
 
         /* ============================================================
-           Phase 0 — Felderfassung (Simulation)
-           ============================================================ */
-        .p0-layout {
-            display: grid; grid-template-columns: 380px 1fr;
-            height: 100%; min-height: 0; gap: 0;
-        }
-        .p0-form-panel {
-            display: flex; flex-direction: column;
-            border-right: 1px solid var(--border);
-            background: var(--bg-surface); padding: 16px;
-            overflow-y: auto;
-        }
-        .p0-form-panel h3 {
-            font-size: 12px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 1px; color: var(--accent); margin: 0 0 16px 0;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .p0-form-panel h3::before {
-            content: ''; width: 3px; height: 14px; background: var(--accent);
-        }
-        .p0-field { margin-bottom: 12px; }
-        .p0-field label {
-            display: block; font-size: 10px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.8px;
-            color: var(--text-dim); margin-bottom: 4px;
-        }
-        .p0-field input, .p0-field textarea {
-            width: 100%; padding: 8px 10px; font-size: 13px;
-            background: var(--bg-primary); border: 1px solid var(--border);
-            color: var(--text-primary); font-family: 'Share Tech Mono', monospace;
-        }
-        .p0-field input:focus, .p0-field textarea:focus {
-            border-color: var(--accent); outline: none;
-        }
-        .p0-triage-btns { display: flex; gap: 6px; }
-        .p0-triage-btns button {
-            flex: 1; padding: 8px 4px; font-size: 11px; font-weight: 800;
-            background: var(--bg-primary); border: 2px solid var(--border);
-            color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
-            font-family: 'Rajdhani', sans-serif; text-transform: uppercase;
-        }
-        .p0-triage-btns button:hover { border-color: var(--text-secondary); }
-        .p0-triage-btns button.active-t1 { border-color: #FF0000; color: #FF0000; background: rgba(255,0,0,0.1); }
-        .p0-triage-btns button.active-t2 { border-color: #FF8800; color: #FF8800; background: rgba(255,136,0,0.1); }
-        .p0-triage-btns button.active-t3 { border-color: #00AA00; color: #00AA00; background: rgba(0,170,0,0.1); }
-        .p0-triage-btns button.active-t4 { border-color: #4444AA; color: #4444AA; background: rgba(68,68,170,0.1); }
-        .p0-vitals-row { display: flex; gap: 8px; }
-        .p0-vitals-row .p0-field { flex: 1; }
-        .p0-patients-panel {
-            display: flex; flex-direction: column;
-            background: var(--bg-primary); min-height: 0;
-        }
-        .p0-patients-header {
-            padding: 10px 16px; border-bottom: 1px solid var(--border);
-            font-size: 12px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 1px; color: var(--accent);
-            display: flex; align-items: center; gap: 8px;
-        }
-        .p0-patients-header::before {
-            content: ''; width: 3px; height: 14px; background: var(--accent);
-        }
-        .p0-patients-list {
-            flex: 1; overflow-y: auto; padding: 8px;
-        }
-        .p0-patient-card {
-            background: var(--bg-surface); border: 1px solid var(--border);
-            margin-bottom: 8px; padding: 10px 12px;
-            display: flex; align-items: center; gap: 10px;
-        }
-        .p0-patient-card .p0-pc-triage {
-            width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-        }
-        .p0-patient-card .p0-pc-info { flex: 1; min-width: 0; }
-        .p0-patient-card .p0-pc-name {
-            font-size: 13px; font-weight: 700; white-space: nowrap;
-            overflow: hidden; text-overflow: ellipsis;
-        }
-        .p0-patient-card .p0-pc-meta { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
-        .p0-transfer-badge {
-            font-size: 10px; font-weight: 700; padding: 3px 8px;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            white-space: nowrap;
-        }
-        .p0-transfer-badge.tb-pending { color: var(--text-dim); border: 1px solid var(--border); }
-        .p0-transfer-badge.tb-sent { color: var(--warning, #d4871a); border: 1px solid var(--warning, #d4871a); }
-        .p0-transfer-badge.tb-acknowledged { color: var(--success, #5a9e3a); border: 1px solid var(--success, #5a9e3a); }
-        .p0-transfer-badge.tb-failed { color: var(--danger, #cc2222); border: 1px solid var(--danger, #cc2222); cursor: pointer; }
-        .p0-send-all-bar {
-            padding: 10px 16px; border-top: 1px solid var(--border);
-            display: flex; gap: 8px; align-items: center;
-        }
-        .p0-empty {
-            display: flex; flex-direction: column; align-items: center;
-            justify-content: center; height: 100%; color: var(--text-dim);
-            font-size: 12px; opacity: 0.5;
-        }
-
-        /* ============================================================
            Role 1 — Taktische Lagekarte
            ============================================================ */
         .role1-layout {
@@ -1356,9 +1258,6 @@
                 <line x1="8" y1="9" x2="8" y2="12"/><line x1="12" y1="7" x2="12" y2="12"/><line x1="16" y1="10" x2="16" y2="12"/>
             </svg>
         </button>
-        <button class="hw-toggle" id="oled-toggle" onclick="toggleOledSimulator()" title="OLED-Simulator" style="margin-left:2px">
-            <span style="font-size:12px;font-weight:700;letter-spacing:1px">OLED</span>
-        </button>
         <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Theme wechseln">
             <span id="theme-icon" style="font-size:14px">&#127761;</span>
         </button>
@@ -1435,50 +1334,17 @@
             </div>
         </div>
 
-        <!-- page-recording entfernt — Inhalt lebt jetzt in page-phase0 -->
-
         <!-- ======================================================
-             PAGE: Patienten
+             PAGE: Phase 0 — Feld-Modus (Voice-First) + Fahrzeug-Modus
              ====================================================== -->
-        <div class="page" id="page-patients">
-            <div class="placeholder-page">
-                <div class="ph-icon">&#9764;</div>
-                <div class="ph-title">Patienten-Übersicht</div>
-                <div class="ph-desc">Zentrale Verwaltung aller Patienten entlang der Rettungskette. Triage-Status, 9-Liner, TCCC Cards und Übergabeprotokolle auf einen Blick.</div>
-                <div class="ph-badge">Geplant für Phase 2</div>
-            </div>
-        </div>
+        <div class="page" id="page-recording">
 
-        <!-- ======================================================
-             PAGE: Triage
-             ====================================================== -->
-        <div class="page" id="page-triage">
-            <div class="placeholder-page">
-                <div class="ph-icon">&#9733;</div>
-                <div class="ph-title">Triage-Übersicht</div>
-                <div class="ph-desc">
-                    Visuelle Darstellung aller Patienten nach Triage-Kategorie.<br>
-                    <span style="color:#E74C3C;font-weight:600">T1 Sofort</span> &middot;
-                    <span style="color:#F39C12;font-weight:600">T2 Aufgeschoben</span> &middot;
-                    <span style="color:#2ECC71;font-weight:600">T3 Leicht</span> &middot;
-                    <span style="color:#5DADE2;font-weight:600">T4 Abwartend</span>
-                </div>
-                <div class="ph-badge">Geplant für Phase 2</div>
-            </div>
-        </div>
-
-        <!-- ======================================================
-             PAGE: Phase 0 — Selbst-/Kameradenhilfe
-             ====================================================== -->
-        <div class="page" id="page-phase0">
-
-            <!-- Modus-Umschalter: Feld | Fahrzeug | Manuell -->
+            <!-- Modus-Umschalter -->
             <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg-surface);border-bottom:1px solid var(--border)">
                 <div style="display:flex;align-items:center;gap:12px">
                     <span style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">Modus</span>
                     <button class="btn btn-cgi" id="btn-mode-feld" onclick="setMode('feld')" style="padding:5px 16px;font-size:12px">Feld</button>
                     <button class="btn" id="btn-mode-fahrzeug" onclick="setMode('fahrzeug')" style="padding:5px 16px;font-size:12px">Fahrzeug</button>
-                    <button class="btn" id="btn-mode-manuell" onclick="setMode('manuell')" style="padding:5px 16px;font-size:12px">Manuell</button>
                 </div>
                 <div style="display:flex;align-items:center;gap:12px">
                     <span id="patient-count-badge" style="font-size:11px;color:var(--text-dim)">0 Patienten</span>
@@ -1511,6 +1377,7 @@
                     </div>
                 </div>
 
+                <!-- Sprachbefehle-Referenz (Feld) -->
                 <!-- Einsatzablauf (aufklappbar) -->
                 <details id="flow-guide" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
                     <summary style="padding:10px 16px;cursor:pointer;font-size:12px;font-weight:700;color:var(--cgi-red);display:flex;align-items:center;gap:8px;user-select:none">
@@ -1580,82 +1447,6 @@
                 </div>
             </div>
 
-            <!-- ============ MANUELL-MODUS (ohne Mikrofon) ============ -->
-            <div id="mode-manuell" style="display:none;height:100%">
-                <div class="p0-layout" style="height:100%">
-                    <!-- Linkes Panel: Patienten-Formular -->
-                    <div class="p0-form-panel">
-                        <h3>Neuer Patient (manuell)</h3>
-
-                        <div class="p0-field">
-                            <label>Name (Nachname, Vorname)</label>
-                            <input type="text" id="p0-name" placeholder="z.B. Müller, Stefan">
-                        </div>
-
-                        <div class="p0-field">
-                            <label>Triage-Kategorie</label>
-                            <div class="p0-triage-btns" id="p0-triage-btns">
-                                <button onclick="p0SelectTriage('T1')" data-t="T1">T1 Sofort</button>
-                                <button onclick="p0SelectTriage('T2')" data-t="T2">T2 Dringend</button>
-                                <button onclick="p0SelectTriage('T3')" data-t="T3">T3 Aufschub</button>
-                                <button onclick="p0SelectTriage('T4')" data-t="T4">T4 Abwartend</button>
-                            </div>
-                        </div>
-
-                        <div class="p0-field">
-                            <label>Verletzungen</label>
-                            <textarea id="p0-injuries" rows="2" placeholder="z.B. Schusswunde li. Oberschenkel, Splitterverletzung re. Arm"></textarea>
-                        </div>
-
-                        <div class="p0-vitals-row">
-                            <div class="p0-field">
-                                <label>Puls</label>
-                                <input type="text" id="p0-pulse" placeholder="z.B. 120">
-                            </div>
-                            <div class="p0-field">
-                                <label>SpO2</label>
-                                <input type="text" id="p0-spo2" placeholder="z.B. 94">
-                            </div>
-                            <div class="p0-field">
-                                <label>RR</label>
-                                <input type="text" id="p0-bp" placeholder="z.B. 90/60">
-                            </div>
-                        </div>
-
-                        <button class="btn btn-cgi" onclick="p0CreatePatient()" style="margin-top:12px;width:100%;padding:10px;font-size:13px;font-weight:700">
-                            PATIENT REGISTRIEREN
-                        </button>
-
-                        <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
-                            <div class="p0-field">
-                                <label>Ziel-URL (Role 1)</label>
-                                <input type="text" id="p0-target-url" placeholder="http://127.0.0.1:8080" value="">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Rechtes Panel: Patientenliste mit Transfer-Status -->
-                    <div class="p0-patients-panel">
-                        <div class="p0-patients-header">
-                            Patienten-Übersicht
-                            <span id="p0-patient-count" style="margin-left:auto;font-size:11px;color:var(--text-dim)">0 Patienten</span>
-                        </div>
-                        <div class="p0-patients-list" id="p0-patients-list">
-                            <div class="p0-empty">
-                                <div style="font-size:32px;margin-bottom:8px;opacity:0.3">&#9873;</div>
-                                Noch keine Patienten registriert
-                            </div>
-                        </div>
-                        <div class="p0-send-all-bar">
-                            <button class="btn btn-export" onclick="p0SendAll()" style="flex:1;padding:8px;font-size:12px;font-weight:700">
-                                ALLE SENDEN
-                            </button>
-                            <span id="p0-send-status" style="font-size:10px;color:var(--text-dim)"></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Hidden elements für Kompatibilität -->
             <div style="display:none">
                 <div id="session-info"><span id="session-patient"></span><span id="session-template"></span><span id="session-records">0</span></div>
@@ -1670,6 +1461,49 @@
                 <span id="tccc-status"></span>
                 <div id="template-fields-container"></div>
                 <div id="fz-injuries"></div>
+            </div>
+
+        </div>
+
+        <!-- ======================================================
+             PAGE: Patienten
+             ====================================================== -->
+        <div class="page" id="page-patients">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#9764;</div>
+                <div class="ph-title">Patienten-Übersicht</div>
+                <div class="ph-desc">Zentrale Verwaltung aller Patienten entlang der Rettungskette. Triage-Status, 9-Liner, TCCC Cards und Übergabeprotokolle auf einen Blick.</div>
+                <div class="ph-badge">Geplant für Phase 2</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Triage
+             ====================================================== -->
+        <div class="page" id="page-triage">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#9733;</div>
+                <div class="ph-title">Triage-Übersicht</div>
+                <div class="ph-desc">
+                    Visuelle Darstellung aller Patienten nach Triage-Kategorie.<br>
+                    <span style="color:#E74C3C;font-weight:600">T1 Sofort</span> &middot;
+                    <span style="color:#F39C12;font-weight:600">T2 Aufgeschoben</span> &middot;
+                    <span style="color:#2ECC71;font-weight:600">T3 Leicht</span> &middot;
+                    <span style="color:#5DADE2;font-weight:600">T4 Abwartend</span>
+                </div>
+                <div class="ph-badge">Geplant für Phase 2</div>
+            </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: Phase 0 — Selbst-/Kameradenhilfe
+             ====================================================== -->
+        <div class="page" id="page-phase0">
+            <div class="placeholder-page">
+                <div class="ph-icon">&#9873;</div>
+                <div class="ph-title">Phase 0 — Selbst- und Kameradenhilfe</div>
+                <div class="ph-desc">Verwundetenversorgung am Ort des Geschehens. Erste Maßnahmen durch Kameraden oder Ersthelfer. TCCC-Dokumentation per Spracheingabe.</div>
+                <div class="ph-badge">Aktiv auf diesem Gerät (Jetson Feldgeraet)</div>
             </div>
         </div>
 
@@ -2003,7 +1837,7 @@
     <div class="hw-overlay-header">
         <div>
             <h3><span class="card-accent"></span>Hardware Monitor</h3>
-            <span id="hw-device-label">{{ config.get("role_label", "System") if config else "System" }}</span>
+            <span>Jetson Orin Nano</span>
         </div>
         <button class="hw-overlay-close" onclick="toggleHwOverlay()">&times;</button>
     </div>
@@ -2110,30 +1944,6 @@
     </div>
     <div id="peers-list" style="display:flex;flex-direction:column;gap:6px;font-size:11px">
         <span style="color:var(--text-dim)">Lade...</span>
-    </div>
-</dialog>
-
-<!-- OLED-Simulator -->
-<dialog class="hw-overlay" id="oled-dialog" style="width:340px;top:52px;right:180px">
-    <div class="hw-overlay-header">
-        <div>
-            <h3>OLED-Display</h3>
-            <span id="oled-page-label" style="font-size:10px">System</span>
-        </div>
-        <button class="hw-overlay-close" onclick="toggleOledSimulator()">&times;</button>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:0">
-        <!-- OLED Screen (HTML-basiert, kein Canvas) -->
-        <div id="oled-screen" style="background:#0a0a0a;padding:12px 14px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#e0ffe0;line-height:1.6;min-height:180px;border:1px solid #333">
-            <div style="color:#555;text-align:center;padding:40px 0">Lade...</div>
-        </div>
-        <!-- Virtuelle Taster -->
-        <div style="display:flex;gap:8px;align-items:center;padding:8px 12px;justify-content:center;background:var(--bg-surface2);border-top:1px solid var(--border)">
-            <button class="btn" onclick="oledButton('up')" style="padding:5px 16px;font-size:13px;font-weight:700" title="Vorherige Seite">▲</button>
-            <button class="btn btn-cgi" onclick="oledButton('ok')" style="padding:5px 20px;font-size:11px;font-weight:700" title="Aktion">OK</button>
-            <button class="btn" onclick="oledButton('down')" style="padding:5px 16px;font-size:13px;font-weight:700" title="Nächste Seite">▼</button>
-            <span style="margin-left:auto;font-size:9px;color:var(--text-dim)">SSD1306 · I2C</span>
-        </div>
     </div>
 </dialog>
 
@@ -2685,21 +2495,6 @@
                     showToast('Neuer Patient: ' + (msg.patient.name || msg.patient.patient_id), '&#9873;', 'voice');
                 }
                 break;
-            case 'oled_frame':
-                if (oledOpen) oledRenderHTML(msg);
-                break;
-            case 'transfer_update':
-                if (msg.patient_id && patients[msg.patient_id]) {
-                    patients[msg.patient_id].transfer_state = msg.transfer_state;
-                    if (msg.ack_id) patients[msg.patient_id].transfer_ack_id = msg.ack_id;
-                    p0RenderPatients();
-                    if (msg.transfer_state === 'acknowledged') {
-                        showToast('Patient empfangen ✓', '&#10003;', 'voice');
-                    } else if (msg.transfer_state === 'failed') {
-                        showToast('Übermittlung fehlgeschlagen', '&#9888;', 'error');
-                    }
-                }
-                break;
             case 'position_update':
                 // GPS-Position eines BATs in Echtzeit aktualisieren
                 if (msg.position && msg.position.unit_name) {
@@ -2784,9 +2579,6 @@
     function updateSystemStats(s) {
         const el = (id) => document.getElementById(id);
         if (!el('cpu-percent')) return;
-        // Gerätename aktualisieren
-        const hwLabel = el('hw-device-label');
-        if (hwLabel && s.system_name) hwLabel.textContent = s.system_name;
         el('cpu-percent').textContent = s.cpu_percent;
         el('cpu-freq').textContent = s.cpu_freq_mhz + ' MHz';
         setBar('cpu-bar', s.cpu_percent);
@@ -3115,12 +2907,6 @@
 
     // ---- Export ----
     async function exportDocx() {
-        // Prüfe ob Patienten vorhanden sind
-        const patCount = Object.keys(sessions || {}).length || Object.values(patients || {}).filter(p => p.patient_id?.startsWith('P0-')).length;
-        if (!activeSession && patCount === 0) {
-            showToast('Keine Patienten zum Exportieren vorhanden', '&#128196;');
-            return;
-        }
         const res = await fetch('/api/export/docx', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3137,12 +2923,8 @@
             URL.revokeObjectURL(url);
             setTimeout(refreshFiles, 1000);
         } else {
-            try {
-                const err = await res.json();
-                showToast(err.error || 'Keine Daten zum Exportieren', '&#128196;');
-            } catch {
-                showToast('Keine Daten zum Exportieren', '&#128196;');
-            }
+            const err = await res.json();
+            showToast(err.error || 'Export fehlgeschlagen', '&#9888;');
         }
     }
 
@@ -3394,141 +3176,6 @@
         el.innerHTML = html;
     }
 
-    // =================================================================
-    // OLED-Simulator
-    // =================================================================
-    let oledOpen = false;
-    let oledData = {};
-
-    const OLED_NAMES = {system:'System',audio:'Audio',network:'Netzwerk',patients:'Patienten',power:'Power',models:'Modelle'};
-
-    function toggleOledSimulator() {
-        const dlg = document.getElementById('oled-dialog');
-        const btn = document.getElementById('oled-toggle');
-        if (dlg.open) {
-            dlg.close();
-            btn.classList.remove('active');
-            oledOpen = false;
-        } else {
-            dlg.show();
-            btn.classList.add('active');
-            oledOpen = true;
-            oledRefresh();
-        }
-    }
-
-    async function oledRefresh() {
-        try {
-            const res = await api('/api/oled/state');
-            oledData = res;
-            oledRenderHTML(res);
-        } catch (e) {}
-    }
-
-    async function oledButton(btn) {
-        try {
-            const res = await api('/api/oled/button', 'POST', { button: btn });
-            if (res.page_name) {
-                document.getElementById('oled-page-label').textContent = OLED_NAMES[res.page_name] || res.page_name;
-            }
-            oledRefresh();
-        } catch (e) {}
-    }
-
-    function oledBar(pct, w = 120) {
-        const fill = Math.min(Math.max(pct, 0), 100);
-        const color = fill > 80 ? '#cc2222' : fill > 60 ? '#d4871a' : '#5a9e3a';
-        return `<div style="display:inline-block;width:${w}px;height:10px;background:#222;border:1px solid #444;vertical-align:middle;margin:0 6px">` +
-               `<div style="width:${fill}%;height:100%;background:${color}"></div></div>`;
-    }
-
-    function oledRenderHTML(d) {
-        const el = document.getElementById('oled-screen');
-        if (!el) return;
-        const pn = d.page_name || 'system';
-        document.getElementById('oled-page-label').textContent = OLED_NAMES[pn] || pn;
-
-        let html = '';
-        const s = d.stats || {};
-        const a = d.audio || {};
-        const n = d.network || {};
-        const p = d.patients || {};
-        const m = d.models || {};
-
-        if (pn === 'system') {
-            const cpu = s.cpu_percent || 0;
-            const ramPct = s.ram_percent || 0;
-            const ramUsed = ((s.ram_used_mb || 0) / 1024).toFixed(1);
-            const ramTotal = ((s.ram_total_mb || 0) / 1024).toFixed(0);
-            const gpu = s.gpu_usage || 'N/A';
-            const dsk = s.disk_percent || 0;
-            const unit = s.unit_name || '---';
-            const pat = s.patient_count || 0;
-            html = `<div style="color:#5a9e3a;font-weight:700;margin-bottom:8px">SYSTEM STATUS</div>` +
-                `<div>CPU ${oledBar(cpu)} <b>${cpu}%</b></div>` +
-                `<div>RAM ${oledBar(ramPct)} <b>${ramUsed}/${ramTotal}G</b></div>` +
-                `<div>GPU <span style="color:#aaa">${gpu === 'N/A' ? 'Shared Memory' : gpu + '%'}</span></div>` +
-                `<div>DSK ${oledBar(dsk)} <b>${dsk}%</b></div>` +
-                `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #333">` +
-                `<span style="color:#5a9e3a">●</span> ${unit} &mdash; <b>${pat}</b> Patienten</div>`;
-        } else if (pn === 'audio') {
-            const rms = Math.min(99, Math.round((a.rms || 0) * 1000));
-            html = `<div style="color:#d4871a;font-weight:700;margin-bottom:8px">AUDIO / MIKROFON</div>` +
-                `<div>Pegel ${oledBar(rms, 140)} <b>${rms} dB</b></div>` +
-                `<div style="margin-top:6px">Gerät: <b>${a.device_name || 'Kein Gerät'}</b></div>` +
-                `<div>Rate: <b>${a.sample_rate || 16000} Hz</b></div>` +
-                `<div>Status: <b>${a.status || 'Bereit'}</b></div>`;
-            if (a.duration > 0) {
-                const m = Math.floor(a.duration / 60), sec = Math.floor(a.duration % 60);
-                html += `<div>Dauer: <b>${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}</b></div>`;
-            }
-        } else if (pn === 'network') {
-            const r1 = n.role1_status || 'getrennt';
-            const r1c = r1 === 'verbunden' ? '#5a9e3a' : '#cc2222';
-            html = `<div style="color:#5DADE2;font-weight:700;margin-bottom:8px">NETZWERK</div>` +
-                `<div>WLAN: <b>${n.ssid || '---'}</b></div>` +
-                `<div>IP: <b>${n.ip || '---'}</b></div>` +
-                `<div>Tailscale: <b>${n.tailscale_ip || '---'}</b></div>` +
-                `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #333">` +
-                `Role 1: <span style="color:${r1c}">●</span> <b>${r1}</b></div>` +
-                `<div>Peers: <b>${n.peers || 0}</b></div>`;
-        } else if (pn === 'patients') {
-            const t = p;
-            html = `<div style="color:#cc2222;font-weight:700;margin-bottom:8px">PATIENTEN <span style="float:right;color:#aaa">${t.total || 0} gesamt</span></div>` +
-                `<div style="display:flex;gap:16px">` +
-                `<div><span style="color:#FF0000">T1</span> <b>${t.t1 || 0}</b></div>` +
-                `<div><span style="color:#FF8800">T2</span> <b>${t.t2 || 0}</b></div>` +
-                `<div><span style="color:#00AA00">T3</span> <b>${t.t3 || 0}</b></div>` +
-                `<div><span style="color:#4444AA">T4</span> <b>${t.t4 || 0}</b></div></div>` +
-                `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #333">` +
-                `Letzter: <b>${t.last_patient || '---'}</b></div>` +
-                `<div>Sync: <b>${t.synced || 0}/${t.total || 0}</b> übermittelt</div>`;
-        } else if (pn === 'power') {
-            const temps = s.temperatures || {};
-            const cpuT = temps['cpu-thermal'] || temps['CPU'] || '?';
-            const gpuT = temps['gpu-thermal'] || temps['GPU'] || '?';
-            html = `<div style="color:#d4871a;font-weight:700;margin-bottom:8px">POWER / STROM</div>` +
-                `<div>Modus: <b>15W (MaxN)</b></div>` +
-                `<div>Verbrauch: <b>N/A</b></div>` +
-                `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #333">` +
-                `Temperatur:</div>` +
-                `<div>CPU <b>${cpuT}°C</b> &nbsp; GPU <b>${gpuT}°C</b></div>`;
-        } else if (pn === 'models') {
-            const wSt = m.whisper_loaded ? '<span style="color:#5a9e3a">● geladen</span>' : '<span style="color:#555">○ aus</span>';
-            const oSt = m.ollama_loaded ? '<span style="color:#5a9e3a">● geladen</span>' : '<span style="color:#555">○ aus</span>';
-            const vSt = m.vosk_active ? '<span style="color:#5a9e3a">● aktiv</span>' : '<span style="color:#555">○ aus</span>';
-            html = `<div style="color:#5DADE2;font-weight:700;margin-bottom:8px">KI-MODELLE</div>` +
-                `<div>Whisper: <b>${m.whisper_model || '---'}</b> ${wSt}${m.whisper_mb ? ` <span style="color:#888">${m.whisper_mb}MB</span>` : ''}</div>` +
-                `<div>Ollama: <b>${m.ollama_model || '---'}</b> ${oSt}${m.ollama_mb ? ` <span style="color:#888">${m.ollama_mb}MB</span>` : ''}</div>` +
-                `<div>Vosk: <b>de-small</b> ${vSt}</div>` +
-                `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #333;color:#888">` +
-                `[OK] ${m.ok_action || '---'}</div>`;
-        }
-        el.innerHTML = html;
-    }
-
-    // OLED-Frames aus WebSocket empfangen
-
     function toggleHwOverlay() {
         const dlg = document.getElementById('hw-overlay');
         const btn = document.getElementById('hw-toggle');
@@ -3632,15 +3279,10 @@
         currentMode = mode;
         document.getElementById('mode-feld').style.display = mode === 'feld' ? 'flex' : 'none';
         document.getElementById('mode-fahrzeug').style.display = mode === 'fahrzeug' ? 'flex' : 'none';
-        const manuellEl = document.getElementById('mode-manuell');
-        if (manuellEl) manuellEl.style.display = mode === 'manuell' ? 'block' : 'none';
         document.getElementById('btn-mode-feld').className = mode === 'feld' ? 'btn btn-cgi' : 'btn';
         document.getElementById('btn-mode-fahrzeug').className = mode === 'fahrzeug' ? 'btn btn-cgi' : 'btn';
-        const btnManuell = document.getElementById('btn-mode-manuell');
-        if (btnManuell) btnManuell.className = mode === 'manuell' ? 'btn btn-cgi' : 'btn';
         // Patientenkarten in beiden Modi synchron halten
         renderPatientCards();
-        if (mode === 'manuell') p0RenderPatients();
     }
 
     // ---- TTS Toggle ----
@@ -4761,124 +4403,6 @@
         role1UpdateUI();
         renderPatientList();
         showToast('Simulation zurückgesetzt', '&#8634;');
-    }
-
-    // =================================================================
-    // Phase 0 — Felderfassung (Simulation)
-    // =================================================================
-    let p0SelectedTriage = '';
-
-    function p0SelectTriage(t) {
-        p0SelectedTriage = t;
-        document.querySelectorAll('#p0-triage-btns button').forEach(btn => {
-            btn.className = btn.dataset.t === t ? `active-${t.toLowerCase()}` : '';
-        });
-    }
-
-    async function p0CreatePatient() {
-        const name = document.getElementById('p0-name').value.trim();
-        if (!name) { showToast('Name eingeben', '&#9888;'); return; }
-        if (!p0SelectedTriage) { showToast('Triage wählen', '&#9888;'); return; }
-
-        const injuriesRaw = document.getElementById('p0-injuries').value.trim();
-        const injuries = injuriesRaw ? injuriesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
-
-        const body = {
-            name: name,
-            triage: p0SelectedTriage,
-            injuries: injuries,
-            vitals: {
-                pulse: document.getElementById('p0-pulse').value.trim(),
-                spo2: document.getElementById('p0-spo2').value.trim(),
-                blood_pressure: document.getElementById('p0-bp').value.trim(),
-            }
-        };
-
-        try {
-            const res = await api('/api/phase0/create', 'POST', body);
-            if (res.status === 'ok') {
-                showToast(`Patient ${name} registriert`, '&#9873;', 'voice');
-                // Formular zurücksetzen
-                document.getElementById('p0-name').value = '';
-                document.getElementById('p0-injuries').value = '';
-                document.getElementById('p0-pulse').value = '';
-                document.getElementById('p0-spo2').value = '';
-                document.getElementById('p0-bp').value = '';
-                p0SelectedTriage = '';
-                document.querySelectorAll('#p0-triage-btns button').forEach(b => b.className = '');
-                p0RenderPatients();
-            }
-        } catch (e) {
-            showToast('Fehler: ' + e.message, '&#9888;');
-        }
-    }
-
-    function p0RenderPatients() {
-        const list = document.getElementById('p0-patients-list');
-        const p0Patients = Object.values(patients).filter(p =>
-            p.current_role === 'phase0' && p.patient_id && p.patient_id.startsWith('P0-')
-        );
-        const countEl = document.getElementById('p0-patient-count');
-        if (countEl) countEl.textContent = p0Patients.length + ' Patienten';
-
-        if (!p0Patients.length) {
-            list.innerHTML = '<div class="p0-empty"><div style="font-size:32px;margin-bottom:8px;opacity:0.3">&#9873;</div>Noch keine Patienten registriert</div>';
-            return;
-        }
-
-        const triageColors = { T1: '#FF0000', T2: '#FF8800', T3: '#00AA00', T4: '#4444AA' };
-
-        list.innerHTML = p0Patients.map(p => {
-            const ts = p.transfer_state || 'pending';
-            let badgeClass = 'tb-pending', badgeText = 'AUSSTEHEND';
-            if (ts === 'sent') { badgeClass = 'tb-sent'; badgeText = 'GESENDET ⏳'; }
-            else if (ts === 'acknowledged') { badgeClass = 'tb-acknowledged'; badgeText = 'EMPFANGEN ✓'; }
-            else if (ts === 'failed') { badgeClass = 'tb-failed'; badgeText = 'FEHLGESCHLAGEN ⚠'; }
-
-            const color = triageColors[p.triage] || '#888';
-            const injuries = (p.injuries || []).join(', ') || 'keine Angabe';
-            const vitals = p.vitals || {};
-            const vitalStr = [vitals.pulse && `P:${vitals.pulse}`, vitals.spo2 && `SpO2:${vitals.spo2}`, vitals.blood_pressure && `RR:${vitals.blood_pressure}`].filter(Boolean).join(' ');
-
-            return `<div class="p0-patient-card">
-                <div class="p0-pc-triage" style="background:${color}"></div>
-                <div class="p0-pc-info">
-                    <div class="p0-pc-name">${p.name || 'Unbekannt'} <span style="color:${color};font-size:11px">${p.triage || ''}</span></div>
-                    <div class="p0-pc-meta">${injuries}</div>
-                    ${vitalStr ? `<div class="p0-pc-meta">${vitalStr}</div>` : ''}
-                </div>
-                <span class="p0-transfer-badge ${badgeClass}" ${ts === 'failed' ? `onclick="p0SendPatient('${p.patient_id}')" title="Erneut senden"` : ''}>${badgeText}</span>
-                ${ts === 'pending' ? `<button class="btn" onclick="p0SendPatient('${p.patient_id}')" style="padding:4px 10px;font-size:10px">Senden</button>` : ''}
-            </div>`;
-        }).join('');
-    }
-
-    async function p0SendPatient(pid) {
-        try {
-            const res = await api('/api/phase0/send', 'POST', { patient_id: pid });
-            if (res.status === 'ok') {
-                showToast('ACK empfangen: ' + (res.ack_id || ''), '&#10003;', 'voice');
-            } else {
-                showToast('Fehler: ' + (res.detail || res.error || ''), '&#9888;');
-            }
-        } catch (e) {
-            showToast('Sendefehler: ' + e.message, '&#9888;');
-        }
-        p0RenderPatients();
-    }
-
-    async function p0SendAll() {
-        const pending = Object.values(patients).filter(p =>
-            p.patient_id?.startsWith('P0-') && (p.transfer_state === 'pending' || p.transfer_state === 'failed')
-        );
-        if (!pending.length) { showToast('Keine Patienten zum Senden', '&#9888;'); return; }
-        const statusEl = document.getElementById('p0-send-status');
-        for (let i = 0; i < pending.length; i++) {
-            if (statusEl) statusEl.textContent = `Sende ${i + 1}/${pending.length}...`;
-            await p0SendPatient(pending[i].patient_id);
-        }
-        if (statusEl) statusEl.textContent = `${pending.length} gesendet`;
-        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
     }
 
     async function role1StartSimulation() {
