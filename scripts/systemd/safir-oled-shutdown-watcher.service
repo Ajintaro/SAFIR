@@ -1,0 +1,13 @@
+[Unit]
+Description=SAFIR OLED Shutdown-Watcher (reagiert sofort auf PrepareForShutdown)
+After=multi-user.target dbus.service
+Wants=dbus.service
+
+[Service]
+Type=simple
+ExecStart=/home/jetson/cgi-afcea-san/scripts/safir-oled-shutdown-watcher.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

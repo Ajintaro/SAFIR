@@ -1,0 +1,19 @@
+[Unit]
+Description=SAFIR Feldgeraet (Jetson Orin Nano) - Whisper + Ollama + FastAPI
+Documentation=file:///home/jetson/cgi-afcea-san/CLAUDE.md
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/jetson/cgi-afcea-san
+ExecStart=/home/jetson/cgi-afcea-san/scripts/safir-start.sh
+Restart=no
+KillMode=control-group
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

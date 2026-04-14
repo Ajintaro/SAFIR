@@ -3098,18 +3098,19 @@ async def _oled_update_loop():
                     else:
                         oled_menu.update_operator({"logged_in": False})
 
-                    # KI-Modelle-Status: beide müssen im RAM UND auf der GPU sein
-                    whisper_ok = bool(state.model_loaded)  # whisper-server läuft mit CUDA
+                    # KI-Modelle-Status: SAFIR ist einsatzbereit wenn beide
+                    # Modelle verfügbar sind. Qwen wird wegen GPU-Swap nur
+                    # während der Analyse in den VRAM geladen — wir prüfen
+                    # deshalb ob das Modell bei Ollama registriert ist
+                    # (`/api/tags`), nicht ob es gerade im VRAM liegt.
+                    whisper_ok = bool(state.model_loaded)
                     qwen_ok = False
                     try:
-                        _ps = httpx.get(f"{OLLAMA_URL}/api/ps", timeout=1.5)
-                        if _ps.status_code == 200:
-                            for _m in _ps.json().get("models", []):
-                                name = _m.get("name", "")
-                                vram = _m.get("size_vram", 0) or 0
-                                # Match gegen das konfigurierte Modell und prüfen
-                                # dass es tatsächlich im VRAM liegt (size_vram > 0)
-                                if OLLAMA_MODEL.split(":")[0] in name and vram > 0:
+                        _tags = httpx.get(f"{OLLAMA_URL}/api/tags", timeout=1.5)
+                        if _tags.status_code == 200:
+                            want = OLLAMA_MODEL.split(":")[0]
+                            for _m in _tags.json().get("models", []):
+                                if want in _m.get("name", ""):
                                     qwen_ok = True
                                     break
                     except Exception:

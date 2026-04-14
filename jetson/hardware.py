@@ -191,6 +191,10 @@ class ButtonDriver:
         self._combo_active = False
         self._combo_since = 0.0
         self._combo_last_progress = -1.0
+        # Latch: nach combo_fire True, bis beide Taster losgelassen sind.
+        # Verhindert dass der Countdown nach Ablauf erneut startet wenn die
+        # Taster noch gehalten werden (Dauerschleifen-Bug).
+        self._combo_latched = False
 
         gpio.setup(pin_a, gpio.IN)
         gpio.setup(pin_b, gpio.IN)
@@ -279,7 +283,10 @@ class ButtonDriver:
     def _update_combo(self, a_pressed: bool, b_pressed: bool, now: float):
         """Erkennt dass beide Taster gleichzeitig gehalten werden (Shutdown-Geste)."""
         both = a_pressed and b_pressed
-        if both and not self._combo_active:
+        # Latch freigeben sobald beide Taster losgelassen sind
+        if self._combo_latched and not a_pressed and not b_pressed:
+            self._combo_latched = False
+        if both and not self._combo_active and not self._combo_latched:
             # Combo startet
             self._combo_active = True
             self._combo_since = now
@@ -298,6 +305,7 @@ class ButtonDriver:
                 # Fire bei Erreichen der Combo-Schwelle
                 if elapsed >= self._combo:
                     self._combo_active = False
+                    self._combo_latched = True
                     self._emit(ButtonEvent(kind="combo_fire", hold_seconds=elapsed))
             else:
                 # Einer (oder beide) losgelassen bevor Schwelle erreicht

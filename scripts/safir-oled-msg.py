@@ -91,8 +91,16 @@ def write_to_display(img: Image.Image):
         for cmd in _SSD1306_INIT:
             bus.write_byte_data(I2C_ADDR, 0x00, cmd)
 
-        # Pixel in Page-Format kodieren
-        pixels = list(img.getdata())
+        # Pixel in Page-Format kodieren. Wir nutzen tobytes() statt des in
+        # Pillow 14 entfernten list(img.getdata()) — liefert bei Mode "1"
+        # ein gepacktes Bit-Array, das wir per Maskierung zu einem 2D-Bool
+        # auflösen.
+        raw = img.tobytes()  # packed bits, MSB links, zeilenweise
+        row_bytes = (WIDTH + 7) // 8
+
+        def px(x: int, y: int) -> bool:
+            return bool(raw[y * row_bytes + (x >> 3)] & (0x80 >> (x & 7)))
+
         for page in range(8):
             bus.write_byte_data(I2C_ADDR, 0x00, 0xB0 + page)  # Page start
             bus.write_byte_data(I2C_ADDR, 0x00, 0x00)         # Col lower
@@ -102,7 +110,7 @@ def write_to_display(img: Image.Image):
                 byte = 0
                 for bit in range(8):
                     y = page * 8 + bit
-                    if pixels[y * WIDTH + x]:
+                    if px(x, y):
                         byte |= (1 << bit)
                 buf.append(byte)
             for i in range(0, WIDTH, 16):

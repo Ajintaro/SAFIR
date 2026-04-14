@@ -31,7 +31,9 @@ bb = f1.getbbox('$1')
 draw.text(((128-(bb[2]-bb[0]))//2, 16), '$1', font=f1, fill=1)
 bb2 = f2.getbbox('$2')
 draw.text(((128-(bb2[2]-bb2[0]))//2, 34), '$2', font=f2, fill=1)
-pixels = list(img.getdata())
+raw = img.tobytes()  # Pillow-14 kompatibel (kein getdata())
+rb = (128 + 7)//8
+def px(x,y): return bool(raw[y*rb + (x>>3)] & (0x80 >> (x & 7)))
 for page in range(8):
     bus.write_byte_data(addr, 0x00, 0xB0+page)
     bus.write_byte_data(addr, 0x00, 0x00)
@@ -41,7 +43,7 @@ for page in range(8):
         byte=0
         for bit in range(8):
             y=page*8+bit
-            if pixels[y*128+x]: byte|=(1<<bit)
+            if px(x,y): byte|=(1<<bit)
         buf.append(byte)
     for i in range(0,128,16):
         bus.write_i2c_block_data(addr, 0x40, buf[i:i+16])
@@ -57,6 +59,14 @@ for proc in gnome-software tracker-miner-fs-3 tracker-extract-3     evolution-al
 done
 echo "GNOME-Daemons bereinigt"
 oled_status "SAFIR" "Aufraumen..."
+
+# 1b. Verwaiste whisper-server-Prozesse killen (Zombies aus früherem kill -9
+#     auf uvicorn — Kinder bleiben stehen und fressen je ~1 GB RAM)
+if pgrep -f whisper-server > /dev/null 2>&1; then
+    echo "Whisper-Zombies gefunden — werden entfernt"
+    pkill -9 -f whisper-server 2>/dev/null
+    sleep 1
+fi
 
 # 2. Pagecache freigeben
 sync
@@ -93,19 +103,13 @@ echo "Ollama: Modell qwen2.5:1.5b auf GPU vorgeladen"
 curl -s http://127.0.0.1:11434/api/generate -d '{"model":"qwen2.5:1.5b","prompt":"","keep_alive":0}' > /dev/null 2>&1
 echo "Ollama: Modell entladen, GPU frei für Whisper"
 
-# 6. SAFIR Server starten (lädt Whisper intern)
+# 6. SAFIR Server im Vordergrund starten (lädt Whisper intern)
+#    exec ersetzt die Shell durch uvicorn — systemd sieht einen einzigen
+#    Prozess und kann ihn sauber überwachen/stoppen. Manueller Aufruf
+#    blockiert das Terminal bis Ctrl-C.
 oled_status "SAFIR" "Server startet..."
 cd /home/jetson/cgi-afcea-san
 source venv/bin/activate
-python3 -m uvicorn app:app --host 0.0.0.0 --port 8080 > /tmp/safir.log 2>&1 &
-SAFIR_PID=$!
-echo "SAFIR Server gestartet (PID $SAFIR_PID)"
-
-# 7. Warten und nochmal aufräumen
-sleep 15
-for proc in gnome-software tracker-miner-fs-3 evolution-alarm-notify update-notifier; do
-    pkill -f "$proc" 2>/dev/null
-done
-
-echo "$(date) — SAFIR Autostart abgeschlossen"
-echo "RAM frei: $(free -m | awk '/Mem:/ {print $4+$7}') MB"
+echo "$(date) — starte SAFIR App (uvicorn) im Vordergrund"
+echo "RAM vor uvicorn: $(free -m | awk '/Mem:/ {print $4+$7}') MB"
+exec python3 -m uvicorn app:app --host 0.0.0.0 --port 8080
