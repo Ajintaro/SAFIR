@@ -26,12 +26,29 @@ _SSD1306_INIT = [
 # Display-Konstanten
 WIDTH = 128
 HEIGHT = 64
-PAGES = ["models", "operator", "patient", "cardwrite"]
+PAGES = ["models", "operator", "patient"]
 PAGE_TITLES = {
     "models": "KI-STATUS",
     "operator": "BEDIENER",
     "patient": "PATIENT",
-    "cardwrite": "KARTE",
+}
+
+# 2-Level-Menü: Liste von (action_id, label) pro Haupt-Screen.
+# "models" hat absichtlich kein Untermenü — reiner Diagnose-Screen.
+# "operator" zeigt "Ausloggen" nur wenn jemand eingeloggt ist (Laufzeit-Check
+# im app.py Handler; Menüstruktur bleibt statisch für Einfachheit).
+PAGE_SUBMENUS = {
+    "models": [],
+    "operator": [
+        ("logout", "Ausloggen"),
+    ],
+    "patient": [
+        ("record_toggle", "Aufnahme"),
+        ("analyze_pending", "Analysieren"),
+        ("send_backend", "Melden"),
+        ("card_write", "RFID schreiben"),
+        ("patient_delete", "Loeschen"),
+    ],
 }
 
 
@@ -64,6 +81,10 @@ class OledMenu:
 
     def __init__(self):
         self.current_page = 0
+        # 2-Level-Menü-State: submenu_open=True zeigt die Untermenü-Liste
+        # des aktuellen Screens statt der normalen Content-Ansicht.
+        self.submenu_open = False
+        self.submenu_index = 0
         self.stats = {}              # System-Stats (CPU, RAM, GPU, Temperaturen, ...)
         self.network_info = {}       # Netzwerk-Info (Hostname, IP)
         self.patient_info = {}       # Patienten-Übersicht (Anzahl, etc.)
@@ -198,23 +219,71 @@ class OledMenu:
         self._display_image(img)
         return img
 
-    # ---- Navigation ----
-    def button_up(self):
-        """Vorherige Seite."""
+    # ---- Navigation (2-Level-Menü) ----
+    # Belegung:
+    #   A short → nächste Screen-Seite (nur im Hauptmenü)
+    #   A long  → Untermenü öffnen oder schließen (Toggle)
+    #   B short → im Untermenü: nächster Eintrag
+    #   B long  → im Untermenü: Eintrag ausführen → returns action dict
+    #
+    # Die alten Methoden button_up/button_down/button_ok bleiben als dünne
+    # Kompatibilitäts-Wrapper, damit Altaufrufer (z. B. aus hardware.py
+    # Fallback-Paths) nichts crashen.
+
+    def button_a_short(self):
+        """A kurz: Im Hauptmenü nächste Seite. Im Untermenü keine Aktion."""
         self._wake()
-        self.current_page = (self.current_page - 1) % len(PAGES)
+        if not self.submenu_open:
+            self.current_page = (self.current_page + 1) % len(PAGES)
+
+    def button_a_long(self):
+        """A lang: Untermenü toggle (rein wenn Einträge da sind, raus sonst)."""
+        self._wake()
+        if self.submenu_open:
+            self.submenu_open = False
+            self.submenu_index = 0
+            return
+        page = PAGES[self.current_page]
+        if PAGE_SUBMENUS.get(page):
+            self.submenu_open = True
+            self.submenu_index = 0
+
+    def button_b_short(self):
+        """B kurz: Im Untermenü nächster Eintrag. Im Hauptmenü nichts."""
+        self._wake()
+        if not self.submenu_open:
+            return
+        page = PAGES[self.current_page]
+        items = PAGE_SUBMENUS.get(page, [])
+        if items:
+            self.submenu_index = (self.submenu_index + 1) % len(items)
+
+    def button_b_long(self):
+        """B lang: Im Untermenü Eintrag ausführen → returns {'page': ..., 'action': ...}.
+        Das Untermenü bleibt nach dem Fire offen, damit mehrere Aktionen
+        ohne Re-Navigation möglich sind."""
+        self._wake()
+        if not self.submenu_open:
+            print(f"[OLED] button_b_long: submenu geschlossen (page={PAGES[self.current_page]}) — ignoriert", flush=True)
+            return None
+        page = PAGES[self.current_page]
+        items = PAGE_SUBMENUS.get(page, [])
+        if items and 0 <= self.submenu_index < len(items):
+            action_id, label = items[self.submenu_index]
+            print(f"[OLED] button_b_long: FIRE page={page} idx={self.submenu_index} action={action_id} label={label!r}", flush=True)
+            return {"page": page, "action": action_id, "label": label}
+        print(f"[OLED] button_b_long: leeres submenu (page={page})", flush=True)
+        return None
+
+    # Kompatibilitäts-Wrapper — nicht in neuer Logik verwenden
+    def button_up(self):
+        self.button_a_short()
 
     def button_down(self):
-        """Nächste Seite."""
-        self._wake()
-        self.current_page = (self.current_page + 1) % len(PAGES)
+        self.button_a_short()
 
     def button_ok(self):
-        """Aktion auf der aktuellen Seite."""
-        self._wake()
-        page = PAGES[self.current_page]
-        # Seitenspezifische Aktionen werden vom App-Layer behandelt
-        return {"page": page, "action": "ok"}
+        return self.button_b_long()
 
     # ---- Daten aktualisieren ----
     def update_stats(self, stats: dict):
@@ -261,17 +330,15 @@ class OledMenu:
         draw = ImageDraw.Draw(img)
         page = PAGES[self.current_page]
 
-        # Kein Header — volle 64 Pixel Höhe für Content
-
-        # Seiteninhalt — 4-Seiten-Design (KI-Status / Bediener / Patient / Karte)
-        if page == "models":
+        # Untermenü hat Vorrang: zeigt Action-Liste statt Content
+        if self.submenu_open:
+            self._render_submenu(draw, page)
+        elif page == "models":
             self._render_models_status(draw)
         elif page == "operator":
             self._render_operator(draw)
         elif page == "patient":
             self._render_patient(draw)
-        elif page == "cardwrite":
-            self._render_cardwrite(draw)
 
         # Auf Hardware-Display schreiben (falls vorhanden)
         self._display_image(img)
@@ -386,33 +453,26 @@ class OledMenu:
         if flow:
             draw.text((2, 44), flow[:20], font=FONT_MD, fill=1)
 
-    # ---- Seite: KARTE SCHREIBEN ----
-    def _render_cardwrite(self, draw: ImageDraw):
-        c = self.cardwrite_info
-        if not c.get("operator_logged_in", False):
-            draw.text((2, 4),  "KEIN",   font=FONT_XL, fill=1)
-            draw.text((2, 24), "LOGIN",  font=FONT_XL, fill=1)
-            draw.text((2, 48), "Blaue Karte auflegen", font=FONT_SM, fill=1)
-            return
-        if not c.get("has_permission", False):
-            draw.text((2, 4),  "KEINE", font=FONT_XL, fill=1)
-            draw.text((2, 24), "RECHTE", font=FONT_XL, fill=1)
-            return
-        if not c.get("has_active_patient", False):
-            draw.text((2, 4),  "KEIN",    font=FONT_XL, fill=1)
-            draw.text((2, 24), "PATIENT", font=FONT_XL, fill=1)
+    # ---- Untermenü-Liste (2-Level-Menü) ----
+    def _render_submenu(self, draw: ImageDraw, page: str):
+        """Zeichnet die Action-Liste des aktuellen Screens. Selektiertes
+        Item ist invertiert (weißer Balken, schwarze Schrift). Nutzt FONT_MD
+        (11 px) mit 12-px-Zeilen — 5 Items passen in 64 px Höhe bei guter
+        Lesbarkeit."""
+        items = PAGE_SUBMENUS.get(page, [])
+        if not items:
+            draw.text((2, 20), "KEIN UNTERMENU", font=FONT_MD, fill=1)
+            draw.text((2, 40), "A lang = zurueck", font=FONT_SM, fill=1)
             return
 
-        name = (c.get("patient_name") or c.get("patient_id", ""))[:10]
-        triage = c.get("triage", "")
-
-        # Patient oben groß
-        draw.text((2, 2), name, font=FONT_XL, fill=1)
-        if triage:
-            draw.text((2, 24), f"Triage: {triage}", font=FONT_MD, fill=1)
-        # Call-to-Action unten invertiert in einem Kasten
-        draw.rectangle([0, 44, WIDTH - 1, 63], fill=1)
-        draw.text((4, 47), "[OK] SCHREIBEN", font=FONT_MD, fill=0)
+        y = 2
+        for i, (_, label) in enumerate(items):
+            if i == self.submenu_index:
+                draw.rectangle([0, y - 1, WIDTH - 1, y + 11], fill=1)
+                draw.text((3, y), f"> {label}", font=FONT_MD, fill=0)
+            else:
+                draw.text((3, y), f"  {label}", font=FONT_MD, fill=1)
+            y += 12
 
 
 # Singleton für globalen Zugriff

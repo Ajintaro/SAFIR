@@ -68,18 +68,56 @@ def speak(text: str, blocking: bool = False):
         t.start()
 
 
+def _pick_output_rate(device, piper_rate: int) -> int:
+    """Wählt eine sample rate die das Output-Device wirklich annimmt.
+
+    Wir probieren in dieser Reihenfolge:
+    1. Piper native (22050 Hz) — wenn das Device das direkt schluckt, kein
+       Resample nötig und bestmögliche Qualität.
+    2. 44100 Hz — Standard für C-Media/Ugreen-USB-Dongles.
+    3. 48000 Hz — Standard für Jabra, Conference-Speaker, modernes USB-Audio.
+
+    Wir verlassen uns bewusst NICHT mehr auf ``default_samplerate`` aus
+    query_devices(). Das Jabra SPEAK 510 meldet dort 16000 Hz (Telefonie-
+    Default), intern läuft die Hardware aber mit 48000 Hz — beim Abspielen
+    interpretiert der Driver 16000 Sample-Stream als 48000 und das Audio
+    klingt 3x zu schnell. check_output_settings() prüft die tatsächliche
+    ALSA-Route und filtert solche Fehlmeldungen aus.
+    """
+    candidates = [piper_rate, 44100, 48000]
+    for rate in candidates:
+        try:
+            sd.check_output_settings(
+                device=device, samplerate=rate, channels=1, dtype="float32"
+            )
+            return rate
+        except Exception:
+            continue
+    return piper_rate  # letzte Rettung
+
+
 def _speak_internal(text: str):
-    """Synthese + Ausgabe über Lautsprecher."""
+    """Synthese + Ausgabe über Lautsprecher. Resampled bei Bedarf auf eine
+    sample rate die das konkrete USB-Audio-Device wirklich unterstützt."""
     with _lock:
         try:
             chunks = list(_voice.synthesize(text))
             if not chunks:
                 return
             audio = np.concatenate([c.audio_int16_array for c in chunks])
-            sr = _voice.config.sample_rate
-            # int16 -> float32 für sounddevice
+            piper_rate = _voice.config.sample_rate
             audio_float = audio.astype(np.float32) / 32768.0
-            sd.play(audio_float, samplerate=sr, device=_output_device)
+
+            target_rate = _pick_output_rate(_output_device, piper_rate)
+            if target_rate != piper_rate:
+                ratio = target_rate / piper_rate
+                new_len = int(len(audio_float) * ratio)
+                indices = np.linspace(0, len(audio_float) - 1, new_len)
+                audio_float = np.interp(
+                    indices, np.arange(len(audio_float)), audio_float
+                ).astype(np.float32)
+
+            sd.play(audio_float, samplerate=target_rate, device=_output_device)
             sd.wait()
         except Exception as e:
             print(f"TTS Ausgabe Fehler: {e}")

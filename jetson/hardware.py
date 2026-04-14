@@ -247,7 +247,15 @@ class ButtonDriver:
                 if b_stable:
                     self._update_single("B", b_raw, now)
 
-                self._update_combo(a_raw, b_raw, now)
+                # Combo-Detektion nutzt die debounced press-States aus
+                # _update_single — nicht die rohen GPIO-Werte. Sonst kann
+                # ein flackernder Pin (defekter Pull-up, EMI) einen
+                # Shutdown auslösen obwohl nur ein Taster gedrückt ist.
+                self._update_combo(
+                    self._state_a["pressed"],
+                    self._state_b["pressed"],
+                    now,
+                )
 
                 await asyncio.sleep(self.POLL_MS / 1000)
         except asyncio.CancelledError:
@@ -258,35 +266,79 @@ class ButtonDriver:
     def _update_single(self, name: str, pressed: bool, now: float):
         """Flankenerkennung + Short/Long-Emission für einen einzelnen Taster.
 
-        Wichtig: wenn gerade eine Combo läuft, werden Single-Events unterdrückt
-        damit nicht gleichzeitig combo_fire UND long_press emittiert wird.
+        Fire-at-threshold: Long-Press wird sofort bei Erreichen der
+        long_press_seconds emittiert (nicht erst beim Loslassen), damit der
+        User im OLED direkt sieht dass seine Aktion registriert wurde.
+        Short-Press wird bei Release emittiert wenn die Schwelle noch nicht
+        erreicht war. Bei aktiver Combo oder parallel gedrücktem anderem
+        Taster wird long-at-threshold unterdrückt — dann hat die Combo-Logik
+        Vorrang (A+B ≥ 3 s → Shutdown).
         """
         state = self._state_a if name == "A" else self._state_b
+        other = self._state_b if name == "A" else self._state_a
+
         if pressed and not state["pressed"]:
             # Flanke runter → Press-Start, consumed-Flag zurücksetzen
             state["pressed"] = True
             state["since"] = now
             state["consumed"] = False
-        elif not pressed and state["pressed"]:
+            return
+
+        if pressed and state["pressed"] and not state["consumed"]:
+            # Noch gehalten: Long-Press bei Erreichen der Schwelle sofort feuern.
+            # Nicht feuern wenn der andere Taster parallel gedrückt ist — dann
+            # deutet es auf eine entstehende Combo hin (Shutdown-Geste).
+            if self._combo_active or other["pressed"]:
+                return
+            held = now - state["since"]
+            if held >= self._long_press:
+                state["consumed"] = True
+                self._emit(ButtonEvent(kind="long", button=name, hold_seconds=held))
+            return
+
+        if not pressed and state["pressed"]:
             # Flanke hoch → Release. consumed bleibt bis zum NÄCHSTEN Press
             # stehen, damit ein Combo-Abbruch nicht nachträglich doch noch
-            # Single-Presses emittiert (Bug bei Combo-Cancel-Nachläufer).
+            # Single-Presses emittiert (Bug bei Combo-Cancel-Nachläufer) und
+            # ein fire-at-threshold kein doppeltes Event beim Loslassen nach
+            # sich zieht.
             state["pressed"] = False
             held = now - state["since"]
             if state["consumed"] or self._combo_active:
                 return
-            if held >= self._long_press:
-                self._emit(ButtonEvent(kind="long", button=name, hold_seconds=held))
-            else:
-                self._emit(ButtonEvent(kind="short", button=name, hold_seconds=held))
+            # Release vor Long-Press-Schwelle → short
+            self._emit(ButtonEvent(kind="short", button=name, hold_seconds=held))
+
+    # Max. Zeit zwischen den beiden Press-Flanken, damit eine Combo gültig ist.
+    # Ein stuck-LOW-Pin (defekter externer Pull-up) hat state.since=0 oder einen
+    # sehr alten Wert — damit scheitert der Check und die Combo startet nicht.
+    # Wer bewusst A+B gleichzeitig drückt, schafft das immer unter 400 ms.
+    COMBO_ONSET_WINDOW = 0.4
 
     def _update_combo(self, a_pressed: bool, b_pressed: bool, now: float):
-        """Erkennt dass beide Taster gleichzeitig gehalten werden (Shutdown-Geste)."""
+        """Erkennt dass beide Taster gleichzeitig neu gedrückt werden (Shutdown-Geste).
+
+        Hartet gegen stuck-LOW-Pins: Combo startet nur wenn beide Taster eine
+        Press-Flanke innerhalb COMBO_ONSET_WINDOW hatten. Das Feld state['since']
+        wird in _update_single beim Flanke-Runter-Ereignis gesetzt — bei einem
+        dauerhaft LOW-Pin wird es nie aktualisiert, der Zeit-Diff ist also groß
+        und die Combo wird verworfen.
+        """
         both = a_pressed and b_pressed
         # Latch freigeben sobald beide Taster losgelassen sind
         if self._combo_latched and not a_pressed and not b_pressed:
             self._combo_latched = False
         if both and not self._combo_active and not self._combo_latched:
+            a_since = self._state_a["since"]
+            b_since = self._state_b["since"]
+            onset_diff = abs(a_since - b_since)
+            if onset_diff > self.COMBO_ONSET_WINDOW:
+                log.warning(
+                    "combo_start verworfen: onset_diff=%.2fs > %.2fs "
+                    "(a_since=%.2f, b_since=%.2f) — möglicherweise stuck-LOW Pin",
+                    onset_diff, self.COMBO_ONSET_WINDOW, a_since, b_since,
+                )
+                return
             # Combo startet
             self._combo_active = True
             self._combo_since = now
@@ -662,13 +714,19 @@ class HardwareService:
         if key in self._button_counts:
             self._button_counts[key] += 1
 
-        # Action-Routing (nur wenn OLED schon wach war)
+        # 2-Level-Menü-Routing:
+        #   A short → im Hauptmenü nächste Screen-Seite
+        #   A long  → Untermenü des aktuellen Screens toggeln
+        #   B short → im Untermenü nächster Eintrag (im Hauptmenü nichts)
+        #   B long  → im Untermenü Eintrag ausführen → App-Callback
         if event.button == "A" and event.kind == "short":
-            self._oled.button_down()  # A kurz → nächste Seite
+            self._oled.button_a_short()
         elif event.button == "A" and event.kind == "long":
-            self._oled.button_up()    # A lang → vorherige Seite
+            self._oled.button_a_long()
         elif event.button == "B" and event.kind == "short":
-            result = self._oled.button_ok()  # B kurz → Seiten-Aktion
+            self._oled.button_b_short()
+        elif event.button == "B" and event.kind == "long":
+            result = self._oled.button_b_long()
             if result and self._on_oled_action_cb:
                 try:
                     ret = self._on_oled_action_cb(result)
@@ -676,9 +734,6 @@ class HardwareService:
                         asyncio.create_task(ret)
                 except Exception as e:
                     log.error(f"OLED action callback crashed: {e}")
-        elif event.button == "B" and event.kind == "long":
-            # Reserviert für spätere Funktion
-            log.info("Button B long-press (noch nicht belegt)")
 
     # -----------------------------------------------------------------------
     # Shutdown-Geste

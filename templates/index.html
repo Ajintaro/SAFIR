@@ -1377,6 +1377,19 @@
                     </div>
                 </div>
 
+                <!-- Pending-Transkripte: Liste aller noch nicht analysierten
+                     Aufnahmen. Jede Aufnahme bleibt einzeln erhalten, bis der
+                     User sie analysiert oder verwirft. -->
+                <div id="pending-transcripts-wrapper" style="display:none;flex:0 0 auto">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:0 4px">
+                        <div style="font-size:13px;font-weight:700;color:var(--mil-tan, #c8b878);letter-spacing:0.08em">AUFNAHMEN — WARTEN AUF ANALYSE</div>
+                        <span id="pending-count-badge" style="font-size:10px;color:var(--text-dim);font-family:monospace"></span>
+                        <div style="flex:1"></div>
+                        <button class="btn btn-cgi" onclick="analyzeAllPending()" style="padding:6px 12px;font-size:10px;font-weight:700" title="Alle unanalysierten Aufnahmen nacheinander analysieren">&#129504; Alle analysieren</button>
+                    </div>
+                    <div id="pending-transcripts-list" style="display:flex;flex-direction:column;gap:6px;max-height:380px;overflow-y:auto"></div>
+                </div>
+
                 <!-- Sprachbefehle-Referenz (Feld) -->
                 <!-- Einsatzablauf (aufklappbar) -->
                 <details id="flow-guide" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
@@ -1434,6 +1447,7 @@
                     <button class="btn" onclick="voiceNewPatient()" style="padding:8px 14px;font-size:12px;font-weight:700;background:var(--cgi-red);border-color:var(--cgi-red);color:#fff">+ Neuer Patient</button>
                     <button class="btn" onclick="analyzeSession()" style="padding:8px 14px;font-size:12px" id="btn-analyze">&#129504; Analyse</button>
                     <button class="btn" onclick="sendToBackend()" style="padding:8px 14px;font-size:12px;background:#2ECC71;border-color:#2ECC71;color:#fff" id="btn-send-backend">&#9889; Alle melden</button>
+                    <button class="btn" onclick="rfidBatchWrite()" style="padding:8px 14px;font-size:12px;background:var(--mil-tan,#c8b878);border-color:var(--mil-tan,#c8b878);color:#000" id="btn-rfid-batch" title="Alle Patienten ohne RFID-Karte nacheinander auf Karten schreiben">&#128179; RFID-Batch</button>
                     <button class="btn" onclick="exportDocx()" style="padding:8px 14px;font-size:12px">&#128196; Export</button>
                     <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
                         <button class="btn btn-cgi" onclick="rfidScan()" style="padding:6px 12px;font-size:11px;display:flex;align-items:center;gap:4px" id="rfid-scan-btn"><span style="font-size:14px">&#128179;</span> RFID</button>
@@ -1466,14 +1480,46 @@
         </div>
 
         <!-- ======================================================
-             PAGE: Patienten
+             PAGE: Patienten (Verwaltung / Datenbank)
              ====================================================== -->
         <div class="page" id="page-patients">
-            <div class="placeholder-page">
-                <div class="ph-icon">&#9764;</div>
-                <div class="ph-title">Patienten-Übersicht</div>
-                <div class="ph-desc">Zentrale Verwaltung aller Patienten entlang der Rettungskette. Triage-Status, 9-Liner, TCCC Cards und Übergabeprotokolle auf einen Blick.</div>
-                <div class="ph-badge">Geplant für Phase 2</div>
+            <div style="display:flex;flex-direction:column;height:100%;gap:10px">
+                <!-- Kopfzeile mit Titel, Zähler und Filter-Toggle -->
+                <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
+                    <div style="font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:0.05em">PATIENTEN-DATENBANK</div>
+                    <span id="admin-patients-count" style="font-size:11px;color:var(--text-dim);font-family:monospace">0 Patienten</span>
+                    <div style="flex:1"></div>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none">
+                        <input type="checkbox" id="admin-patients-show-drafts" onchange="renderAdminPatients()" style="cursor:pointer">
+                        Entwürfe anzeigen
+                    </label>
+                    <button class="btn" onclick="renderAdminPatients()" style="padding:4px 10px;font-size:10px">&#8635; Aktualisieren</button>
+                </div>
+
+                <!-- Tabelle -->
+                <div style="flex:1;min-height:0;overflow-y:auto;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
+                    <table id="admin-patients-table" style="width:100%;border-collapse:collapse;font-size:11px">
+                        <thead style="position:sticky;top:0;background:var(--bg-surface2);z-index:1">
+                            <tr style="text-align:left;border-bottom:1px solid var(--border)">
+                                <th style="padding:8px 10px;font-weight:600;color:var(--text-dim);letter-spacing:0.06em">ZEIT</th>
+                                <th style="padding:8px 10px;font-weight:600;color:var(--text-dim);letter-spacing:0.06em">PATIENT-ID</th>
+                                <th style="padding:8px 10px;font-weight:600;color:var(--text-dim);letter-spacing:0.06em">NAME</th>
+                                <th style="padding:8px 10px;font-weight:600;color:var(--text-dim);letter-spacing:0.06em">TRIAGE</th>
+                                <th style="padding:8px 10px;font-weight:600;color:var(--text-dim);letter-spacing:0.06em">STATUS</th>
+                                <th style="padding:8px 10px;font-weight:600;color:var(--text-dim);letter-spacing:0.06em">RFID</th>
+                                <th style="padding:8px 10px;font-weight:600;color:var(--text-dim);letter-spacing:0.06em"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-patient-rows">
+                            <tr><td colspan="7" style="padding:40px;text-align:center;color:var(--text-dim)">Lade Patienten...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="font-size:10px;color:var(--text-dim);padding:0 6px">
+                    Standard-Ansicht zeigt nur gemeldete Patienten (&laquo;übermittelt&raquo; an die Leitstelle).
+                    Mit &laquo;Entwürfe anzeigen&raquo; siehst du auch nicht-gemeldete Patienten (Feld-Entwürfe).
+                </div>
             </div>
         </div>
 
@@ -1846,6 +1892,7 @@
         <button class="hw-tab active" data-tab="hw-system" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer">System</button>
         <button class="hw-tab" data-tab="hw-temps" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Temperatur</button>
         <button class="hw-tab" data-tab="hw-audio" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Audio</button>
+        <button class="hw-tab" data-tab="hw-oled" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">OLED</button>
     </div>
 
     <!-- Tab: System -->
@@ -1929,6 +1976,43 @@
                 <option value="en">English</option>
                 <option value="fr">Francais</option>
             </select>
+        </div>
+    </div>
+
+    <!-- Tab: OLED-Simulator + virtuelle Taster -->
+    <div class="hw-tab-content" id="hw-oled" style="display:none">
+        <div style="text-align:center;margin-bottom:8px">
+            <div style="display:inline-block;padding:8px;background:#0a0f05;border:1px solid var(--border);border-radius:4px">
+                <img id="oled-preview" alt="OLED" width="256" height="128"
+                     style="image-rendering:pixelated;display:block;background:#000" />
+            </div>
+            <div id="oled-meta" style="font-size:9px;color:var(--text-dim);margin-top:4px">offline</div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
+            <button class="btn vbtn"
+                    style="flex:1;padding:18px 0;font-size:14px;font-weight:700;background:var(--cgi-red);color:#fff;border:2px solid var(--cgi-red);border-radius:6px;user-select:none;cursor:pointer"
+                    onmousedown="vbtnDown('A', event)"
+                    onmouseup="vbtnUp('A', event)"
+                    onmouseleave="vbtnCancel('A')"
+                    ontouchstart="vbtnDown('A', event)"
+                    ontouchend="vbtnUp('A', event)">
+                <div>TASTER A</div>
+                <div id="vbtn-a-label" style="font-size:9px;font-weight:400;opacity:0.85;margin-top:2px">kurz: Screen · lang: Untermenu</div>
+            </button>
+            <button class="btn vbtn"
+                    style="flex:1;padding:18px 0;font-size:14px;font-weight:700;background:var(--success);color:#fff;border:2px solid var(--success);border-radius:6px;user-select:none;cursor:pointer"
+                    onmousedown="vbtnDown('B', event)"
+                    onmouseup="vbtnUp('B', event)"
+                    onmouseleave="vbtnCancel('B')"
+                    ontouchstart="vbtnDown('B', event)"
+                    ontouchend="vbtnUp('B', event)">
+                <div>TASTER B</div>
+                <div id="vbtn-b-label" style="font-size:9px;font-weight:400;opacity:0.85;margin-top:2px">kurz: naechster · lang: ausfuehren</div>
+            </button>
+        </div>
+        <div style="font-size:9px;color:var(--text-dim);margin-top:6px;text-align:center;line-height:1.5">
+            Halten &ge; <span id="vbtn-long-seconds">2.0</span>&thinsp;s = long press<br>
+            Verhalten identisch zur Hardware (gleiches Event-Routing)
         </div>
     </div>
 </dialog>
@@ -2031,6 +2115,11 @@
 
         // Role 1: Karte initialisieren beim ersten Aufruf
         if (pageId === 'role1') initRole1Map();
+
+        // Verwaltung > Patienten: Tabelle bei jedem Besuch neu rendern
+        if (pageId === 'patients') {
+            try { renderAdminPatients(); } catch (e) { /* noop */ }
+        }
 
         // URL-Hash setzen
         location.hash = pageId;
@@ -2337,7 +2426,31 @@
                 showPartialResult(msg.text, msg.chunk, msg.total); break;
             case 'transcription_result':
                 setTranscribingState(false); clearPartialResults();
-                addTranscriptEntry(msg.record); beepTranscribeDone(); break;
+                // Multi-Patient-Flow: Wenn das Transkript auf manuelle
+                // Analyse wartet, den pending-Eintrag in die Liste aufnehmen.
+                if (msg.pending_analysis && msg.pending_entry) {
+                    upsertPendingTranscript(msg.pending_entry);
+                } else if (msg.record) {
+                    addTranscriptEntry(msg.record);
+                }
+                beepTranscribeDone();
+                break;
+            case 'analysis_started':
+                showActivity('&#129504;', 'KI analysiert Transkript…', msg.chars + ' Zeichen');
+                markPendingAnalyzing(msg.pending_id, true);
+                break;
+            case 'analysis_complete':
+                hideActivity();
+                // Eintrag behalten, Status von "unanalysiert" auf
+                // "analysiert" wechseln. So bleibt das Transkript dauerhaft
+                // in der Liste sichtbar, inklusive der erzeugten Patient-IDs.
+                markPendingAnalyzed(msg.pending_id, msg.created_patient_ids || []);
+                const n = msg.count || 0;
+                showToast(`${n} Patient${n === 1 ? '' : 'en'} angelegt`, '&#129504;');
+                break;
+            case 'pending_transcript_discarded':
+                removePendingTranscript(msg.pending_id);
+                break;
             case 'transcription_error':
                 setTranscribingState(false); beepError();
                 if (msg.error) showToast('Fehler: ' + msg.error, '&#9888;'); break;
@@ -2408,6 +2521,19 @@
             case 'patient_registered':
                 if (msg.patient) {
                     patients[msg.patient.patient_id] = msg.patient;
+                    // Transkripte aus dem Patient-Record in das Frontend-
+                    // Store spiegeln, damit renderPatientCards() sie direkt
+                    // in der Karte anzeigen kann (statt "Keine Aufnahmen").
+                    const pid = msg.patient.patient_id;
+                    if (Array.isArray(msg.patient.transcripts) && msg.patient.transcripts.length) {
+                        if (!patientTranscripts[pid]) patientTranscripts[pid] = [];
+                        msg.patient.transcripts.forEach(t => {
+                            patientTranscripts[pid].push({
+                                time: t.time || '',
+                                text: t.text || '',
+                            });
+                        });
+                    }
                     setActivePatient(msg.patient);
                     renderPatientList();
                     role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));
@@ -2720,6 +2846,169 @@
     function clearPartialResults() { const p = document.getElementById('partial-result'); if (p) p.remove(); }
 
     // ---- Transcript ----
+    // ---- Pending-Transcripts (Multi-Patient-Flow, als Liste) ----
+    // Jede Aufnahme ist ein eigenständiger Eintrag mit ID, bleibt erhalten
+    // bis der User sie analysiert oder verwirft. Wird NIE überschrieben.
+    const pendingTranscripts = {};  // id -> entry
+
+    function upsertPendingTranscript(entry) {
+        if (!entry || !entry.id) return;
+        pendingTranscripts[entry.id] = entry;
+        renderPendingList();
+    }
+
+    function removePendingTranscript(id) {
+        if (!id) return;
+        delete pendingTranscripts[id];
+        renderPendingList();
+    }
+
+    function markPendingAnalyzing(id, on) {
+        if (!id || !pendingTranscripts[id]) return;
+        pendingTranscripts[id].analyzing = !!on;
+        renderPendingList();
+    }
+
+    function markPendingAnalyzed(id, createdPids) {
+        if (!id || !pendingTranscripts[id]) return;
+        pendingTranscripts[id].analyzing = false;
+        pendingTranscripts[id].analyzed = true;
+        pendingTranscripts[id].created_patient_ids = createdPids || [];
+        renderPendingList();
+    }
+
+    function renderPendingList() {
+        const wrapper = document.getElementById('pending-transcripts-wrapper');
+        const list = document.getElementById('pending-transcripts-list');
+        const countBadge = document.getElementById('pending-count-badge');
+        if (!wrapper || !list) return;
+        const entries = Object.values(pendingTranscripts).sort((a, b) =>
+            (b.datetime || '').localeCompare(a.datetime || '')
+        );
+        if (entries.length === 0) {
+            wrapper.style.display = 'none';
+            return;
+        }
+        wrapper.style.display = '';
+        const unanalyzedCount = entries.filter(e => !e.analyzed).length;
+        if (countBadge) {
+            countBadge.textContent = `${entries.length} Aufnahme${entries.length === 1 ? '' : 'n'}${
+                unanalyzedCount > 0 ? ` · ${unanalyzedCount} unanalysiert` : ''
+            }`;
+        }
+
+        list.innerHTML = entries.map(e => {
+            const dur = e.duration ? `${e.duration}s` : '';
+            const ts = e.date && e.time ? `${e.date} ${e.time}` : (e.time || '');
+            const chars = (e.full_text || '').length;
+            let statusBadge, borderColor;
+            if (e.analyzing) {
+                statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(93,173,226,0.18);color:#5DADE2;border-radius:4px;font-size:9px;font-weight:700">WIRD ANALYSIERT…</span>';
+                borderColor = '#5DADE2';
+            } else if (e.analyzed) {
+                const n = (e.created_patient_ids || []).length;
+                statusBadge = `<span style="display:inline-block;padding:2px 8px;background:rgba(46,204,113,0.18);color:#2ECC71;border-radius:4px;font-size:9px;font-weight:700">ANALYSIERT · ${n} PATIENT${n === 1 ? '' : 'EN'}</span>`;
+                borderColor = '#2ECC71';
+            } else {
+                statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(200,184,120,0.15);color:var(--mil-tan,#c8b878);border-radius:4px;font-size:9px;font-weight:700">UNANALYSIERT</span>';
+                borderColor = 'var(--mil-tan,#c8b878)';
+            }
+            const safeText = (e.full_text || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+            const analyzeDisabled = (e.analyzing || e.analyzed) ? 'disabled style="opacity:0.4;cursor:not-allowed"' : '';
+            const analyzeLabel = e.analyzed ? '&#9989; Analysiert' : '&#129504; KI-Analyse';
+            return `
+            <details class="pending-entry" style="background:var(--bg-surface);border:1px solid ${borderColor};border-radius:var(--radius);overflow:hidden" data-pid="${e.id}">
+                <summary style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+                    ${statusBadge}
+                    <span style="font-family:monospace;font-size:10px;color:var(--text-dim)">${ts}</span>
+                    <span style="font-size:11px;color:var(--text-primary);font-weight:600">${chars} Zeichen · ${dur}</span>
+                    <span style="margin-left:auto;font-size:9px;color:var(--text-dim)">▼</span>
+                </summary>
+                <div style="padding:10px 12px;border-top:1px solid var(--border);background:var(--bg-surface2)">
+                    <div style="max-height:220px;overflow-y:auto;font-size:12px;line-height:1.5;white-space:pre-wrap;color:var(--text-primary);padding:6px;background:var(--bg-elevated);border-radius:var(--radius)">${safeText}</div>
+                    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+                        <button class="btn btn-cgi" onclick="analyzePendingById('${e.id}')" ${analyzeDisabled} style="padding:6px 12px;font-size:10px;font-weight:700">${analyzeLabel}</button>
+                        <button class="btn" onclick="discardPendingById('${e.id}')" style="padding:6px 12px;font-size:10px;color:var(--cgi-red);border-color:var(--cgi-red)">Verwerfen</button>
+                    </div>
+                </div>
+            </details>`;
+        }).join('');
+    }
+
+    // RFID-Batch: Alle Patienten ohne bereits geschriebene Karte nacheinander
+    // auf leere MIFARE-Karten schreiben. Triggert den gleichen Handler wie
+    // OLED-Menü und Sprachbefehl — keine Unterscheidung.
+    async function rfidBatchWrite() {
+        const notWritten = Object.values(patients).filter(p => {
+            const tl = p.timeline || [];
+            return !tl.some(e => e.event === 'rfid_written');
+        });
+        if (notWritten.length === 0) {
+            showToast('Alle Patienten haben schon eine Karte', '&#128179;');
+            return;
+        }
+        if (!confirm(`${notWritten.length} Patient${notWritten.length === 1 ? '' : 'en'} auf Karten schreiben?\n\nHalte die Karten bereit und lege sie nacheinander auf den Reader.`)) return;
+        const res = await api('/api/rfid/batch', 'POST', {});
+        if (res.status === 'started') {
+            showToast(`RFID-Batch gestartet: ${notWritten.length} Karte(n)`, '&#128179;');
+        }
+    }
+
+    // Admin-Tabelle "Öffnen": Patient als aktiv setzen, zur Aufnahme-Seite
+    // navigieren (im Fahrzeug-Modus), Karte auffalten.
+    async function openPatientFromAdmin(pid) {
+        const p = patients[pid];
+        if (!p) {
+            showToast('Patient nicht im Cache', '&#9888;');
+            return;
+        }
+        await selectPatient(pid);
+        navigateTo('recording');
+        // Fahrzeug-Modus und Patient-Card aufklappen
+        try { setMode('fahrzeug'); } catch (e) {}
+        setTimeout(() => {
+            const el = document.querySelector(`details[data-pid="${pid}"]`);
+            if (el) {
+                el.open = true;
+                el.scrollIntoView({behavior: 'smooth', block: 'center'});
+            }
+        }, 200);
+    }
+
+    async function analyzePendingById(id) {
+        const res = await api('/api/analyze/pending', 'POST', { id });
+        if (res.status !== 'ok') {
+            showToast('Analyse-Fehler: ' + (res.error || 'unbekannt'), '&#9888;');
+        }
+    }
+
+    async function discardPendingById(id) {
+        if (!confirm('Aufnahme verwerfen?')) return;
+        await api('/api/analyze/discard', 'POST', { id });
+    }
+
+    async function analyzeAllPending() {
+        const entries = Object.values(pendingTranscripts).filter(e => !e.analyzing);
+        if (entries.length === 0) return;
+        for (const e of entries) {
+            await analyzePendingById(e.id);
+        }
+    }
+
+    // Beim Page-Load die aktuellen Pending-Einträge holen (falls Reload)
+    async function loadPendingTranscripts() {
+        try {
+            const res = await fetch('/api/pending');
+            if (!res.ok) return;
+            const data = await res.json();
+            (data.pending || []).forEach(e => pendingTranscripts[e.id] = e);
+            renderPendingList();
+        } catch (e) { /* noop */ }
+    }
+    if (typeof window !== 'undefined') {
+        window.addEventListener('DOMContentLoaded', loadPendingTranscripts);
+    }
+
     function addTranscriptEntry(record, pid) {
         // Zuordnung zum aktiven Patienten
         const patientId = pid || (activePatient ? activePatient.patient_id : null);
@@ -3148,6 +3437,69 @@
         document.querySelectorAll('.hw-tab-content').forEach(c => c.style.display = 'none');
         const target = document.getElementById(tabId);
         if (target) target.style.display = '';
+        // OLED-Polling startet nur wenn der OLED-Tab sichtbar ist
+        if (tabId === 'hw-oled') startOledPoll(); else stopOledPoll();
+    }
+
+    // ---- OLED-Simulator + virtuelle Taster ----
+    const VBTN_LONG_MS = 2000;        // identisch zu hardware.long_press_seconds
+    const _vbtnState = { A: null, B: null };
+    let _oledPollTimer = null;
+
+    function startOledPoll() {
+        if (_oledPollTimer) return;
+        const tick = async () => {
+            try {
+                const r = await fetch('/api/oled/image', {cache: 'no-store'});
+                if (!r.ok) return;
+                const data = await r.json();
+                if (data.image) {
+                    document.getElementById('oled-preview').src = 'data:image/png;base64,' + data.image;
+                }
+                const meta = document.getElementById('oled-meta');
+                if (meta) {
+                    const sub = data.submenu_open ? ' · Untermenü' : '';
+                    const st = data.status_mode ? ' · STATUS' : '';
+                    const title = data.page_title || data.page || '?';
+                    meta.textContent = `${title}${sub}${st}`;
+                }
+            } catch (e) { /* silent */ }
+        };
+        tick();
+        _oledPollTimer = setInterval(tick, 300);
+    }
+
+    function stopOledPoll() {
+        if (_oledPollTimer) {
+            clearInterval(_oledPollTimer);
+            _oledPollTimer = null;
+        }
+    }
+
+    function vbtnDown(which, ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        _vbtnState[which] = { t: Date.now(), fired: false };
+    }
+
+    async function vbtnUp(which, ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        const s = _vbtnState[which];
+        if (!s || s.fired) { _vbtnState[which] = null; return; }
+        s.fired = true;
+        const held = Date.now() - s.t;
+        const kind = held >= VBTN_LONG_MS ? 'long' : 'short';
+        _vbtnState[which] = null;
+        try {
+            await fetch('/api/hw/button', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ button: which, kind }),
+            });
+        } catch (e) { /* silent */ }
+    }
+
+    function vbtnCancel(which) {
+        _vbtnState[which] = null;
     }
 
     function updateHwRamDetails(stats) {
@@ -3525,11 +3877,69 @@
         });
     }
 
+    // ---- Verwaltung > Patienten (Datenbank-Ansicht) ----
+    // Standard: nur synced=True zeigen (= "offiziell in der Datenbank").
+    // Mit Toggle "Entwürfe anzeigen" werden auch drafts sichtbar.
+    function renderAdminPatients() {
+        const tbody = document.getElementById('admin-patient-rows');
+        if (!tbody) return;
+        const showDrafts = document.getElementById('admin-patients-show-drafts')?.checked || false;
+
+        let entries = Object.values(patients || {});
+        if (!showDrafts) entries = entries.filter(p => p.synced);
+        // Neueste oben
+        entries.sort((a, b) => (b.timestamp_created || '').localeCompare(a.timestamp_created || ''));
+
+        const countEl = document.getElementById('admin-patients-count');
+        const total = Object.values(patients || {}).length;
+        const syncedCount = Object.values(patients || {}).filter(p => p.synced).length;
+        if (countEl) {
+            countEl.textContent = showDrafts
+                ? `${total} Patienten (${syncedCount} gemeldet, ${total - syncedCount} Entwurf)`
+                : `${entries.length} von ${total} gemeldet`;
+        }
+
+        if (entries.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="padding:40px;text-align:center;color:var(--text-dim)">${
+                showDrafts ? 'Noch keine Patienten erfasst' : 'Noch keine Patienten an die Leitstelle gemeldet'
+            }</td></tr>`;
+            return;
+        }
+
+        const fmtTime = iso => {
+            if (!iso) return '--';
+            try { return new Date(iso).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'}); }
+            catch (e) { return iso.slice(11, 16); }
+        };
+
+        tbody.innerHTML = entries.map(p => {
+            const triageColor = (window.TRIAGE_COLORS && window.TRIAGE_COLORS[p.triage]) || '#555';
+            const statusBadges = [];
+            if (p.analyzed) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:9px;background:rgba(93,173,226,0.15);color:#5DADE2;border-radius:3px;margin-right:3px">analysiert</span>');
+            if (p.synced) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:9px;background:rgba(46,204,113,0.15);color:#2ECC71;border-radius:3px;margin-right:3px">gemeldet</span>');
+            if (!p.analyzed && !p.synced) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:9px;background:rgba(200,184,120,0.15);color:var(--mil-tan,#c8b878);border-radius:3px;margin-right:3px">Entwurf</span>');
+
+            const rfidShort = (p.rfid_tag_id || '').slice(0, 10) || '—';
+            return `
+                <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:7px 10px;font-family:monospace;color:var(--text-dim)">${fmtTime(p.timestamp_created)}</td>
+                    <td style="padding:7px 10px;font-family:monospace;font-size:10px">${p.patient_id || ''}</td>
+                    <td style="padding:7px 10px">${p.name || 'Unbekannt'}${p.rank ? ' <span style="color:var(--text-dim);font-size:10px">('+p.rank+')</span>' : ''}</td>
+                    <td style="padding:7px 10px"><span style="display:inline-block;min-width:26px;padding:2px 6px;background:${triageColor};color:#fff;font-weight:700;text-align:center;border-radius:3px;font-size:10px">${p.triage || '--'}</span></td>
+                    <td style="padding:7px 10px">${statusBadges.join('')}</td>
+                    <td style="padding:7px 10px;font-family:monospace;color:var(--text-dim);font-size:10px">${rfidShort}</td>
+                    <td style="padding:7px 10px;text-align:right"><button onclick="openPatientFromAdmin('${p.patient_id}')" class="btn" style="padding:3px 8px;font-size:10px">Öffnen</button></td>
+                </tr>`;
+        }).join('');
+    }
+
     function renderPatientCards() {
         const entries = Object.values(patients);
         const count = entries.length;
         const badge = document.getElementById('patient-count-badge');
         if (badge) badge.textContent = count + ' Patienten';
+        // Admin-Tabelle mitaktualisieren
+        try { renderAdminPatients(); } catch (e) { /* noop */ }
 
         const emptyHtml = '<div class="empty" style="padding:20px;text-align:center"><div class="icon" style="font-size:20px;opacity:0.4">&#9764;</div><div style="font-size:11px;color:var(--text-dim)">Keine Patienten</div></div>';
 

@@ -296,10 +296,13 @@ function updateTriageCounts() {
     document.getElementById('stat-transports').textContent = Object.keys(transports).length;
 }
 
-function addEventToFeed(event) {
+function addEventToFeed(event, historic) {
     const feed = document.getElementById('event-feed');
     const time = new Date(event.time).toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    const isNew = event.type === 'patient_ingest';
+    // historic=true: beim WS-init-Snapshot nachgeladene Events dürfen
+    // nicht mehr als "neu" aufleuchten — sonst wirken sie bei jedem F5
+    // wie frische Patient-Meldungen.
+    const isNew = !historic && event.type === 'patient_ingest';
     const el = document.createElement('div');
     el.className = 'event-item' + (isNew ? ' new-patient' : '');
     el.innerHTML = `<span class="ev-time">${time}</span><span class="ev-unit">${event.unit||''}</span><span>${event.details}</span>`;
@@ -344,7 +347,9 @@ function handleMessage(msg) {
             (msg.patients || []).forEach(p => { patients[p.patient_id] = p; });
             transports = msg.transports || {};
             positions = msg.positions || {};
-            (msg.events || []).forEach(ev => addEventToFeed(ev));
+            // historic=true → Events vom Snapshot werden neutral gerendert,
+            // nicht als aufpoppende "Neuer Patient"-Ereignisse.
+            (msg.events || []).forEach(ev => addEventToFeed(ev, true));
             updateTriageCounts();
             renderTransports();
             // Positionen auf Karte

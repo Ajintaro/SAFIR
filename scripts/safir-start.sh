@@ -91,17 +91,23 @@ if pactl list short sinks 2>/dev/null | grep -q "Logitech"; then
     echo "PulseAudio: Logitech Headset als Default Sink"
 fi
 
-# 5. Ollama starten + Modell vorladen (MUSS vor Whisper!)
+# 5. Ollama starten + Qwen PERMANENT im RAM halten (headless hat genug Platz)
+#    Im Headless-Mode hat der Jetson ~4.8 GiB frei nach Boot. Whisper braucht
+#    ~1.2 GiB, Qwen2.5-1.5B ~1.5 GiB. Beide laufen parallel — keine GPU-Swap
+#    Logik mehr, keine Entlade-Orgie.
 oled_status "SAFIR" "Ollama laden..."
-echo "Ollama: Starte und lade Modell vor..."
+echo "Ollama: Starte und lade Qwen permanent (keep_alive=-1)..."
 systemctl --user start ollama 2>/dev/null || sudo systemctl start ollama 2>/dev/null
 sleep 2
-# Modell einmal warm starten, damit GPU-RAM reserviert wird
-curl -s http://127.0.0.1:11434/api/generate -d '{"model":"qwen2.5:1.5b","prompt":"Hi","stream":false,"options":{"num_gpu":20}}' > /dev/null 2>&1
-echo "Ollama: Modell qwen2.5:1.5b auf GPU vorgeladen"
-# Modell sofort entladen — GPU-RAM für Whisper freigeben
-curl -s http://127.0.0.1:11434/api/generate -d '{"model":"qwen2.5:1.5b","prompt":"","keep_alive":0}' > /dev/null 2>&1
-echo "Ollama: Modell entladen, GPU frei für Whisper"
+# Warm-Start mit keep_alive=-1 → Modell bleibt bis Ollama gestoppt wird.
+# "num_gpu": 20 forciert GPU-Layer auf Tegra (sonst fällt ollama auf CPU zurück).
+# Zuerst 3B entladen falls da (aus früherem Test); dann 1.5B permanent laden
+curl -s http://127.0.0.1:11434/api/generate \
+    -d '{"model":"qwen2.5:3b","prompt":"","keep_alive":0}' > /dev/null 2>&1
+curl -s http://127.0.0.1:11434/api/generate \
+    -d '{"model":"qwen2.5:1.5b","prompt":"Hi","stream":false,"options":{"num_gpu":20},"keep_alive":-1}' \
+    > /dev/null 2>&1
+echo "Ollama: Modell qwen2.5:1.5b auf GPU vorgeladen (permanent)"
 
 # 6. SAFIR Server im Vordergrund starten (lädt Whisper intern)
 #    exec ersetzt die Shell durch uvicorn — systemd sieht einen einzigen

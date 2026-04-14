@@ -132,6 +132,17 @@
                 "patient auf karte speichern",
                 "auf karte speichern"
             ]
+        },
+        "mic_test": {
+            "label": "Mikrofon-/Audio-Test",
+            "triggers": [
+                "mikrofontest",
+                "mikrofon test",
+                "mikrotest",
+                "mikro test",
+                "audiotest",
+                "audio test"
+            ]
         }
     },
     "whisper": {

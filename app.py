@@ -309,6 +309,12 @@ class AppState:
         # Hardware-Integration (Phase 6+)
         self.current_operator: dict | None = None  # None oder {uid, label, name, role, since}
         self.last_rfid_uid: str = "---"
+        # Multi-Patient-Flow: Aufnahmen sammeln sich als Liste, jede wartet
+        # unabhängig auf manuelle Analyse. Nie überschreiben, immer anhängen.
+        # Struktur pro Eintrag:
+        #   {id, full_text, time, datetime, date, duration, analyzed,
+        #    analyzing, created_patient_ids}
+        self.pending_transcripts: list[dict] = []
 
     def available_models(self):
         models = []
@@ -397,18 +403,135 @@ def _handle_rfid_scan(uid: str):
 
 
 def _handle_oled_action(action: dict):
-    """Callback vom Hardware-Service: Taster B auf einer OLED-Seite gedrückt.
+    """Callback vom Hardware-Service: Taster B lang im OLED-Untermenü.
 
-    Wird als async-Aufruf zurückgegeben — der Hardware-Service scheduled die
-    Coroutine automatisch. Routing erfolgt anhand des page-Feldes.
+    Empfängt ein dict mit {"page": <screen>, "action": <action_id>, "label": <text>}
+    aus PAGE_SUBMENUS. Der Hardware-Service scheduled die zurückgegebene
+    Coroutine automatisch.
     """
     page = action.get("page", "")
-    if page == "cardwrite":
-        return voice_write_card()
-    if page == "operator":
-        # Taster B auf der BEDIENER-Seite = manueller Logout
+    action_id = action.get("action", "")
+    print(f"[OLED-ACTION] page={page} action={action_id}", flush=True)
+
+    if page == "operator" and action_id == "logout":
         return _manual_logout()
+
+    if page == "patient":
+        if action_id == "record_toggle":
+            return _oled_record_toggle()
+        if action_id == "analyze_pending":
+            return _oled_analyze_pending()
+        if action_id == "send_backend":
+            return voice_send_backend()
+        if action_id == "card_write":
+            return voice_write_card()
+        if action_id == "patient_delete":
+            return _oled_patient_delete()
+
+    print(f"[OLED-ACTION] unbekannt: page={page} action={action_id}", flush=True)
     return None
+
+
+async def _oled_analyze_pending():
+    """OLED-Untermenü 'Analysieren': Analysiert ALLE noch unanalysierten
+    Transkripte in der pending-Liste sequentiell. Jede Aufnahme bleibt
+    dabei einzeln erhalten und bekommt ihre eigenen Patienten."""
+    todo = [p for p in state.pending_transcripts if not p.get("analyzed") and not p.get("analyzing")]
+    if not todo:
+        tts.speak("Kein Transkript vorhanden")
+        oled_menu.show_status("KEIN TRANSKRIPT", "Erst aufnehmen")
+        await asyncio.sleep(2)
+        oled_menu.clear_status()
+        return
+    tts.speak("Analyse gestartet")
+    total_created = 0
+    for idx, pt in enumerate(todo):
+        pt["analyzing"] = True
+        full_text = pt["full_text"]
+        record_time = pt.get("time") or datetime.now().strftime("%H:%M:%S")
+        oled_menu.show_status("ANALYSE", f"Aufnahme {idx + 1}/{len(todo)}", int((idx + 1) / len(todo) * 100))
+        await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
+        try:
+            created = await _segment_and_create_patients(full_text, record_time)
+        finally:
+            pt["analyzing"] = False
+        pt["analyzed"] = True
+        pt["created_patient_ids"] = created
+        total_created += len(created)
+        await broadcast({
+            "type": "analysis_complete",
+            "pending_id": pt["id"],
+            "count": len(created),
+            "created_patient_ids": created,
+        })
+    oled_menu.show_status("FERTIG", f"{total_created} Patient(en)")
+    tts.speak(f"{total_created} Patient angelegt" if total_created == 1 else f"{total_created} Patienten angelegt")
+    await asyncio.sleep(2)
+    oled_menu.clear_status()
+
+
+async def _start_record_flow():
+    """EINE gemeinsame Implementierung für Aufnahme-Start — wird von
+    Taster, Sprachbefehl und jedem anderen Einstiegspunkt aufgerufen.
+    Stellt sicher dass es KEINEN Unterschied zwischen Taster und Sprache gibt."""
+    if state.recording:
+        return  # läuft schon
+    if state.transcribing:
+        tts.speak("Transkription läuft, bitte warten")
+        return
+    if not state.model_loaded:
+        tts.speak("Sprachmodell nicht geladen")
+        return
+    print("[FLOW] Aufnahme starten (Multi-Patient-Modus)", flush=True)
+    tts.announce_recording_start()
+    await asyncio.sleep(1.5)
+    state.audio_chunks = []
+    await start_recording_internal()
+
+
+async def _stop_record_flow():
+    """EINE gemeinsame Implementierung für Aufnahme-Stopp — von Taster,
+    Sprachbefehl und jedem anderen Einstiegspunkt identisch.
+    TTS-Meldung kommt SOFORT, damit die akustische Rückmeldung nicht
+    auf die Transkription warten muss."""
+    if not state.recording:
+        return
+    trim_chunks = int(1.5 / 0.1)
+    if len(state.audio_chunks) > trim_chunks:
+        state.audio_chunks = state.audio_chunks[:-trim_chunks]
+    tts.announce_recording_stop()
+    print("[FLOW] Aufnahme stoppen (Multi-Patient-Modus)", flush=True)
+    await stop_recording()
+
+
+async def _oled_record_toggle():
+    """OLED-Untermenü: Aufnahme starten oder stoppen (Toggle).
+    Delegiert an die shared Flow-Funktionen damit Taster und Sprachbefehl
+    exakt denselben Code-Pfad durchlaufen."""
+    print(f"[OLED-ACTION] record_toggle entry: recording={state.recording} transcribing={state.transcribing}", flush=True)
+    if state.recording:
+        await _stop_record_flow()
+    else:
+        await _start_record_flow()
+
+
+async def _oled_patient_delete():
+    """OLED-Untermenü: Aktuellen Patient löschen. Spiegelt die Logik des
+    HTTP-Endpoints /api/patient/{id} (DELETE) für konsistentes Verhalten."""
+    if not state.active_patient or state.active_patient not in state.patients:
+        tts.speak("Kein aktiver Patient")
+        return
+    pid = state.active_patient
+    patient = state.patients.pop(pid)
+    rfid = patient.get("rfid_tag_id", "")
+    if rfid and rfid in state.rfid_map:
+        del state.rfid_map[rfid]
+    state.active_patient = ""
+    oled_menu.show_status("GELOESCHT", pid[:8])
+    await broadcast({"type": "patient_deleted", "patient_id": pid})
+    tts.announce_entry_deleted()
+    await asyncio.sleep(1.0)
+    oled_menu.clear_status()
 
 
 async def _manual_logout():
@@ -772,23 +895,13 @@ async def process_vosk_commands():
             })
 
             try:
-                if action == "record_start":
-                    if not state.recording and not state.transcribing:
-                        tts.announce_recording_start()
-                        await asyncio.sleep(1.5)
-                        state.audio_chunks = []
-                        await start_recording_internal()
-                elif action == "record_stop":
-                    if state.recording:
-                        trim_chunks = int(1.5 / 0.1)
-                        if len(state.audio_chunks) > trim_chunks:
-                            state.audio_chunks = state.audio_chunks[:-trim_chunks]
-                        await stop_recording()
-                        tts.announce_recording_stop()
-                elif action == "new_patient":
-                    await voice_new_patient()
-                elif action == "patient_ready":
-                    await voice_patient_ready()
+                # Alle Record-Start-Aliase gehen durch denselben Flow wie der
+                # Hardware-Taster. Keine Unterscheidung mehr zwischen
+                # "Sprachbefehl" und "Taster" — nur ein einziger Code-Pfad.
+                if action in ("record_start", "new_patient"):
+                    await _start_record_flow()
+                elif action in ("record_stop", "patient_ready"):
+                    await _stop_record_flow()
                 elif action == "triage_red":
                     await voice_set_triage("T1")
                 elif action == "triage_yellow":
@@ -802,7 +915,8 @@ async def process_vosk_commands():
                 elif action == "patient_count":
                     await voice_patient_count()
                 elif action == "analyze_all":
-                    await voice_analyze_all()
+                    # Sprachbefehl "Analysieren" → gleicher Pfad wie OLED-Menü
+                    await _oled_analyze_pending()
                 elif action == "send_backend":
                     await voice_send_backend()
                 elif action == "export_docx":
@@ -810,6 +924,8 @@ async def process_vosk_commands():
                     await broadcast({"type": "voice_command", "action": "export_docx"})
                 elif action == "rfid_write_patient":
                     await voice_write_card()
+                elif action == "mic_test":
+                    await voice_mic_test()
             except Exception as e:
                 print(f"Vosk Befehl Fehler: {e}")
                 tts.announce_error()
@@ -851,6 +967,15 @@ async def voice_new_patient():
 
     # Session anlegen
     await create_session_internal("Unbekannt", "Feld", default_medic, "tccc")
+
+    # OLED sofort mit den neuen Patientendaten füttern — sonst zeigt das
+    # patient-Screen bis zum nächsten Update-Loop-Tick (~2 s) noch "KEIN PATIENT"
+    oled_menu.update_active_patient({
+        "patient_id": pid,
+        "name": patient.get("name", ""),
+        "triage": patient.get("triage", ""),
+        "flow_status": patient.get("flow_status", "registered"),
+    })
 
     await broadcast({"type": "patient_registered", "patient": patient})
     oled_menu.show_status("NEUER PATIENT", f"#{len(state.patients)}")
@@ -975,21 +1100,14 @@ async def voice_analyze_all():
 
 
 async def _run_batch_analysis(pending: list):
-    """Analysiert Patienten sequentiell mit GPU-Swap.
+    """Analysiert Patienten sequentiell.
 
-    GPU-Speicher reicht nicht für Whisper + Ollama gleichzeitig.
-    Ablauf: Whisper stoppen → Ollama auf GPU → Analyse → Ollama entladen → Whisper neu starten.
-    TTS (Piper, CPU) bleibt durchgehend verfügbar.
+    Parallel-Betrieb: Whisper und Qwen laufen beide permanent im Speicher.
+    Kein GPU-Swap mehr nötig — im Headless-Mode haben wir genug RAM.
+    TTS (Piper, CPU) läuft durchgehend.
     """
-    loop = asyncio.get_event_loop()
     try:
-        # Whisper stoppen um GPU-RAM für Ollama freizugeben
-        print("GPU-Swap: Whisper wird gestoppt für Analyse...")
-        await loop.run_in_executor(None, stop_whisper_server)
-        await asyncio.sleep(1)
-        await broadcast({"type": "status", "message": "Whisper pausiert — Analyse läuft"})
-
-        print(f"Analyse: Ollama {OLLAMA_MODEL} auf GPU...")
+        print(f"Analyse: Ollama {OLLAMA_MODEL}...")
         for pid, patient in pending:
             sid = _find_session_for_patient(pid)
             if not sid:
@@ -1021,31 +1139,8 @@ async def _run_batch_analysis(pending: list):
         await broadcast({"type": "analysis_error", "error": str(e)})
     finally:
         state._analyzing = False
-        loop = asyncio.get_event_loop()
-
-        # Ollama-Modell entladen um GPU-RAM freizugeben
-        print("GPU-Swap: Ollama-Modell wird entladen...")
-        await loop.run_in_executor(None, _unload_ollama_model)
-        await asyncio.sleep(1)
-
-        # Whisper wieder starten
-        oled_menu.show_status("GPU-SWAP", "Whisper laden...", 50)
-        print("GPU-Swap: Whisper wird neu gestartet...")
-        if state.model_path and state.model_path.exists():
-            success = await loop.run_in_executor(None, start_whisper_server, state.model_path)
-            if success:
-                print(f"GPU-Swap: Whisper bereit ({state.current_model})")
-                await broadcast({"type": "status", "message": "Whisper bereit — Aufnahme möglich"})
-                await broadcast({"type": "model_loaded", "model": state.current_model, "ram_mb": state.model_ram_mb})
-                oled_menu.show_status("SAFIR BEREIT", "Warte auf Befehl...")
-                await asyncio.sleep(2)
-                oled_menu.clear_status()
-            else:
-                print("WARNUNG: Whisper konnte nach Analyse nicht neu gestartet werden!")
-                oled_menu.show_status("FEHLER", "Whisper nicht geladen")
-                await broadcast({"type": "status", "message": "Fehler: Whisper nicht verfügbar"})
-        else:
-            print("WARNUNG: Kein Whisper-Modellpfad gespeichert!")
+        await asyncio.sleep(1.5)
+        oled_menu.clear_status()
 
 
 def _find_session_for_patient(patient_id: str) -> str | None:
@@ -1087,38 +1182,147 @@ async def voice_send_backend():
         tts.speak(f"{result['failed']} Patienten nicht übermittelt. Leitstelle nicht erreichbar.")
 
 
-async def voice_write_card():
-    """Sprachbefehl 'karte schreiben': Patientendaten auf weiße MIFARE-Karte schreiben.
+async def voice_mic_test():
+    """Sprachbefehl 'mikrofontest' / 'audiotest'.
 
-    Flow:
-      1. Permission-Check (current_operator Rolle muss 'rfid_write_patient' haben)
-      2. Aktiven Patient ermitteln
-      3. OLED "Karte auflegen" + Rot-LED BLINK_SLOW
-      4. Auf RFID-Scan warten (10 s Timeout)
-      5. Wenn Operator-Karte → abweisen
-      6. Sonst: schreiben über rc522_write_patient_to_card (im Executor)
-      7. Feedback via OLED, LED und TTS
+    Wenn dieser Handler läuft, haben Audio-Capture (Dongle-Mikro), Vosk
+    (Spracherkennung) UND Piper (TTS-Ausgabe) alle funktioniert — der Befehl
+    wäre sonst gar nicht angekommen. Die Bestätigung bestätigt zusätzlich den
+    Output-Pfad.
+    """
+    tts.speak("Mikrofon funktioniert, ich verstehe dich")
+    await broadcast({"type": "voice_command", "action": "mic_test", "status": "ok"})
+
+
+def _patient_has_written_rfid(patient: dict) -> bool:
+    """Prüft ob der Patient schon mindestens einmal auf eine Karte
+    geschrieben wurde (Timeline-Event 'rfid_written' vorhanden)."""
+    for ev in patient.get("timeline", []) or []:
+        if ev.get("event") == "rfid_written":
+            return True
+    return False
+
+
+async def voice_write_card():
+    """Batch-RFID: Schreibt alle Patienten in Anlegungsreihenfolge auf
+    leere MIFARE-Karten. Iteriert durch state.patients.values() (stabile
+    Reihenfolge in Python 3.7+) und überspringt solche die bereits eine
+    RFID-Karte haben. Shared Handler für OLED-Menü, Sprachbefehl und GUI.
+
+    Ablauf pro Patient:
+      1. OLED "KARTE N/M <Name>" + TTS-Ansage
+      2. Rot-LED BLINK_SLOW
+      3. Warten auf RFID-Scan (15 s Timeout pro Karte)
+      4. Operator-Karte → abweisen und warten
+      5. Sonst: schreiben + Timeline-Event + TTS-Bestätigung
     """
     from shared.rfid import rc522_write_patient_to_card
     from jetson.hardware import LedPattern
 
-    # Permission-Gate
-    op = state.current_operator
-    if op is None:
-        tts.speak("Bitte zuerst einloggen")
-        oled_menu.show_status("KEIN LOGIN", "Blaue Karte auflegen")
-        await asyncio.sleep(2.0)
-        oled_menu.clear_status()
-        return
-    role = op.get("role", "")
-    if not _role_has_permission(role, "rfid_write_patient"):
-        tts.speak("Keine Berechtigung")
-        oled_menu.show_status("VERBOTEN", f"Rolle {role}")
+    # Alle Patienten die noch keine Karte haben, in Anlegungsreihenfolge
+    todo = [
+        p for p in state.patients.values()
+        if not _patient_has_written_rfid(p)
+    ]
+    if not todo:
+        tts.speak("Alle Patienten schon auf Karten")
+        oled_menu.show_status("KEINE TODO", "Alle RFID belegt")
         await asyncio.sleep(2.0)
         oled_menu.clear_status()
         return
 
-    # Aktiver Patient
+    total = len(todo)
+    tts.speak(f"{total} Karten schreiben" if total > 1 else "Eine Karte schreiben")
+    written = 0
+    skipped: list[str] = []
+    op = state.current_operator or {}
+    op_label = op.get("name", "") if op else "Taster"
+
+    loop = asyncio.get_event_loop()
+
+    for idx, patient in enumerate(todo):
+        name = (patient.get("name") or "Unbekannt").strip()
+        pid = patient["patient_id"]
+        label_idx = f"{idx + 1}/{total}"
+        short_name = name[:14]
+        oled_menu.show_status(f"KARTE {label_idx}", f"{short_name} auflegen")
+        if hardware_service._leds:
+            hardware_service._leds.set(red=LedPattern.BLINK_SLOW)
+        tts.speak(f"Karte {idx + 1}. {name}")
+
+        uid = await hardware_service.await_rfid_scan(timeout=15.0)
+        if uid is None:
+            oled_menu.show_status("TIMEOUT", f"{label_idx} uebersprungen")
+            tts.speak("Zeit abgelaufen, weiter")
+            skipped.append(pid)
+            await asyncio.sleep(1.0)
+            continue
+
+        # Operator-Karte? Nicht überschreiben
+        if _find_operator(uid) is not None:
+            oled_menu.show_status("OPERATOR", "Weisse Karte bitte")
+            tts.speak("Keine Operator-Karte")
+            await hardware_service.flash_error(1.0)
+            # erneut auf dieselben Patient warten, Schleife rückwärts
+            skipped.append(pid)
+            await asyncio.sleep(1.5)
+            continue
+
+        # Schreiben
+        oled_menu.show_status("SCHREIBE", f"{label_idx} {uid[:8]}", progress=int((idx + 1) / total * 100))
+        try:
+            success, result = await loop.run_in_executor(
+                None, rc522_write_patient_to_card, patient, 8.0
+            )
+        except Exception as e:
+            success, result = False, str(e)
+
+        if success:
+            patient.setdefault("timeline", []).append({
+                "time": datetime.now().isoformat(),
+                "role": patient.get("current_role", "phase0"),
+                "event": "rfid_written",
+                "details": f"Karte UID {result} von {op_label}",
+            })
+            state.last_rfid_uid = result
+            await broadcast({
+                "type": "rfid_written",
+                "patient_id": pid,
+                "uid": result,
+            })
+            await hardware_service.flash_success(0.7)
+            tts.speak(f"Karte {idx + 1} fertig")
+            written += 1
+        else:
+            oled_menu.show_status("FEHLER", str(result)[:18])
+            tts.speak(f"Karte {idx + 1} Fehler")
+            await hardware_service.flash_error(1.0)
+            skipped.append(pid)
+        await asyncio.sleep(0.8)
+
+    if hardware_service._leds:
+        hardware_service._leds.set(red=LedPattern.OFF)
+
+    if written == total:
+        oled_menu.show_status("FERTIG", f"{written}/{total} OK")
+        tts.speak(f"{written} Karten geschrieben" if written != 1 else "Eine Karte geschrieben")
+    elif written > 0:
+        oled_menu.show_status("TEIL OK", f"{written}/{total}")
+        tts.speak(f"{written} von {total} Karten geschrieben")
+    else:
+        oled_menu.show_status("KEINE OK", "0 Karten")
+        tts.speak("Keine Karten geschrieben")
+    await asyncio.sleep(2.5)
+    oled_menu.clear_status()
+    return
+
+
+async def _legacy_single_card_write_unused():
+    """Alte Single-Patient-Implementierung — wird nicht mehr aufgerufen,
+    bleibt nur als Referenz für die await-Sequenz."""
+    from shared.rfid import rc522_write_patient_to_card
+    from jetson.hardware import LedPattern
+
     if not state.active_patient or state.active_patient not in state.patients:
         tts.speak("Kein aktiver Patient")
         oled_menu.show_status("FEHLER", "Kein aktiver Patient")
@@ -1126,12 +1330,12 @@ async def voice_write_card():
         oled_menu.clear_status()
         return
     patient = state.patients[state.active_patient]
+    op = state.current_operator or {}
 
-    # UI: Karte auflegen
-    oled_menu.show_status("KARTE AUFLEGEN", "Weiße Karte…")
+    oled_menu.show_status("RFID SCHREIBEN", "Karte anhalten...")
     if hardware_service._leds:
         hardware_service._leds.set(red=LedPattern.BLINK_SLOW)
-    tts.speak("Karte auflegen")
+    tts.speak("RFID Karte anhalten")
 
     # Exklusiv auf nächsten Scan warten (max 10 s)
     uid = await hardware_service.await_rfid_scan(timeout=10.0)
@@ -1170,11 +1374,12 @@ async def voice_write_card():
         tts.speak("Patient gespeichert")
         state.last_rfid_uid = result
         # Timeline-Event
+        op_label = op.get("name", "") if op else "Taster"
         patient["timeline"].append({
             "time": datetime.now().isoformat(),
             "role": patient["current_role"],
             "event": "rfid_written",
-            "details": f"Auf Karte geschrieben (UID {result}) von {op.get('name', '')}",
+            "details": f"Auf Karte geschrieben (UID {result}) von {op_label}",
         })
         await broadcast({
             "type": "rfid_written",
@@ -1409,7 +1614,13 @@ JSON:"""
 
 
 def _call_ollama(prompt: str, label: str = "LLM") -> dict:
-    """Ruft Ollama auf mit GPU-Fallback auf CPU bei OOM."""
+    """Ruft Ollama auf mit GPU-Fallback auf CPU bei OOM.
+    keep_alive=-1 verhindert dass das Modell zwischen Analysen aus dem RAM
+    fällt (Ollama-Default ist 5 min), wichtig für unseren permanenten
+    Whisper+Qwen-Parallelbetrieb im Headless-Mode.
+    temperature=0 + num_predict=400 macht den Decode deterministisch und
+    schneller — für Feld-Extraktion und Segmentierung kein Kreativitäts-
+    bedarf, Schnelligkeit zählt."""
     for num_gpu in [20, 0]:
         gpu_label = f"GPU:{num_gpu}" if num_gpu > 0 else "CPU"
         try:
@@ -1420,7 +1631,13 @@ def _call_ollama(prompt: str, label: str = "LLM") -> dict:
                     "prompt": prompt,
                     "stream": False,
                     "format": "json",
-                    "options": {"num_gpu": num_gpu, "temperature": 0.1, "num_predict": 500},
+                    "options": {
+                        "num_gpu": num_gpu,
+                        "temperature": 0.0,
+                        "num_predict": 400,
+                        "top_k": 1,
+                    },
+                    "keep_alive": -1,
                 },
                 timeout=180,
             )
@@ -1473,6 +1690,320 @@ def run_llm_extraction(template_id: str, text: str) -> dict:
     if not prompt:
         return {}
     return _call_ollama(prompt, "Feldextraktion")
+
+
+# ---------------------------------------------------------------------------
+# Transkript-Segmentierung (mehrere Patienten in einem Diktat)
+# ---------------------------------------------------------------------------
+SEGMENTATION_PROMPT = """Du zerlegst Sanitäts-Transkripte der Bundeswehr in einzelne Patienten.
+
+KRITISCHE REGEL: patient_count MUSS exakt der Länge des patients-Arrays entsprechen. Wenn du 3 Patienten zählst, MÜSSEN 3 Einträge im Array stehen. KEINE Zusammenfassungen mehrerer Patienten in einem Eintrag.
+
+REGELN:
+1. Ein Patient mit mehreren Verletzungen = EIN Array-Eintrag. "Schusswunde Bein und Schnitt Hand beides" → ein Patient.
+2. Neuer Patient NUR bei klaren Wörtern: "erster Patient", "zweiter Patient", "nächster Verwundeter", "jetzt zum anderen", "weiter mit dem nächsten", "jetzt eine Frau", "jetzt ein Kind".
+3. Kopiere den Originaltext pro Patient 1:1 in das "text"-Feld (keine Umformulierung).
+4. Im Zweifel lieber weniger Patienten als zu viele.
+
+FORMAT (nur JSON, kein Markdown, keine Erklärung):
+{"patient_count":N,"patients":[{"patient_nr":1,"text":"<originaltext patient 1>","summary":"<kurz>"},{"patient_nr":2,"text":"<originaltext patient 2>","summary":"<kurz>"}]}
+
+BEISPIEL 1 — 1 Patient, 2 Verletzungen → genau 1 Array-Eintrag:
+IN: "Patient männlich 30 Schusswunde Bein und Schnitt Hand beides blutet Puls 110"
+OUT: {"patient_count":1,"patients":[{"patient_nr":1,"text":"Patient männlich 30 Schusswunde Bein und Schnitt Hand beides blutet Puls 110","summary":"Mann 30, Schuss+Schnitt"}]}
+
+BEISPIEL 2 — 2 Patienten → genau 2 Array-Einträge, jeder mit eigenem Text:
+IN: "Erster Patient Soldat 32 Stabsgefreiter Müller Schusswunde Oberschenkel T1. Zweiter eine Soldatin 28 Schmidt Splitterverletzung Arm T2 läuft noch."
+OUT: {"patient_count":2,"patients":[{"patient_nr":1,"text":"Erster Patient Soldat 32 Stabsgefreiter Müller Schusswunde Oberschenkel T1.","summary":"Müller 32, Schuss Oberschenkel, T1"},{"patient_nr":2,"text":"Zweiter eine Soldatin 28 Schmidt Splitterverletzung Arm T2 läuft noch.","summary":"Schmidt 28, Splitter Arm, T2"}]}
+
+BEISPIEL 3 — 3 Patienten → genau 3 Array-Einträge:
+IN: "Erster männlich 40 Schuss Brust kritisch. Nächster Frau 30 Kopf bewusstlos. Dritter Verbrennung Arm stabil."
+OUT: {"patient_count":3,"patients":[{"patient_nr":1,"text":"Erster männlich 40 Schuss Brust kritisch.","summary":"Mann 40, Schuss Brust, kritisch"},{"patient_nr":2,"text":"Nächster Frau 30 Kopf bewusstlos.","summary":"Frau 30, Kopf, bewusstlos"},{"patient_nr":3,"text":"Dritter Verbrennung Arm stabil.","summary":"Verbrennung Arm, stabil"}]}
+
+TRANSKRIPT:
+"""
+
+
+BOUNDARY_PROMPT = """Zerlege Sanitäts-Transkripte in Patienten. Gib die Satzindizes zurück an denen ein NEUER Patient startet.
+
+WICHTIGSTE REGEL: Ein Satz der "Der nächste Patient ist ..." oder "Zweiter Patient ..." oder "Weiter mit ..." enthält, IST SELBST der Start des neuen Patienten. Er gehört NICHT zum vorherigen.
+
+WEITERE REGELN:
+- Patient-Start-Signale: "erster/zweiter/dritter Patient", "nächster Verwundeter/Patient", "weiter mit dem nächsten", "jetzt zum anderen", "dann noch ein", "jetzt eine Frau", "es folgt", "als nächstes ist", "eine weitere Verletzte".
+- KEIN Start-Signal: Sätze die nur Verletzungen, Vitals oder Behandlung eines bereits genannten Patienten beschreiben ("Er hat...", "Sie hat...", "Puls...", "Atmung...", "Maßnahmen...").
+- KEIN Start-Signal: Einleitungssätze ohne Patient-Info ("Hier spricht...", "Ich bin am Ort", "Ich habe drei Verwundete") — sie gehören zum ersten echten Patient-Satz.
+- "und", "außerdem", "zusätzlich", "auch" = SELBER Patient.
+
+Antwort: JSON {"starts":[liste]} — sonst NICHTS.
+
+BEISPIEL 1 — 3 Patienten mit Arzt-Einleitung:
+[0] Ich bin am Unfallort und habe drei Verwundete
+[1] Der erste ist Soldat Weber 25 Schussverletzung Bauch
+[2] Weiter mit dem nächsten Patienten
+[3] Zweiter eine Soldatin Becker 30 Platzwunde Kopf
+[4] Dann noch ein dritter Patient Fischer 22 Splitter Oberschenkel
+{"starts":[1,3,4]}
+
+BEISPIEL 2 — "Der nächste Patient ist X" startet neuen Patient (GENAU DIESER Satz, nicht der folgende):
+[0] Hier spricht Oberfeldarzt Mueller
+[1] Ich untersuche die Hauptgefreite Erika Schmidt
+[2] Sie hat Oberschenkelfraktur und Blutung
+[3] SpO2 91 Puls 110
+[4] Der nächste Patient ist der Stabsunteroffizier Marius Müller
+[5] Er hat eine leichte Kopfverletzung mit Aspirin behandelt
+{"starts":[1,4]}
+
+BEISPIEL 3 — 1 Patient mit mehreren Sätzen (KEIN Split):
+[0] Patient männlich 30 Schusswunde Bein
+[1] Auch Schnittwunde Hand beides blutet
+[2] Puls 130 Atmung normal
+[3] Bewusstsein klar
+{"starts":[0]}
+
+BEISPIEL 4 — 2 Patienten, zweiter mit "Wir haben noch":
+[0] Hier spricht Oberfeldarzt Meier
+[1] Die Hauptgefreite Schmidt hat eine Beinverletzung Puls 110
+[2] Wir haben noch eine weitere Verletzte die Oberst Meier-Lai
+[3] Sie hat nur leichten Husten
+{"starts":[1,2]}
+
+Sätze:
+"""
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Schlankes Satz-Splitting für deutsche Sanitäts-Transkripte.
+    Nutzt Satzzeichen + min. 30 chars Länge — zu kurze Fragmente werden
+    ans vorherige Segment angehängt."""
+    import re
+    # Split bei . ! ? gefolgt von Space/Newline oder Ende
+    raw = re.split(r"(?<=[.!?])\s+", text.strip())
+    # Zu kurze Fragmente zusammenführen
+    merged: list[str] = []
+    for seg in raw:
+        seg = seg.strip()
+        if not seg:
+            continue
+        if merged and len(merged[-1]) < 30:
+            merged[-1] = merged[-1] + " " + seg
+        else:
+            merged.append(seg)
+    return merged
+
+
+def segment_transcript_to_patients(transcript: str) -> dict:
+    """Chunk-basierte Segmentierung.
+
+    Ablauf:
+      1. Split in Sätze
+      2. Qwen erhält nur die Satzliste und gibt die Start-Indizes neuer
+         Patienten zurück — das ist eine viel einfachere Aufgabe als
+         "erzeuge eine komplette Patient-Struktur".
+      3. Wir bauen die Patient-Records lokal auf: Für jeden Startindex
+         sammeln wir Sätze bis zum nächsten Startindex.
+      4. Der **Originaltext** bleibt damit 1:1 erhalten — kein Detail-Verlust.
+    """
+    if not transcript or not transcript.strip():
+        return {"patient_count": 0, "patients": []}
+
+    sentences = _split_sentences(transcript)
+    if not sentences:
+        return {"patient_count": 1, "patients": [{"patient_nr": 1, "text": transcript.strip(), "summary": ""}]}
+
+    # Wenn sehr kurz: gar nicht erst fragen, das ist ein Patient
+    if len(sentences) <= 2:
+        return {"patient_count": 1, "patients": [{"patient_nr": 1, "text": transcript.strip(), "summary": ""}]}
+
+    numbered = "\n".join(f"[{i}] {s}" for i, s in enumerate(sentences))
+    prompt = BOUNDARY_PROMPT + numbered + "\n\nAntwort:"
+    result = _call_ollama(prompt, "Segmentierung")
+    print(f"[SEGMENT] {len(sentences)} Sätze → Qwen sagt starts={result.get('starts') if isinstance(result, dict) else result}", flush=True)
+
+    starts: list[int] = []
+    if isinstance(result, dict):
+        raw_starts = result.get("starts") or []
+        if isinstance(raw_starts, list):
+            for x in raw_starts:
+                try:
+                    idx = int(x)
+                    if 0 <= idx < len(sentences) and idx not in starts:
+                        starts.append(idx)
+                except (ValueError, TypeError):
+                    continue
+    starts.sort()
+    # Fallback: Kein Start erkannt → alles als ein Patient
+    if not starts:
+        starts = [0]
+    # Sätze vor dem ersten Patient-Start sind Einleitung und gehören zu Patient 1:
+    # Wir ziehen den ersten Startindex auf 0 herunter und damit werden alle
+    # Einleitungssätze Teil des ersten Patienten-Segments.
+    if starts[0] > 0:
+        starts[0] = 0
+
+    # Sätze in Patient-Segmente aufteilen
+    patients: list[dict] = []
+    for i, start in enumerate(starts):
+        end = starts[i + 1] if i + 1 < len(starts) else len(sentences)
+        seg_text = " ".join(sentences[start:end]).strip()
+        if seg_text:
+            patients.append({
+                "patient_nr": len(patients) + 1,
+                "text": seg_text,
+                "summary": "",
+            })
+
+    # Post-Merge 1: Kurze Übergangs-Segmente ("Jetzt weiter mit dem nächsten
+    # Patienten" o. ä.) haben keine Patient-Info und werden mit dem
+    # *nachfolgenden* Segment zusammengeführt.
+    TRANSITION_HINTS = (
+        "jetzt weiter", "dann weiter", "nun weiter", "weiter mit",
+        "jetzt zum nächsten", "dann zum nächsten", "als nächstes",
+    )
+    merged: list[dict] = []
+    pending_prefix = ""
+    for p in patients:
+        text = p["text"]
+        low = text.lower().strip()
+        is_transition = len(text) < 80 and any(h in low for h in TRANSITION_HINTS)
+        if is_transition:
+            pending_prefix = (pending_prefix + " " + text).strip()
+            continue
+        if pending_prefix:
+            text = pending_prefix + " " + text
+            pending_prefix = ""
+        merged.append({"patient_nr": len(merged) + 1, "text": text, "summary": p.get("summary", "")})
+    if pending_prefix and merged:
+        merged[-1]["text"] = merged[-1]["text"] + " " + pending_prefix
+
+    # Post-Merge 2: Segmente die mit einem Pronomen starten und keinen
+    # eigenen Namen/Patient-Marker haben, sind Fortsetzung des vorherigen
+    # Segments. Beispiel:
+    #   Segment A: "Der nächste Patient ist Marius Müller."
+    #   Segment B: "Er hat eine leichte Kopfverletzung..."
+    # → B gehört zu A. Qwen trennt gelegentlich solche Paare, weil "Er" wie
+    # ein neuer Subjekt-Start aussieht.
+    PRONOUN_STARTS = (
+        "er hat", "sie hat", "es hat",
+        "er ist", "sie ist", "es ist",
+        "er wurde", "sie wurde", "es wurde",
+        "ihr puls", "sein puls", "ihr blutdruck", "sein blutdruck",
+        "ihre atmung", "seine atmung", "ihre verletzung", "seine verletzung",
+        "ihre wunde", "seine wunde",
+        "sein sauerstoff", "ihr sauerstoff",
+        "bewusstsein", "puls", "atmung", "sauerstoff",
+    )
+    PATIENT_MARKERS = (
+        "patient", "verwundeter", "verwundete", "soldat", "soldatin",
+        "hauptgefreite", "stabsunteroffizier", "feldwebel", "oberst",
+        "hauptmann", "leutnant", "oberst", "gefreiter", "hauptgefreiter",
+        "unteroffizier", "mann", "frau", "kind",
+    )
+    merged2: list[dict] = []
+    for p in merged:
+        t = p["text"].strip()
+        t_low = t.lower()
+        starts_with_pronoun = any(t_low.startswith(h) for h in PRONOUN_STARTS)
+        has_patient_marker = any(m in t_low for m in PATIENT_MARKERS)
+        if starts_with_pronoun and not has_patient_marker and merged2:
+            merged2[-1]["text"] = merged2[-1]["text"] + " " + t
+            continue
+        merged2.append({"patient_nr": len(merged2) + 1, "text": t, "summary": p.get("summary", "")})
+    patients = merged2
+
+    if not patients:
+        patients = [{"patient_nr": 1, "text": transcript.strip(), "summary": ""}]
+
+    return {"patient_count": len(patients), "patients": patients}
+
+
+@app.get("/api/pending")
+async def list_pending_transcripts():
+    """Gibt alle noch nicht analysierten (oder gerade wartenden) Transkripte
+    zurück. Das Frontend füllt daraus die Pending-Liste beim Page-Load."""
+    return {"pending": state.pending_transcripts}
+
+
+def _find_pending(tid: str) -> dict | None:
+    for p in state.pending_transcripts:
+        if p.get("id") == tid:
+            return p
+    return None
+
+
+@app.post("/api/analyze/pending")
+async def analyze_pending_transcript(body: dict):
+    """Manueller Trigger: Analysiert ein bestimmtes Pending-Transkript
+    (identifiziert über id) und legt N Patienten daraus an.
+    Wenn keine id gegeben ist: nimmt das neueste unanalysierte."""
+    tid = (body or {}).get("id")
+    pt: dict | None = None
+    if tid:
+        pt = _find_pending(tid)
+    else:
+        pt = next((p for p in reversed(state.pending_transcripts) if not p.get("analyzed")), None)
+    if not pt or not pt.get("full_text"):
+        return {"status": "error", "error": "Kein Transkript gefunden. Erst aufnehmen."}
+    if pt.get("analyzed"):
+        return {"status": "error", "error": "Transkript wurde schon analysiert."}
+    if pt.get("analyzing"):
+        return {"status": "error", "error": "Analyse läuft bereits."}
+
+    pt["analyzing"] = True
+    full_text = pt["full_text"]
+    record_time = pt.get("time") or datetime.now().strftime("%H:%M:%S")
+    await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
+    try:
+        created = await _segment_and_create_patients(full_text, record_time)
+    finally:
+        pt["analyzing"] = False
+    pt["analyzed"] = True
+    pt["created_patient_ids"] = created
+    count = len(created)
+    tts.speak(f"{count} Patient angelegt" if count == 1 else f"{count} Patienten angelegt")
+    await broadcast({
+        "type": "analysis_complete",
+        "pending_id": pt["id"],
+        "count": count,
+        "created_patient_ids": created,
+    })
+    return {"status": "ok", "created_patient_ids": created, "count": count, "pending_id": pt["id"]}
+
+
+@app.post("/api/analyze/discard")
+async def discard_pending_transcript(body: dict):
+    """Verwirft ein Pending-Transkript (identifiziert über id).
+    Wenn keine id: verwirft das neueste unanalysierte."""
+    tid = (body or {}).get("id")
+    pt: dict | None = None
+    if tid:
+        pt = _find_pending(tid)
+    else:
+        pt = next((p for p in reversed(state.pending_transcripts) if not p.get("analyzed")), None)
+    if not pt:
+        return {"status": "error", "error": "Kein Transkript gefunden"}
+    state.pending_transcripts = [p for p in state.pending_transcripts if p.get("id") != pt["id"]]
+    await broadcast({"type": "pending_transcript_discarded", "pending_id": pt["id"]})
+    return {"status": "ok", "pending_id": pt["id"]}
+
+
+@app.post("/api/test/segment")
+async def test_segment(body: dict):
+    """Proof-of-Concept-Endpoint: POST {"transcript": "..."} →
+    Qwen segmentiert das Transkript in Patienten-Blöcke.
+    Dient zum Testen des Prompts BEVOR wir den produktiven Flow umbauen."""
+    transcript = body.get("transcript", "")
+    if not transcript:
+        return {"error": "no transcript provided", "usage": {"transcript": "<langer text>"}}
+    import time as _t
+    t0 = _t.monotonic()
+    result = segment_transcript_to_patients(transcript)
+    elapsed = _t.monotonic() - t0
+    result["_meta"] = {
+        "elapsed_s": round(elapsed, 2),
+        "model": OLLAMA_MODEL,
+        "input_chars": len(transcript),
+    }
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1940,6 +2471,15 @@ async def update_patient_status(patient_id: str, body: dict):
     return {"status": "ok", "patient": patient}
 
 
+@app.post("/api/rfid/batch")
+async def rfid_batch_write():
+    """GUI-Trigger: Schreibt alle Patienten ohne RFID-Karte nacheinander
+    auf leere MIFARE-Karten (Fahrzeug-Workflow). Shared Handler —
+    identisch zu OLED-Menü 'RFID schreiben' und Sprachbefehl."""
+    asyncio.create_task(voice_write_card())
+    return {"status": "started"}
+
+
 @app.post("/api/rfid/scan")
 async def rfid_scan(body: dict):
     """RFID-Tag scannen — Patient nachschlagen oder neuen anlegen."""
@@ -1968,6 +2508,131 @@ async def rfid_scan(body: dict):
         "tag_id": tag_id,
     })
     return {"status": "new", "tag_id": tag_id}
+
+
+# ---------------------------------------------------------------------------
+# Backend-WebSocket-Client
+# ---------------------------------------------------------------------------
+# Persistente WS-Verbindung vom Jetson zum Leitstellen-Backend. Ein einziger
+# Code-Pfad für alle Patient-Änderungen die vom Backend (oder von anderen
+# BATs über das Backend) kommen — wir re-broadcasten sie 1:1 an unsere
+# eigenen Dashboard-Clients, damit der Browser automatisch aktualisiert.
+
+state.backend_ws_connected: bool = False
+state.backend_ws_task = None
+
+
+async def _backend_ws_loop():
+    """Hält eine persistente WS-Verbindung zum Backend offen. Reconnectet
+    automatisch mit exponential backoff. Eingehende Events werden in den
+    lokalen state gemergt und an Jetson-WS-Clients weitergereicht."""
+    import websockets
+    import urllib.parse
+
+    while True:
+        cfg = load_config()
+        backend_url = cfg.get("backend", {}).get("url", "")
+        if not backend_url:
+            await asyncio.sleep(10)
+            continue
+
+        # http://host:port → ws://host:port/ws
+        parsed = urllib.parse.urlparse(backend_url)
+        scheme = "wss" if parsed.scheme == "https" else "ws"
+        ws_url = f"{scheme}://{parsed.netloc}/ws"
+
+        try:
+            print(f"[BACKEND-WS] Verbinde zu {ws_url}...", flush=True)
+            async with websockets.connect(ws_url, ping_interval=30, ping_timeout=10) as ws:
+                state.backend_ws_connected = True
+                print(f"[BACKEND-WS] Verbunden.", flush=True)
+                await broadcast({"type": "backend_link", "connected": True})
+                reconnect_delay = 2.0  # Reset nach erfolgreicher Verbindung
+
+                async for raw in ws:
+                    try:
+                        msg = json.loads(raw)
+                    except Exception:
+                        continue
+                    await _handle_backend_event(msg)
+        except Exception as e:
+            print(f"[BACKEND-WS] Verbindung verloren: {e}", flush=True)
+        finally:
+            state.backend_ws_connected = False
+            try:
+                await broadcast({"type": "backend_link", "connected": False})
+            except Exception:
+                pass
+
+        # Exponential backoff mit Deckel bei 30 s
+        try:
+            reconnect_delay = min(reconnect_delay * 1.5, 30.0)  # noqa: F821
+        except Exception:
+            reconnect_delay = 5.0
+        print(f"[BACKEND-WS] Reconnect in {reconnect_delay:.1f} s", flush=True)
+        await asyncio.sleep(reconnect_delay)
+
+
+async def _handle_backend_event(msg: dict):
+    """Verarbeitet ein vom Backend gesendetes Event. Mergt State und
+    re-broadcastet an die Jetson-eigenen Frontend-Clients."""
+    mtype = msg.get("type", "")
+
+    if mtype == "init":
+        # Snapshot beim Connect — alle Patienten vom Backend übernehmen.
+        # Lokale Patienten die das Backend nicht kennt bleiben erhalten.
+        remote_pts = msg.get("patients", [])
+        added = 0
+        for p in remote_pts:
+            pid = p.get("patient_id")
+            if not pid:
+                continue
+            if pid not in state.patients:
+                state.patients[pid] = p
+                rfid_tag = p.get("rfid_tag_id")
+                if rfid_tag:
+                    state.rfid_map[rfid_tag] = pid
+                added += 1
+            else:
+                # Lokaler Eintrag gewinnt NUR wenn er neuere Zeitstempel hat
+                local = state.patients[pid]
+                if (p.get("timestamp_updated") or "") > (local.get("timestamp_updated") or ""):
+                    state.patients[pid] = p
+        print(f"[BACKEND-WS] init: {len(remote_pts)} Patienten vom Backend, {added} neu", flush=True)
+        # Jetson-Clients informieren
+        await broadcast({"type": "backend_init", "patient_count": len(remote_pts), "added": added})
+
+    elif mtype in ("patient_new", "patient_update", "patient_registered"):
+        p = msg.get("patient")
+        if not p:
+            return
+        pid = p.get("patient_id")
+        if not pid:
+            return
+        # Merge: Backend-Event überschreibt lokalen Eintrag
+        state.patients[pid] = p
+        rfid_tag = p.get("rfid_tag_id")
+        if rfid_tag:
+            state.rfid_map[rfid_tag] = pid
+        print(f"[BACKEND-WS] {mtype}: {pid} ({p.get('name','?')})", flush=True)
+        # An Jetson-Frontend weiterleiten, damit Dashboard sich aktualisiert
+        await broadcast({"type": "patient_update", "patient": p})
+
+    elif mtype == "patient_deleted":
+        pid = msg.get("patient_id")
+        if pid and pid in state.patients:
+            state.patients.pop(pid, None)
+            await broadcast({"type": "patient_deleted", "patient_id": pid})
+
+    elif mtype == "transfer_update":
+        # Backend meldet geänderten Flow-Status (z.B. bei Role 2 Übernahme)
+        pid = msg.get("patient_id")
+        if pid and pid in state.patients:
+            new_state = msg.get("transfer_state") or ""
+            if new_state == "sent":
+                state.patients[pid]["synced"] = True
+            await broadcast({"type": "transfer_update", "patient_id": pid,
+                             "transfer_state": new_state})
 
 
 async def sync_all_patients() -> dict:
@@ -2229,7 +2894,11 @@ async def sitaware_nvg_export():
                     headers={"Content-Disposition": "attachment; filename=safir_overlay.nvg"})
 
 
-MAX_RECORD_SECONDS = 300
+# Multi-Patient-Flow: Der BAT-Sanitäter kann mehrere Verwundete am Stück
+# diktieren. 600 s = 10 min Safety-Buffer. Audio wird in 25 s-Chunks
+# gestreamt (CHUNK_SECONDS), die Whisper parallel zur Aufnahme transkribiert.
+MAX_RECORD_SECONDS = 600
+RECORD_WARN_BEFORE_END = 30  # OLED-Warnung N Sekunden vor Ablauf
 CHUNK_SECONDS = 25
 
 
@@ -2374,8 +3043,11 @@ async def stop_recording():
     full_text = " ".join(all_texts)
     rtf = total_proc_time / total_duration if total_duration > 0 else 0
 
+    _now = datetime.now()
     record_entry = {
-        "time": datetime.now().strftime("%H:%M:%S"),
+        "time": _now.strftime("%H:%M:%S"),
+        "date": _now.strftime("%d.%m.%Y"),
+        "datetime": _now.isoformat(timespec="seconds"),
         "text": full_text,
         "audio_duration": round(total_duration, 2),
         "processing_time": round(total_proc_time, 2),
@@ -2385,7 +3057,8 @@ async def stop_recording():
     if state.active_session and state.active_session in state.sessions:
         state.sessions[state.active_session]["records"].append(record_entry)
 
-    # Transkript auch in aktiven Patienten einfuegen
+    # Transkript in aktiven Patienten einfügen (Edge case: es gab vor der
+    # Aufnahme schon einen aktiven Patienten — z.B. manuelle Voice-Command-Aufnahme)
     if state.active_patient and state.active_patient in state.patients:
         patient = state.patients[state.active_patient]
         patient["transcripts"].append({
@@ -2395,11 +3068,32 @@ async def stop_recording():
             "role_level": patient["current_role"],
         })
 
+    # Das Transkript wird als neuer Eintrag an die pending-Liste angehängt
+    # — NIE überschrieben, jede Aufnahme bleibt unabhängig erhalten bis
+    # der User sie analysiert oder verwirft. Jeder Eintrag bekommt eine
+    # eindeutige ID damit das Frontend gezielt drauf referenzieren kann.
+    import uuid
+    pending_entry = {
+        "id": uuid.uuid4().hex[:10],
+        "full_text": full_text,
+        "time": record_entry["time"],
+        "date": record_entry["date"],
+        "datetime": record_entry["datetime"],
+        "duration": round(total_duration, 2),
+        "analyzed": False,
+        "analyzing": False,
+        "created_patient_ids": [],
+    }
+    state.pending_transcripts.append(pending_entry)
+
     await broadcast({
         "type": "transcription_result",
         "record": record_entry,
         "session_id": state.active_session,
         "patient_id": state.active_patient,
+        "full_text": full_text,
+        "pending_analysis": not bool(state.active_patient),
+        "pending_entry": pending_entry,
     })
 
     oled_menu.show_status("TRANSKRIPT OK", f"{len(full_text)} Zeichen")
@@ -2407,6 +3101,102 @@ async def stop_recording():
     oled_menu.clear_status()
 
     return {"status": "ok", "result": record_entry}
+
+
+async def _segment_and_create_patients(full_text: str, record_time: str) -> list[str]:
+    """Ruft Qwen für die Segmentierung auf und legt pro erkanntem Patient
+    einen Draft-Record an. Gibt die Liste der erzeugten patient_ids zurück.
+
+    Ablauf:
+      1. Segmentierung (Qwen mit SEGMENTATION_PROMPT)
+      2. Pro Segment: create_patient_record + 9-Liner-Feld-Extraktion
+      3. WebSocket-Broadcast patient_registered pro Patient
+      4. Der ZULETZT erzeugte Patient wird active_patient (für RFID-Schreiben etc.)
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        segments = await loop.run_in_executor(None, segment_transcript_to_patients, full_text)
+    except Exception as e:
+        print(f"[SEGMENT] Fehler: {e}", flush=True)
+        segments = {"patient_count": 1, "patients": [{"patient_nr": 1, "text": full_text, "summary": ""}]}
+
+    patient_list = segments.get("patients", [])
+    if not patient_list:
+        patient_list = [{"patient_nr": 1, "text": full_text, "summary": ""}]
+    print(f"[SEGMENT] {len(patient_list)} Patient-Segment(e) erkannt", flush=True)
+
+    cfg = load_config()
+    device_id = cfg.get("device_id", "jetson-01")
+    default_medic = cfg.get("default_medic", "")
+    unit_name = cfg.get("unit_name", "")
+    created_pids: list[str] = []
+
+    for i, seg in enumerate(patient_list):
+        seg_text = (seg.get("text") or "").strip()
+        if not seg_text:
+            continue
+
+        # Neuen Patient-Record erzeugen
+        patient = create_patient_record(
+            name="Unbekannt",
+            triage="",
+            device_id=device_id,
+            created_by=default_medic,
+        )
+        patient["unit"] = unit_name
+        pid = patient["patient_id"]
+        patient["transcripts"].append({
+            "time": record_time,
+            "text": seg_text,
+            "speaker": "sanitaeter",
+            "role_level": patient["current_role"],
+        })
+        state.patients[pid] = patient
+        state.rfid_map[patient["rfid_tag_id"]] = pid
+        created_pids.append(pid)
+
+        # 9-Liner-Extraktion im Executor (blockt nicht den Event-Loop)
+        try:
+            oled_menu.show_status(
+                "ANALYSE",
+                f"Patient {i + 1}/{len(patient_list)}",
+                int((i + 1) / max(1, len(patient_list)) * 80) + 20,
+            )
+            enrichment = await loop.run_in_executor(None, run_patient_enrichment, seg_text)
+            if enrichment:
+                if enrichment.get("name"):
+                    patient["name"] = enrichment["name"]
+                if enrichment.get("rank"):
+                    patient["rank"] = enrichment["rank"]
+                # Triage wird bewusst NICHT automatisch gesetzt — der
+                # Sanitäter vergibt sie manuell. Qwen halluziniert gern
+                # eine Triage wenn keine genannt wurde.
+                if enrichment.get("injuries"):
+                    patient["injuries"] = enrichment["injuries"]
+                if enrichment.get("mechanism"):
+                    patient["mechanism"] = enrichment["mechanism"]
+                vitals = patient.setdefault("vitals", {})
+                for src, dst in (("pulse", "pulse"), ("bp", "bp"), ("resp_rate", "resp_rate"), ("spo2", "spo2")):
+                    if enrichment.get(src):
+                        vitals[dst] = enrichment[src]
+                patient["analyzed"] = True
+        except Exception as e:
+            print(f"[SEGMENT] Enrichment fehlgeschlagen für {pid}: {e}", flush=True)
+
+        await broadcast({"type": "patient_registered", "patient": patient})
+
+    # Letzten Patient aktiv setzen (wichtig für RFID-Schreiben danach)
+    if created_pids:
+        state.active_patient = created_pids[-1]
+        last = state.patients[created_pids[-1]]
+        oled_menu.update_active_patient({
+            "patient_id": last["patient_id"],
+            "name": last.get("name", ""),
+            "triage": last.get("triage", ""),
+            "flow_status": last.get("flow_status", "registered"),
+        })
+
+    return created_pids
 
 
 @app.post("/api/record/delete")
@@ -2422,13 +3212,13 @@ async def delete_record(body: dict):
 
 
 def build_patient_enrichment_prompt(text: str) -> str:
-    """Baut den Prompt für die Patienten-Datenanreicherung aus Transkripten."""
+    """Baut den Prompt für die Patienten-Datenanreicherung aus Transkripten.
+    Triage wird bewusst NICHT extrahiert — der Sanitäter setzt sie manuell."""
     return f"""Du bist ein militärischer Sanitäts-Assistent. Extrahiere aus dem Transkript alle Patientendaten als JSON.
 
 Felder:
 - name: Name des Patienten (Nachname oder voller Name)
 - rank: Dienstgrad (z.B. Feldwebel, Oberstabsgefreiter, Hauptmann)
-- triage: Triage-Kategorie (T1, T2, T3 oder T4)
 - injuries: Liste der Verletzungen (als Array von Strings)
 - mechanism: Verletzungsmechanismus (z.B. Schussverletzung, IED, Splitter)
 - pulse: Puls (nur Zahl)
@@ -2444,7 +3234,7 @@ Regeln:
 - Nur Informationen aus dem Text verwenden
 - Felder ohne Info: leerer String oder leeres Array
 - Kurze, präzise Werte
-- Bei Triage: T1=rot/sofort, T2=gelb/dringend, T3=grün/aufschiebbar, T4=blau/abwartend
+- NICHT ERFINDEN: keine Triage-Kategorie, kein Alter, keine Namen die nicht im Text stehen
 
 Text: {text}
 
@@ -2742,6 +3532,79 @@ async def mic_level():
         return {"rms": 0, "peak": 0, "db": -60, "error": str(e)}
 
 
+@app.get("/api/oled/image")
+async def oled_image():
+    """Liefert das aktuelle OLED-Bild als base64-PNG + Menü-Meta für das
+    Dashboard-Preview. Das Frontend pollt diesen Endpoint alle ~300 ms."""
+    try:
+        img_b64 = oled_menu.render_base64()
+        from jetson.oled import PAGES, PAGE_SUBMENUS, PAGE_TITLES
+        page = PAGES[oled_menu.current_page] if PAGES else ""
+        return {
+            "image": img_b64,
+            "page": page,
+            "page_title": PAGE_TITLES.get(page, page),
+            "submenu_open": oled_menu.submenu_open,
+            "submenu_index": oled_menu.submenu_index,
+            "submenu_items": [lbl for _, lbl in PAGE_SUBMENUS.get(page, [])],
+            "status_mode": oled_menu._status_mode,
+        }
+    except Exception as e:
+        return {"image": None, "error": str(e)}
+
+
+@app.get("/api/hw/state")
+async def hw_state():
+    """Diagnose-Snapshot der Taster-Hardware. Zeigt rohe GPIO-Werte UND
+    die debounced press-States — so sehen wir sofort ob ein Pin stuck-LOW
+    ist (rohes LOW obwohl niemand drückt). Zusätzlich: combo-active Flag
+    und seit wann die Taster gedrückt sind."""
+    bd = getattr(hardware_service, "_buttons", None)
+    if bd is None:
+        return {"error": "ButtonDriver nicht initialisiert"}
+    try:
+        a_raw_low = bd._gpio.input(bd._pin_a) == bd._gpio.LOW
+        b_raw_low = bd._gpio.input(bd._pin_b) == bd._gpio.LOW
+    except Exception as e:
+        return {"error": f"GPIO read failed: {e}"}
+    import time as _t
+    now = _t.monotonic()
+    return {
+        "pin_a": bd._pin_a,
+        "pin_b": bd._pin_b,
+        "a_raw_pressed": a_raw_low,
+        "b_raw_pressed": b_raw_low,
+        "a_debounced_pressed": bd._state_a["pressed"],
+        "b_debounced_pressed": bd._state_b["pressed"],
+        "a_held_s": (now - bd._state_a["since"]) if bd._state_a["pressed"] else 0.0,
+        "b_held_s": (now - bd._state_b["since"]) if bd._state_b["pressed"] else 0.0,
+        "combo_active": bd._combo_active,
+        "combo_latched": bd._combo_latched,
+        "long_press_s": bd._long_press,
+        "combo_s": bd._combo,
+    }
+
+
+@app.post("/api/hw/button")
+async def hw_button(body: dict):
+    """Virtueller Button-Druck aus dem Dashboard.
+    Body: {"button": "A"|"B", "kind": "short"|"long"}.
+    Das Event geht durch dieselbe Routing-Funktion wie echte GPIO-Taster,
+    inklusive Wake-Gate, Submenu-Logik und App-Callbacks."""
+    from jetson.hardware import ButtonEvent
+    btn = str(body.get("button", "")).upper()
+    kind = str(body.get("kind", "short")).lower()
+    if btn not in ("A", "B") or kind not in ("short", "long"):
+        return {"status": "error", "error": "button must be A/B, kind short/long"}
+    hold = 2.0 if kind == "long" else 0.1
+    event = ButtonEvent(kind=kind, button=btn, hold_seconds=hold)
+    try:
+        hardware_service._handle_button_event(event)
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+    return {"status": "ok", "button": btn, "kind": kind}
+
+
 @app.get("/api/vosk/status")
 async def vosk_status():
     return {
@@ -2956,6 +3819,26 @@ async def stop_gps_sim():
 # ---------------------------------------------------------------------------
 # Startup / Shutdown
 # ---------------------------------------------------------------------------
+def _play_sound_async(filename: str) -> None:
+    """Spielt eine WAV-Datei aus sounds/ über aplay auf dem USB-Dongle ab.
+    Fire-and-forget: blockiert weder den Event-Loop noch Konflikte mit dem
+    bestehenden sounddevice-Stream (aplay = separater Prozess, parallel zum
+    Python-Capture-Stream)."""
+    try:
+        import subprocess
+        path = PROJECT_DIR / "sounds" / filename
+        if not path.exists():
+            print(f"[SOUND] fehlt: {path}", flush=True)
+            return
+        subprocess.Popen(
+            ["aplay", "-q", "-D", "plughw:0,0", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as e:
+        print(f"[SOUND] Fehler bei {filename}: {e}", flush=True)
+
+
 @app.on_event("startup")
 async def startup():
     state.event_loop = asyncio.get_event_loop()
@@ -3012,8 +3895,13 @@ async def startup():
     # Peer Discovery Heartbeat
     asyncio.create_task(_heartbeat_loop())
 
+    # Backend-WebSocket-Client: persistente bidirektionale Verbindung zur
+    # Leitstelle. Pusht Änderungen live an das Jetson-Dashboard ohne F5.
+    state.backend_ws_task = asyncio.create_task(_backend_ws_loop())
+
     # SAFIR bereit!
     oled_menu.show_status("SAFIR BEREIT", "Warte auf Befehl...")
+    _play_sound_async("safir-ready.wav")
     await asyncio.sleep(3)
     oled_menu.clear_status()
 
