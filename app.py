@@ -936,60 +936,12 @@ async def process_vosk_commands():
 # ---------------------------------------------------------------------------
 # Voice Command Handlers (Feld-Modus)
 # ---------------------------------------------------------------------------
-async def voice_new_patient():
-    """Sprachbefehl: Neuer Patient anlegen + Aufnahme automatisch starten."""
-    if not state.model_loaded:
-        tts.speak("Sprachmodell nicht geladen, bitte warten")
-        return
-
-    # Falls gerade aufgenommen wird: erst stoppen und transkribieren
-    if state.recording:
-        trim_chunks = int(1.5 / 0.1)
-        if len(state.audio_chunks) > trim_chunks:
-            state.audio_chunks = state.audio_chunks[:-trim_chunks]
-        await stop_recording()
-
-    cfg = load_config()
-    device_id = cfg.get("device_id", "jetson-01")
-
-    default_medic = cfg.get("default_medic", "")
-    patient = create_patient_record(
-        name="Unbekannt",
-        triage="",
-        device_id=device_id,
-        created_by=default_medic,
-    )
-    patient["unit"] = cfg.get("unit_name", "")
-    pid = patient["patient_id"]
-    state.patients[pid] = patient
-    state.rfid_map[patient["rfid_tag_id"]] = pid
-    state.active_patient = pid
-
-    # Session anlegen
-    await create_session_internal("Unbekannt", "Feld", default_medic, "tccc")
-
-    # OLED sofort mit den neuen Patientendaten füttern — sonst zeigt das
-    # patient-Screen bis zum nächsten Update-Loop-Tick (~2 s) noch "KEIN PATIENT"
-    oled_menu.update_active_patient({
-        "patient_id": pid,
-        "name": patient.get("name", ""),
-        "triage": patient.get("triage", ""),
-        "flow_status": patient.get("flow_status", "registered"),
-    })
-
-    await broadcast({"type": "patient_registered", "patient": patient})
-    oled_menu.show_status("NEUER PATIENT", f"#{len(state.patients)}")
-    tts.announce_patient_created()
-    # Patientennummer ansagen (1-basiert)
-    num = list(state.patients.keys()).index(pid) + 1
-    if num > 1:
-        tts.speak(f"Patient {num}")
-
-    # Aufnahme automatisch starten (nach TTS-Ansage)
-    await asyncio.sleep(1.5)
-    if not state.recording and not state.transcribing and state.model_loaded:
-        state.audio_chunks = []
-        await start_recording_internal()
+# Hinweis: voice_new_patient und voice_patient_ready wurden entfernt. Der
+# Multi-Patient-Flow legt keinen Patient mehr vorab an — Aufnahmen werden
+# gesammelt und erst bei der Analyse über Qwen segmentiert. Die beiden
+# Sprachbefehle "neuer patient" und "patient fertig" werden jetzt in
+# process_vosk_commands auf _start_record_flow() bzw. _stop_record_flow()
+# umgeleitet, damit Taster und Sprache denselben Code-Pfad durchlaufen.
 
 
 async def voice_set_triage(level: str):
@@ -1007,45 +959,6 @@ async def voice_set_triage(level: str):
     })
     await broadcast({"type": "patient_update", "patient": patient})
     tts.announce_triage(level)
-
-
-async def voice_patient_ready():
-    """Sprachbefehl: Patient fertig — Aufnahme stoppen, RFID zuweisen, abschließen."""
-    if not state.active_patient or state.active_patient not in state.patients:
-        tts.announce_error()
-        return
-
-    # Laufende Aufnahme stoppen und transkribieren
-    if state.recording:
-        trim_chunks = int(1.5 / 0.1)
-        if len(state.audio_chunks) > trim_chunks:
-            state.audio_chunks = state.audio_chunks[:-trim_chunks]
-        await stop_recording()
-
-    patient = state.patients[state.active_patient]
-    patient["flow_status"] = "inbound"
-
-    # RFID-Tag automatisch zuweisen (wenn noch keiner vorhanden)
-    if not patient.get("rfid_tag_id") or patient["rfid_tag_id"] not in state.rfid_map:
-        tag_id = generate_rfid_tag()
-        patient["rfid_tag_id"] = tag_id
-        state.rfid_map[tag_id] = state.active_patient
-        patient["timeline"].append({
-            "time": datetime.now().isoformat(),
-            "role": patient["current_role"],
-            "event": "rfid_assigned",
-            "details": f"RFID-Tag {tag_id} zugewiesen",
-        })
-
-    patient["timeline"].append({
-        "time": datetime.now().isoformat(),
-        "role": patient["current_role"],
-        "event": "patient_ready",
-        "details": "Aufnahme abgeschlossen",
-    })
-    await broadcast({"type": "patient_update", "patient": patient})
-    tts.announce_patient_ready()
-    tts.announce_rfid_linked()
 
 
 async def voice_delete_last():
@@ -1834,6 +1747,19 @@ def segment_transcript_to_patients(transcript: str) -> dict:
     # Fallback: Kein Start erkannt → alles als ein Patient
     if not starts:
         starts = [0]
+
+    # Wenn Satz 0 selbst klar einen Patient beginnt (z. B. "Erster Patient
+    # männlich 40 Schusswunde..."), dann muss 0 in der starts-Liste stehen.
+    # Sonst wuerde der Einleitungs-Fix unten Satz 0 mit Satz 1 mergen und
+    # einen echten Patienten verlieren.
+    import re as _re
+    _first_patient_re = _re.compile(
+        r"^\s*(der\s+)?(erste[rn]?|erster)\s+(patient|verwundete[rn]?)",
+        _re.IGNORECASE,
+    )
+    if sentences and _first_patient_re.match(sentences[0]) and 0 not in starts:
+        starts.insert(0, 0)
+
     # Sätze vor dem ersten Patient-Start sind Einleitung und gehören zu Patient 1:
     # Wir ziehen den ersten Startindex auf 0 herunter und damit werden alle
     # Einleitungssätze Teil des ersten Patienten-Segments.
@@ -1898,13 +1824,21 @@ def segment_transcript_to_patients(transcript: str) -> dict:
         "hauptmann", "leutnant", "oberst", "gefreiter", "hauptgefreiter",
         "unteroffizier", "mann", "frau", "kind",
     )
+    # Maximale Länge für einen "Fortsetzungs"-Eintrag. Alles darüber ist ein
+    # eigenständiger Patient-Block mit eigenen Vitals/Behandlung, auch wenn
+    # er mit "Er hat..." beginnt. Gemessen an Beispielen:
+    #   F5 Übergang: "Jetzt weiter mit dem nächsten Patienten." ~40 chars → merge
+    #   F6 Folgesatz: "Er hat eine leichte Kopfverletzung und etwas Kopfschmerzen,
+    #     konnte aber mit Aspirin vor Ort behoben werden." ~107 chars → NICHT merge
+    PRONOUN_MERGE_MAX = 80
     merged2: list[dict] = []
     for p in merged:
         t = p["text"].strip()
         t_low = t.lower()
         starts_with_pronoun = any(t_low.startswith(h) for h in PRONOUN_STARTS)
         has_patient_marker = any(m in t_low for m in PATIENT_MARKERS)
-        if starts_with_pronoun and not has_patient_marker and merged2:
+        is_short = len(t) < PRONOUN_MERGE_MAX
+        if starts_with_pronoun and not has_patient_marker and is_short and merged2:
             merged2[-1]["text"] = merged2[-1]["text"] + " " + t
             continue
         merged2.append({"patient_nr": len(merged2) + 1, "text": t, "summary": p.get("summary", "")})
@@ -2529,6 +2463,8 @@ async def _backend_ws_loop():
     import websockets
     import urllib.parse
 
+    reconnect_delay = 2.0  # Wird bei erfolgreichem Connect auf 2.0 zurückgesetzt
+
     while True:
         cfg = load_config()
         backend_url = cfg.get("backend", {}).get("url", "")
@@ -2545,7 +2481,7 @@ async def _backend_ws_loop():
             print(f"[BACKEND-WS] Verbinde zu {ws_url}...", flush=True)
             async with websockets.connect(ws_url, ping_interval=30, ping_timeout=10) as ws:
                 state.backend_ws_connected = True
-                print(f"[BACKEND-WS] Verbunden.", flush=True)
+                print("[BACKEND-WS] Verbunden.", flush=True)
                 await broadcast({"type": "backend_link", "connected": True})
                 reconnect_delay = 2.0  # Reset nach erfolgreicher Verbindung
 
@@ -2565,10 +2501,7 @@ async def _backend_ws_loop():
                 pass
 
         # Exponential backoff mit Deckel bei 30 s
-        try:
-            reconnect_delay = min(reconnect_delay * 1.5, 30.0)  # noqa: F821
-        except Exception:
-            reconnect_delay = 5.0
+        reconnect_delay = min(reconnect_delay * 1.5, 30.0)
         print(f"[BACKEND-WS] Reconnect in {reconnect_delay:.1f} s", flush=True)
         await asyncio.sleep(reconnect_delay)
 

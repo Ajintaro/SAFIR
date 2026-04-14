@@ -8,24 +8,26 @@ Auftraggeber: CGI Deutschland. Zielgruppe: Bundeswehr Sanitätsdienst.
 
 ## Zwei Geräte
 
-### Jetson Orin Nano (`jetson/`) — Feldgerät
-- Hardware: NVIDIA Jetson Orin Nano Super, 7.4GB shared CPU/GPU RAM (Unified Memory), CUDA 12.6
-- Whisper small (whisper.cpp, GPU, ~862 MB GPU-RAM) für Echtzeit-Transkription
-- Vosk (CPU) für Sprachbefehle ("Aufnahme starten/stoppen")
-- Ollama Qwen2.5-1.5B (GPU, ~1.5 GB GPU-RAM) für 9-Liner Feldextraktion
+### Jetson Orin Nano (`jetson/`, Hauptcode `app.py`) — Feldgerät (BAT)
+- Hardware: NVIDIA Jetson Orin Nano Super, 7.4 GB shared CPU/GPU RAM (Unified Memory), CUDA 12.6
+- Whisper small (whisper.cpp, GPU, ~862 MB VRAM) für Echtzeit-Transkription
+- Vosk (CPU) für Sprachbefehle — routen auf die shared `_start_record_flow` / `_stop_record_flow` wie der Taster
+- Ollama Qwen2.5-1.5B (permanent im VRAM, `keep_alive: -1`) für Segmentierung (Multi-Patient-Diktat) und 9-Liner-Feldextraktion
+- Piper TTS (CPU, de_DE-thorsten-medium) mit `check_output_settings` Resample auf device-rate
 - FastAPI + WebSocket Dashboard auf Port 8080
-- Simuliert den Sanitäter im Feld (Phase 0 / Role 1)
-- **Status: funktionsfähig** — Spracheingabe, Transkription, 9-Liner Extraktion laufen
-- **TODO: Backend-Sync implementieren** (siehe Abschnitt "Jetson → Backend Anbindung")
+- Hardware-Integration: 2 Taster (Rot/Grün, GPIO Pin 11/26), OLED SSD1306 (I2C Bus 7), RFID RC522, LEDs, Shutdown-Combo
+- Headless-Autostart via `safir.service` (systemd, User=root) + OLED-Status-Monitor (`safir-oled-ready.service`)
+- Live-Sync: Backend-WS-Client (`_backend_ws_loop`) verbindet sich persistent zum Surface, mergt eingehende Patient-Events in `state.patients`
+- **Status: funktionsfähig** — Multi-Patient-Flow, Segmentierung, Batch-RFID-Schreiben, bi-direktionaler Live-Sync
 
-### Alienware + RTX 5090 (`backend/`) — Leitstelle
-- Hardware: NVIDIA RTX 5090, 24GB VRAM, Windows
-- Whisper large-v3 (faster-whisper, GPU, ~3GB VRAM) für beste Transkriptionsqualität
-- pyannote-audio 3.1 (~2GB VRAM) für Speaker Diarization (wer spricht wann)
-- Ollama Qwen2.5-32B (Q4, ~18GB VRAM) für intelligente Analyse
-- FastAPI Dashboard auf Port 8080
-- Bildet die gesamte Rettungskette Role 1-4 ab
-- **Status: Role 1 Lagekarte funktionsfähig** — Taktische NATO-Symbole, BAT-Bewegung, Simulation
+### Microsoft Surface (`backend/`) — Leitstelle (Role 1)
+- Hardware: Microsoft Surface, Windows
+- Tailscale-Hostname: `ai-station`, Backend-URL im Jetson-Config: `http://100.101.80.64:8080`
+- FastAPI Backend mit `/api/ingest` (Jetson-Push), `/api/patients`, `/api/units`, WebSocket `/ws`
+- Taktische Lagekarte (Leaflet), Event-Feed, Triage-Counts, BAT-Transport-Marker
+- Peer-Discovery-Heartbeat (pullt alle aktiven Feldgeräte)
+- **Status: Lagekarte + Sync-Empfang funktioniert** — Jetson-Patienten kommen via POST und per WebSocket-Broadcast rein
+- Hardware-Specs/Modelle (Whisper, Ollama, pyannote): **TODO — beim nächsten Setup aktualisieren**
 
 ## Rettungskette der Bundeswehr (Goldene Stunde)
 
@@ -41,10 +43,11 @@ Kernprinzip: Verwundete müssen innerhalb von 60 Minuten medizinisch versorgt we
 
 ## Tech Stack
 - Python 3, FastAPI, WebSocket, Jinja2 Templates (kein React/Vue — reines HTML+JS)
-- Whisper: whisper.cpp auf Jetson, faster-whisper auf Alienware
+- Whisper: whisper.cpp auf Jetson (Feldgerät)
 - Vosk: Sprachbefehle auf Jetson (offline, leichtgewichtig)
-- Ollama: Qwen2.5-1.5B auf Jetson (CPU), Qwen2.5-32B auf Alienware (GPU)
-- pyannote-audio: Speaker Diarization nur auf Alienware
+- Ollama: Qwen2.5-1.5B auf Jetson, permanent im VRAM (`keep_alive: -1`)
+- Piper TTS auf Jetson (CPU, de_DE-thorsten-medium)
+- Surface (Leitstelle): Hardware-Specs/Modelle bei Bedarf einsetzen
 - python-docx: DOCX-Export für Protokolle
 
 ## UI Design — Military Tactical HUD
@@ -68,99 +71,72 @@ Siehe `shared/models.py`:
 - `RoleLevel`: Enum Phase0, Role1-4
 - `TriagePriority`: T1 (sofort) bis T4 (abwartend)
 
-## Jetson → Backend Anbindung (AKTUELL WICHTIGSTE AUFGABE)
+## Jetson ↔ Backend Anbindung (IMPLEMENTIERT, bi-direktional)
 
-### Was existiert
-- **Backend-Empfang**: `POST /api/ingest` in `backend/app.py` — empfängt Patientendaten, speichert sie, sendet `patient_new` WebSocket-Event an alle Clients
-- **Jetson-Seite**: Transkription und LLM-Extraktion funktionieren lokal. Es fehlt der HTTP-Push ans Backend.
+### Ausgehend: Jetson → Surface
+- **POST `/api/ingest`** nach erfolgreichem "Melden" (`sync_all_patients()` in `app.py`) — sendet Patient + Transfer-Schema
+- Trigger: Sprachbefehl "Patienten melden", OLED-Menü "Melden", GUI-Button
+- `patient["synced"] = True` wird nach 200 OK gesetzt
+- Auto-Retry über exponential backoff nicht implementiert — Manual-Retry via "Melden" erneut auslösen
 
-### Was auf dem Jetson implementiert werden muss
-1. **Backend-URL konfigurierbar machen**:
-   - Umgebungsvariable `BACKEND_URL` (z.B. `http://192.168.1.100:8080`)
-   - Fallback: `http://127.0.0.1:8080` für lokale Tests
-2. **Sync-Funktion implementieren** (`sync_to_backend()`):
-   - Nach Registrierung eines Patienten oder nach KI-Analyse
-   - `POST /api/ingest` mit Payload nach `TRANSFER_SCHEMA`
-   - Retry-Logik bei Netzwerkfehlern (max 3 Versuche)
-   - Status "übermittelt" im Jetson-UI anzeigen
-3. **Payload-Format** (was das Backend erwartet):
-   ```json
-   {
-     "patient": {
-       "patient_id": "uuid",
-       "name": "Nachname, Vorname",
-       "triage": "T1",
-       "injuries": ["Schusswunde li. Oberschenkel"],
-       "vitals": {"pulse": "120", "spo2": "92", "blood_pressure": "90/60"},
-       "nine_liner": {...},
-       "transcripts": ["freitext..."],
-       "current_role": "phase0"
-     },
-     "unit_name": "BAT Alpha42",
-     "device_id": "jetson-01"
-   }
-   ```
-4. **Wann senden**:
-   - Automatisch nach Patient-Registrierung (RFID-Scan oder manuell)
-   - Automatisch nach KI-Analyse (wenn neue Felder extrahiert wurden)
-   - Manueller "Übermitteln"-Button als Fallback
-5. **WebSocket-Event auf dem Backend**:
-   - Backend sendet automatisch `patient_new` an alle Dashboard-Clients
-   - Jetson muss sich NICHT um das Dashboard kümmern
+### Eingehend: Surface → Jetson (Live-Sync)
+- **Persistenter WebSocket-Client** `_backend_ws_loop()` verbindet sich zu `ws://<backend>/ws`
+- Auto-Reconnect mit exponential backoff (2 s → 30 s)
+- Event-Handler `_handle_backend_event()` mergt `init`/`patient_new`/`patient_update`/`patient_deleted`/`transfer_update` in `state.patients` und re-broadcastet an die Jetson-eigenen Dashboard-Clients
+- Verbindungsstatus in `state.backend_ws_connected`, Broadcast-Event `backend_link`
 
-### Netzwerk-Setup für die Demo
-- Jetson und Alienware im gleichen WLAN/LAN
-- Alienware-IP muss auf dem Jetson als `BACKEND_URL` gesetzt werden
-- Port 8080 muss erreichbar sein
+### Netzwerk-Setup
+- Beide Geräte hängen via **Tailscale** (Mesh-VPN) zusammen — kein gemeinsames WLAN nötig
+- Backend-URL in `config.json`: `http://100.101.80.64:8080` (Tailscale-IP des Surface)
+- Jetson-Tailscale-IP: `100.126.179.27`, Hostname `jetson-orin`
+- Surface-Tailscale-Hostname: `ai-station`
 
 ## GPU-Speicher-Management (Jetson Orin Nano)
 
-Das Jetson hat 7.99 GB Unified Memory (CPU+GPU shared). Beide Modelle laufen auf der GPU:
-- Whisper small: ~862 MB GPU
-- Ollama qwen2.5:1.5b: ~1.5 GB GPU
-- CUDA Overhead + Display: ~4.5 GB
-- Verfügbar nach beiden Modellen: ~2.5 GB
+Das Jetson hat 7.4 GB Unified Memory (CPU+GPU shared). **Whisper + Qwen laufen parallel permanent im Speicher** (kein GPU-Swap mehr):
+- Whisper small: ~1.2 GB RSS (inkl. Server-Overhead)
+- Ollama qwen2.5:1.5b (`keep_alive: -1`): ~1.1 GB VRAM
+- CUDA/Tegra Overhead: ~1 GB
+- Verfügbar nach beiden Modellen: **~3.5 GB** (im Headless-Mode)
 
 ### Kritisch: Startreihenfolge
 **Ollama MUSS vor Whisper gestartet werden!** Andernfalls schlägt `cudaMalloc` fehl (Speicherfragmentierung).
-Korrekte Reihenfolge in `scripts/safir-start.sh`:
-1. Ollama starten + Modell vorladen (`ollama run qwen2.5:1.5b`)
-2. Whisper-Server starten (`whisper-server`)
-3. SAFIR FastAPI App starten
+`scripts/safir-start.sh` macht das in der richtigen Reihenfolge:
+1. Ollama starten + Qwen permanent vorladen (`keep_alive: -1`)
+2. Whisper-Server starten (durch uvicorn/app.py triggered)
+3. SAFIR FastAPI App `exec uvicorn app:app` als Vordergrund-Prozess
 
 ### Speicher sparen
-- Desktop (GNOME + Xorg) kostet ~510 MB → Headless-Boot für Messe empfohlen
-- Claude Code kostet ~340 MB → Remote von MacBook per `claude ssh jetson@jetson-orin` starten
-- `update-manager`, `snapd`, `aptd` sind deaktiviert (spart ~470 MB)
-- Powerbank: 20.000 mAh / 15V / 65W — reicht für ganzen Demo-Tag (~20h bei 15W)
+- **Headless-Boot aktiv**: `systemctl set-default multi-user.target` → ~800 MB GUI weg, ~3.5 GiB statt 2.5 GiB verfügbar
+- Claude Code Agent kostet ~340 MB → Remote per `ssh jetson@jetson-orin` starten
+- Powerbank: 20.000 mAh / 15 V / 65 W — reicht für ganzen Demo-Tag (~20 h bei 15 W)
+- **Wichtig**: Nicht an USB-Hubs mit nur 12 V / 0.5 A betreiben — brownout + Reboot (Hardware-Problem, nicht Software)
 
 ### Tailscale SSH
 Tailscale SSH ist aktiviert auf dem Jetson (`sudo tailscale set --ssh`).
 MacBook kann sich verbinden: `ssh jetson@jetson-orin` oder `ssh jetson@100.126.179.27`
 
-## Offene Aufgaben nach Bundeswehr-Demo (19.03.2026)
+## Status der früheren Aufgaben (nach Demo 19.03.2026)
 
-### 1. Aufnahmedauer erhöhen (Feedback Hauptmann)
-- Aktuell: MAX_RECORD_SECONDS = 300 (5 Min) in `app.py:1910`
-- Anforderung: Unterbrechungsfreies Sprechen über mehrere Verwundete
-- Audio wird bereits in 25s-Chunks verarbeitet (CHUNK_SECONDS = 25)
-- TODO: Limit erhöhen + 30s-Countdown-Warnung vor Ablauf einbauen
-- TODO: KI muss mehrere Patienten aus einem Diktat selbst separieren können
+| # | Aufgabe | Status |
+|---|---------|--------|
+| 1 | Aufnahmedauer erhöhen + Multi-Patient pro Diktat | ✓ MAX_RECORD_SECONDS 600, Chunk-basierte Segmentierung via Qwen |
+| 2 | NFC Abstrahlsicherheit prüfen (TEMPEST/EmSec) | offen, braucht zertifiziertes Labor (BWB, Rohde & Schwarz) |
+| 3 | Backend-Sync finalisieren | ✓ bi-direktional (`/api/ingest` + WS-Client) |
+| 4 | Headless-Boot für Messe | ✓ `systemctl set-default multi-user.target` + Autostart via `safir.service` |
 
-### 2. NFC Abstrahlsicherheit prüfen (Feedback Bundeswehr)
-- Prüfung ob NFC-Konfiguration TEMPEST/EmSec-konform ist
-- Erfordert zertifiziertes Labor (BWB, Rohde & Schwarz)
-- Relevante Normen: SDIP-27 / NATO AMSG-720B
-- Für Prototyp nicht blockierend, für Beschaffung schon
+## Multi-Patient-Flow (BAT-Workflow)
 
-### 3. Backend-Sync finalisieren
-- Jetson → Backend HTTP POST noch nicht final getestet
-- Siehe Abschnitt "Jetson → Backend Anbindung"
+1. Sanitäter **startet Aufnahme** (Taster B lang / Sprachbefehl "Neuer Patient" / "Aufnahme starten") — kein Patient-Record wird vorab angelegt
+2. Diktiert frei durch (bis ~10 Min), mehrere Verwundete nacheinander. Typisches Trenn-Signal: *"Der nächste Patient ist ..."*, *"Weiter mit dem nächsten"*
+3. **Aufnahme stoppen** (Taster B lang / "Aufnahme beenden") — TTS sofort, Whisper transkribiert im Hintergrund in 25-s-Chunks
+4. Transkript landet als **neuer Eintrag** in `state.pending_transcripts` (Liste, nie überschrieben). Auf dem Dashboard erscheint eine aufklappbare Karte mit Status `UNANALYSIERT`
+5. Sanitäter **prüft das Transkript** visuell. Optional: neue Aufnahme anhängen (weitere Aufnahmen werden parallel gesammelt)
+6. **Analyse** (OLED-Menü "Analysieren" / Sprachbefehl / Button) — Qwen segmentiert an Satzgrenzen (`BOUNDARY_PROMPT`), Post-Merge für Übergangs- und Pronomen-Segmente, dann pro Segment `run_patient_enrichment` für 9-Liner-Felder (Name, Rank, Verletzungen, Vitals — **keine Auto-Triage**)
+7. **RFID-Batch schreiben** (OLED "RFID schreiben" / Sprachbefehl / Fahrzeug-GUI-Button) — iteriert durch alle Patienten ohne `rfid_written`-Timeline-Event, OLED/TTS führt Karte für Karte durch
+8. **Melden** sendet alle `analyzed && !synced` Patienten via `POST /api/ingest` an das Surface-Backend. Surface broadcastet via WS zurück an alle BATs.
 
-### 4. Headless-Boot für Messe
-- `sudo systemctl set-default multi-user.target` → spart ~510 MB GPU+RAM
-- Dashboard nur noch remote im Browser
-- safir-start.sh muss Startreihenfolge anpassen (Ollama vor Whisper)
+Triage wird **manuell** gesetzt (Triage-Buttons im Dashboard oder Sprachbefehl "Triage rot/gelb/grün/blau") — Qwen erfindet sonst Werte die nicht im Text stehen.
 
 ## Konventionen
 - Deutsche Umlaute verwenden (ä, ö, ü, ß) — NICHT ae, oe, ue, ss
