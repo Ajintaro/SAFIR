@@ -10,6 +10,7 @@ Pinbelegung (festgelötet):
 
 import uuid
 import logging
+import threading
 from datetime import datetime
 
 log = logging.getLogger("safir.rfid")
@@ -17,6 +18,13 @@ log = logging.getLogger("safir.rfid")
 # RC522 Hardware-Zugriff (Bit-Bang SPI über Jetson.GPIO)
 _rc522_available = False
 _GPIO = None
+
+# Globaler SPI-Lock: serialisiert alle High-Level-Zugriffe auf den RC522.
+# Nötig weil RfidService._run() im Loop rc522_read_uid() aufruft und parallel
+# voice_write_card() rc522_write_patient_to_card() triggert — beide würden
+# sonst gleichzeitig auf denselben Bit-Bang-SPI-Bus zugreifen und sich
+# gegenseitig zerstören (hängen oder Silent-Fail).
+_spi_lock = threading.Lock()
 
 # Pin-Nummern (BOARD-Modus)
 _MOSI = 19
@@ -111,61 +119,67 @@ def rc522_init():
 
 def rc522_read_uid(timeout=5.0):
     """Wartet auf eine RFID-Karte und gibt die UID als Hex-String zurück.
-    Gibt None zurück bei Timeout oder wenn kein RC522 verfügbar."""
+    Gibt None zurück bei Timeout oder wenn kein RC522 verfügbar.
+
+    Hält während des gesamten Polling-Zyklus den globalen SPI-Lock —
+    solange der Lock belegt ist (z. B. durch einen Write-Vorgang) wartet
+    der Caller hier. Kleine Timeouts (≤ 0.5 s aus RfidService) halten den
+    Lock nur kurz, damit Writes nicht blockieren."""
     if not _rc522_available:
         return None
 
     import time
     start = time.time()
 
-    while time.time() - start < timeout:
-        # REQA senden (ISO 14443A Short Frame)
-        rc522_write(0x01, 0x00)  # Idle
-        rc522_write(0x04, 0x7F)  # Alle IRQs löschen
-        rc522_write(0x0A, 0x80)  # FlushBuffer
-        rc522_write(0x0D, 0x07)  # BitFramingReg: TxLastBits=7
-        rc522_write(0x09, 0x26)  # REQA in FIFO
-        rc522_write(0x01, 0x0C)  # Transceive
-        rc522_write(0x0D, 0x87)  # StartSend
-
-        # Warte auf IRQ (RxIRQ, IdleIRQ oder TimerIRQ)
-        for _ in range(50):
-            irq = rc522_read(0x04)
-            if irq & 0x31:
-                break
-            time.sleep(0.001)
-
-        err = rc522_read(0x06)
-        fifo = rc522_read(0x0A)
-
-        if (irq & 0x20) and fifo >= 2 and not (err & 0x1B):
-            # ATQA empfangen — Anti-Collision starten
-            rc522_write(0x01, 0x00)
-            rc522_write(0x04, 0x7F)
-            rc522_write(0x0A, 0x80)
-            rc522_write(0x0D, 0x00)  # Volle Bytes
-            rc522_write(0x09, 0x93)  # SEL CL1
-            rc522_write(0x09, 0x20)  # NVB = 2 Bytes
+    with _spi_lock:
+        while time.time() - start < timeout:
+            # REQA senden (ISO 14443A Short Frame)
+            rc522_write(0x01, 0x00)  # Idle
+            rc522_write(0x04, 0x7F)  # Alle IRQs löschen
+            rc522_write(0x0A, 0x80)  # FlushBuffer
+            rc522_write(0x0D, 0x07)  # BitFramingReg: TxLastBits=7
+            rc522_write(0x09, 0x26)  # REQA in FIFO
             rc522_write(0x01, 0x0C)  # Transceive
-            rc522_write(0x0D, 0x80)  # StartSend
+            rc522_write(0x0D, 0x87)  # StartSend
 
+            # Warte auf IRQ (RxIRQ, IdleIRQ oder TimerIRQ)
             for _ in range(50):
                 irq = rc522_read(0x04)
                 if irq & 0x31:
                     break
                 time.sleep(0.001)
 
-            level = rc522_read(0x0A)
-            if level >= 5:
-                uid_bytes = [rc522_read(0x09) for _ in range(5)]
-                # BCC prüfen
-                bcc = uid_bytes[0] ^ uid_bytes[1] ^ uid_bytes[2] ^ uid_bytes[3]
-                if bcc == uid_bytes[4]:
-                    uid = "".join(f"{b:02X}" for b in uid_bytes[:4])
-                    log.info(f"RFID-Karte erkannt: {uid}")
-                    return uid
+            err = rc522_read(0x06)
+            fifo = rc522_read(0x0A)
 
-        time.sleep(0.15)
+            if (irq & 0x20) and fifo >= 2 and not (err & 0x1B):
+                # ATQA empfangen — Anti-Collision starten
+                rc522_write(0x01, 0x00)
+                rc522_write(0x04, 0x7F)
+                rc522_write(0x0A, 0x80)
+                rc522_write(0x0D, 0x00)  # Volle Bytes
+                rc522_write(0x09, 0x93)  # SEL CL1
+                rc522_write(0x09, 0x20)  # NVB = 2 Bytes
+                rc522_write(0x01, 0x0C)  # Transceive
+                rc522_write(0x0D, 0x80)  # StartSend
+
+                for _ in range(50):
+                    irq = rc522_read(0x04)
+                    if irq & 0x31:
+                        break
+                    time.sleep(0.001)
+
+                level = rc522_read(0x0A)
+                if level >= 5:
+                    uid_bytes = [rc522_read(0x09) for _ in range(5)]
+                    # BCC prüfen
+                    bcc = uid_bytes[0] ^ uid_bytes[1] ^ uid_bytes[2] ^ uid_bytes[3]
+                    if bcc == uid_bytes[4]:
+                        uid = "".join(f"{b:02X}" for b in uid_bytes[:4])
+                        log.info(f"RFID-Karte erkannt: {uid}")
+                        return uid
+
+            time.sleep(0.15)
 
     return None
 
@@ -214,8 +228,12 @@ def _rc522_calc_crc(data):
     return [lo, hi]
 
 
-def _rc522_to_card(command, data):
-    """Wrapper um die Transceive-Operation. Gibt (ok, response_bytes, response_bits)."""
+def _rc522_to_card(command, data, tx_last_bits: int = 0):
+    """Wrapper um die Transceive-Operation. Gibt (ok, response_bytes, response_bits).
+
+    ``tx_last_bits`` steuert die BitFramingReg TxLastBits für Short Frames
+    (REQA/WUPA brauchen 7 Bits, alles andere volle Bytes = 0).
+    """
     import time
     wait_irq = 0x30 if command == _PCD_TRANSCEIVE else 0x10
     irq_en = 0x77 if command == _PCD_TRANSCEIVE else 0x12
@@ -224,11 +242,17 @@ def _rc522_to_card(command, data):
     rc522_write(0x04, 0x7F)           # clear all IRQ bits
     rc522_write(0x0A, 0x80)           # flush FIFO
     rc522_write(0x01, _PCD_IDLE)      # CommandReg: idle
+    # BitFramingReg: TxLastBits BEVOR wir Daten in FIFO schreiben (manche
+    # Controller latchen das sonst nicht). Wert ohne StartSend.
+    rc522_write(0x0D, tx_last_bits & 0x07)
     for b in data:
         rc522_write(0x09, b)          # fill FIFO
     rc522_write(0x01, command)        # fire command
     if command == _PCD_TRANSCEIVE:
-        rc522_write(0x0D, 0x80)       # BitFramingReg: StartSend
+        # StartSend = Bit 7, TxLastBits in Bits 0..2 — BEIDE müssen gesetzt
+        # bleiben sonst sendet der RC522 volle Bytes und das REQA-Short-Frame
+        # wird von der Karte ignoriert.
+        rc522_write(0x0D, 0x80 | (tx_last_bits & 0x07))
 
     # Poll IRQ bis Timer abgelaufen oder gewünschte IRQ gesetzt
     for _ in range(2000):
@@ -239,7 +263,7 @@ def _rc522_to_card(command, data):
             break
         time.sleep(0.0005)
 
-    rc522_write(0x0D, 0x00)           # StartSend clear
+    rc522_write(0x0D, 0x00)           # StartSend + TxLastBits clear
 
     err = rc522_read(0x06)            # ErrorReg
     if err & 0x1B:
@@ -262,9 +286,8 @@ def _rc522_to_card(command, data):
 
 
 def _rc522_request(req_mode=_PICC_REQIDL):
-    """Sendet REQA/WUPA, gibt (ok, atqa_bits)."""
-    rc522_write(0x0D, 0x07)  # BitFramingReg TxLastBits = 7
-    ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, [req_mode])
+    """Sendet REQA/WUPA als 7-Bit Short Frame, gibt (ok, atqa_bits)."""
+    ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, [req_mode], tx_last_bits=7)
     if not ok or bits != 0x10:
         return (False, 0)
     return (True, (resp[0] << 8) | resp[1] if len(resp) >= 2 else 0)
@@ -323,7 +346,6 @@ def _rc522_read_block(block_addr):
     """Liest 16 Byte aus einem authentifizierten Block. None bei Fehler."""
     buf = [_PICC_READ, block_addr]
     buf += _rc522_calc_crc(buf)
-    rc522_write(0x0D, 0x00)
     ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, buf)
     if not ok or len(resp) != 16:
         return None
@@ -331,23 +353,45 @@ def _rc522_read_block(block_addr):
 
 
 def _rc522_write_block(block_addr, data16):
-    """Schreibt 16 Byte in einen authentifizierten Block. True bei Erfolg."""
+    """Schreibt 16 Byte in einen authentifizierten Block.
+
+    Gibt (True, "") bei Erfolg zurück, sonst (False, fehlerbeschreibung).
+    Die MIFARE-Karte braucht nach einem Write ~10 ms internen Write-Cycle
+    bevor sie auf den nächsten Befehl reagiert — wir warten explizit,
+    weil manche Karten sonst den nachfolgenden Write/Verify mit NACK
+    beantworten oder gar nicht reagieren.
+    """
+    import time as _t
     if len(data16) != 16:
         raise ValueError("data16 muss genau 16 Bytes haben")
-    # Phase 1: WRITE-Befehl
+
+    # Phase 1: WRITE-Befehl (2-Byte WRITE + CRC)
     buf = [_PICC_WRITE, block_addr]
     buf += _rc522_calc_crc(buf)
-    rc522_write(0x0D, 0x00)
     ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, buf)
-    if not ok or bits != 4 or (resp[0] & 0x0F) != 0x0A:
-        return False
-    # Phase 2: Daten senden
+    if not ok:
+        return (False, f"Phase1 to_card failed (err=0x{rc522_read(0x06):02X})")
+    if bits != 4:
+        return (False, f"Phase1 wrong bit count {bits} (resp={resp})")
+    if (resp[0] & 0x0F) != 0x0A:
+        return (False, f"Phase1 NACK 0x{resp[0]:02X} (expected ACK 0x0A)")
+
+    # Phase 2: Daten senden (16 Byte + CRC)
     buf = list(data16)
     buf += _rc522_calc_crc(buf)
     ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, buf)
-    if not ok or bits != 4 or (resp[0] & 0x0F) != 0x0A:
-        return False
-    return True
+    if not ok:
+        return (False, f"Phase2 to_card failed (err=0x{rc522_read(0x06):02X})")
+    if bits != 4:
+        return (False, f"Phase2 wrong bit count {bits} (resp={resp})")
+    if (resp[0] & 0x0F) != 0x0A:
+        return (False, f"Phase2 NACK 0x{resp[0]:02X} (expected ACK 0x0A)")
+
+    # MIFARE Classic Write-Cycle: ~10 ms bis die Karte wirklich fertig ist.
+    # Ohne das Sleep antworten manche Karten beim nächsten Read/Write mit
+    # NACK weil sie noch im internen EEPROM-Write stecken.
+    _t.sleep(0.012)
+    return (True, "")
 
 
 # ---------------------------------------------------------------------------
@@ -460,70 +504,106 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
     alle Blöcke und verifiziert durch Re-Read.
 
     Gibt (erfolg, uid_oder_fehlermeldung) zurück.
+
+    Hält den globalen SPI-Lock während des gesamten Flows — der RfidService-
+    Poll-Loop pausiert solange und greift nicht auf den Bus zu.
     """
     import time as _t
 
     if not _rc522_available:
         return (False, "RC522 nicht verfügbar")
 
-    start = _t.time()
-    # Phase 1: Karte finden (REQA + Anticoll + Select)
-    uid_bytes = None
-    sak = None
-    while _t.time() - start < timeout:
-        ok, _atqa = _rc522_request(_PICC_REQIDL)
-        if not ok:
-            _t.sleep(0.1)
-            continue
-        uid5 = _rc522_anticoll()
-        if uid5 is None:
-            _t.sleep(0.1)
-            continue
-        sak = _rc522_select(uid5)
-        if sak is None:
-            _t.sleep(0.1)
-            continue
-        uid_bytes = uid5[:4]
-        break
+    log.info(f"RFID-Write gestartet für Patient {patient.get('patient_id')} — warte auf SPI-Lock")
+    with _spi_lock:
+        log.info("SPI-Lock erhalten, suche Karte …")
+        start = _t.time()
+        # Phase 1: Karte finden (REQA + Anticoll + Select)
+        uid_bytes = None
+        sak = None
+        while _t.time() - start < timeout:
+            ok, _atqa = _rc522_request(_PICC_REQIDL)
+            if not ok:
+                _t.sleep(0.1)
+                continue
+            uid5 = _rc522_anticoll()
+            if uid5 is None:
+                _t.sleep(0.1)
+                continue
+            sak = _rc522_select(uid5)
+            if sak is None:
+                _t.sleep(0.1)
+                continue
+            uid_bytes = uid5[:4]
+            break
 
-    if uid_bytes is None:
-        return (False, "Timeout — keine Karte gefunden")
+        if uid_bytes is None:
+            log.warning("RFID-Write: Phase 1 Timeout — keine Karte gefunden")
+            return (False, "Timeout — keine Karte gefunden")
 
-    uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
-    log.info(f"Karte gefunden zum Schreiben: UID {uid_hex}, SAK 0x{sak:02X}")
+        uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
+        log.info(f"Karte gefunden zum Schreiben: UID {uid_hex}, SAK 0x{sak:02X}")
 
-    # Phase 2: Payload bauen
-    payload = _build_patient_payload(patient)
+        # Phase 2: Payload bauen
+        payload = _build_patient_payload(patient)
 
-    # Phase 3: Schreiben (Sektor 1 = Blöcke 4-6, Sektor 2 = Blöcke 8-10)
-    sector_blocks = {
-        1: [4, 5, 6],
-        2: [8, 9, 10],
-    }
-    try:
-        for sector, blocks in sector_blocks.items():
-            auth_block = blocks[0]  # Auth auf irgendeinen Block des Sektors reicht
-            if not _rc522_auth(auth_block, uid_bytes):
-                return (False, f"Auth fehlgeschlagen auf Sektor {sector}")
-            for blk in blocks:
-                data = payload.get(blk)
-                if data is None:
-                    continue
-                if not _rc522_write_block(blk, data):
-                    return (False, f"Write fehlgeschlagen auf Block {blk}")
-                verify = _rc522_read_block(blk)
-                if verify != data:
-                    return (False, f"Verify fehlgeschlagen auf Block {blk}")
-        return (True, uid_hex)
-    finally:
-        _rc522_stop_crypto()
-        _rc522_halt()
+        # Phase 3: Schreiben (Sektor 1 = Blöcke 4-6, Sektor 2 = Blöcke 8-10)
+        sector_blocks = {
+            1: [4, 5, 6],
+            2: [8, 9, 10],
+        }
+
+        def _write_and_verify(sector, auth_block, blk, data) -> tuple[bool, str]:
+            """Ein Block-Write mit Re-Auth-Retry. Wenn der Write-Cycle oder
+            der Verify-Read scheitert, einmal re-authentifizieren und
+            nochmal versuchen — MIFARE verliert manchmal den Crypto1-State
+            wenn ein Befehl zum falschen Zeitpunkt kommt."""
+            for attempt in (1, 2):
+                ok, detail = _rc522_write_block(blk, data)
+                if ok:
+                    verify = _rc522_read_block(blk)
+                    if verify == data:
+                        return (True, "")
+                    detail = f"Verify mismatch (got {verify.hex() if verify else 'None'})"
+                log.warning(
+                    f"RFID-Write: Block {blk} Versuch {attempt} fehlgeschlagen: {detail}"
+                )
+                if attempt == 1:
+                    # Re-Auth für den Sektor — nach einem Fehler kann der
+                    # Crypto1-State inkonsistent sein
+                    _rc522_stop_crypto()
+                    import time as _t2
+                    _t2.sleep(0.02)
+                    if not _rc522_auth(auth_block, uid_bytes):
+                        return (False, f"Re-Auth Sektor {sector} fehlgeschlagen")
+            return (False, f"Block {blk}: {detail}")
+
+        try:
+            for sector, blocks in sector_blocks.items():
+                auth_block = blocks[0]  # Auth auf ersten Block des Sektors
+                if not _rc522_auth(auth_block, uid_bytes):
+                    log.warning(f"RFID-Write: Auth fehlgeschlagen auf Sektor {sector}")
+                    return (False, f"Auth fehlgeschlagen auf Sektor {sector}")
+                for blk in blocks:
+                    data = payload.get(blk)
+                    if data is None:
+                        continue
+                    ok, err = _write_and_verify(sector, auth_block, blk, data)
+                    if not ok:
+                        log.warning(f"RFID-Write: Fehlgeschlagen auf Block {blk}: {err}")
+                        return (False, f"Block {blk}: {err}")
+            log.info(f"RFID-Write erfolgreich: UID {uid_hex}")
+            return (True, uid_hex)
+        finally:
+            _rc522_stop_crypto()
+            _rc522_halt()
 
 
 def rc522_read_patient_from_card(timeout: float = 5.0) -> tuple[dict | None, str]:
     """
     Liest SAFIR-Patientendaten von einer Karte (nur Header + Patient-ID + Triage).
     Gibt ({fields...}, uid_hex) zurück oder (None, fehlermeldung).
+
+    Hält den globalen SPI-Lock während des gesamten Read-Flows.
     """
     import struct
     import time as _t
@@ -531,47 +611,48 @@ def rc522_read_patient_from_card(timeout: float = 5.0) -> tuple[dict | None, str
     if not _rc522_available:
         return (None, "RC522 nicht verfügbar")
 
-    start = _t.time()
-    uid_bytes = None
-    while _t.time() - start < timeout:
-        ok, _ = _rc522_request(_PICC_REQIDL)
-        if ok:
-            uid5 = _rc522_anticoll()
-            if uid5 is not None:
-                sak = _rc522_select(uid5)
-                if sak is not None:
-                    uid_bytes = uid5[:4]
-                    break
-        _t.sleep(0.1)
+    with _spi_lock:
+        start = _t.time()
+        uid_bytes = None
+        while _t.time() - start < timeout:
+            ok, _ = _rc522_request(_PICC_REQIDL)
+            if ok:
+                uid5 = _rc522_anticoll()
+                if uid5 is not None:
+                    sak = _rc522_select(uid5)
+                    if sak is not None:
+                        uid_bytes = uid5[:4]
+                        break
+            _t.sleep(0.1)
 
-    if uid_bytes is None:
-        return (None, "Timeout — keine Karte gefunden")
+        if uid_bytes is None:
+            return (None, "Timeout — keine Karte gefunden")
 
-    uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
-    try:
-        if not _rc522_auth(4, uid_bytes):
-            return (None, "Auth fehlgeschlagen")
-        b4 = _rc522_read_block(4)
-        b5 = _rc522_read_block(5)
-        b6 = _rc522_read_block(6)
-        if not b4 or not b4[:8] == SAFIR_CARD_MAGIC:
-            return (None, "Keine SAFIR-Karte (Magic fehlt)")
-        version = b4[8]
-        ts = struct.unpack_from("<I", b4, 12)[0]
-        patient_id = (b5 or b"").rstrip(b"\x00").decode("ascii", errors="ignore")
-        triage_byte = (b6 or b"\x00")[0]
-        triage_map = {1: "T1", 2: "T2", 3: "T3", 4: "T4"}
-        triage = triage_map.get(triage_byte, "")
-        return ({
-            "version": version,
-            "written_unix": ts,
-            "patient_id": patient_id,
-            "triage": triage,
-            "uid": uid_hex,
-        }, uid_hex)
-    finally:
-        _rc522_stop_crypto()
-        _rc522_halt()
+        uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
+        try:
+            if not _rc522_auth(4, uid_bytes):
+                return (None, "Auth fehlgeschlagen")
+            b4 = _rc522_read_block(4)
+            b5 = _rc522_read_block(5)
+            b6 = _rc522_read_block(6)
+            if not b4 or not b4[:8] == SAFIR_CARD_MAGIC:
+                return (None, "Keine SAFIR-Karte (Magic fehlt)")
+            version = b4[8]
+            ts = struct.unpack_from("<I", b4, 12)[0]
+            patient_id = (b5 or b"").rstrip(b"\x00").decode("ascii", errors="ignore")
+            triage_byte = (b6 or b"\x00")[0]
+            triage_map = {1: "T1", 2: "T2", 3: "T3", 4: "T4"}
+            triage = triage_map.get(triage_byte, "")
+            return ({
+                "version": version,
+                "written_unix": ts,
+                "patient_id": patient_id,
+                "triage": triage,
+                "uid": uid_hex,
+            }, uid_hex)
+        finally:
+            _rc522_stop_crypto()
+            _rc522_halt()
 
 
 def generate_patient_id() -> str:

@@ -430,16 +430,21 @@ class RfidService:
                     if self._last_uid is not None and \
                             (time.monotonic() - self._last_uid_ts) > self.DEBOUNCE_SECONDS:
                         self._last_uid = None
+                    # Kleine Pause damit ein parallel anstehender Write-Call den
+                    # SPI-Lock in shared/rfid.py ohne Starvation greifen kann
+                    await asyncio.sleep(0.05)
                     continue
 
                 now = time.monotonic()
                 if uid == self._last_uid and (now - self._last_uid_ts) < self.DEBOUNCE_SECONDS:
                     # Gleiche Karte noch im Debounce-Fenster — ignorieren
+                    await asyncio.sleep(0.05)
                     continue
 
                 self._last_uid = uid
                 self._last_uid_ts = now
                 self._emit(uid)
+                await asyncio.sleep(0.05)
         except asyncio.CancelledError:
             raise
         except Exception as e:

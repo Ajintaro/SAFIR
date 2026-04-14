@@ -381,7 +381,10 @@ async def _do_ingest(body: dict) -> dict:
     # Patient speichern/aktualisieren
     if pid in state.patients:
         existing = state.patients[pid]
-        for key in ["name", "rank", "triage", "flow_status", "unit", "blood_type"]:
+        # rfid_tag_id mit in die Scalar-Merge-Liste aufnehmen — nötig damit
+        # der Jetson uns die RFID-UID nach dem Write-Flow zusenden kann
+        # und der Omnikey-Scan am Surface den Patient wiederfindet.
+        for key in ["name", "rank", "triage", "flow_status", "unit", "blood_type", "rfid_tag_id"]:
             val = patient.get(key)
             if val:
                 existing[key] = val
@@ -462,6 +465,71 @@ async def _do_ingest(body: dict) -> dict:
 async def ingest_from_device(body: dict):
     """Empfängt Patientendaten von einem Feldgerät (Jetson/BAT)."""
     return await _do_ingest(body)
+
+
+# ---------------------------------------------------------------------------
+# Omnikey RFID Lookup — Kern-Feature für die Role 1 Leitstelle
+# ---------------------------------------------------------------------------
+async def _handle_rfid_uid(uid: str) -> dict:
+    """Sucht einen Patienten anhand einer RFID-UID und broadcastet
+    das Ergebnis an alle verbundenen Clients. Wird sowohl vom
+    Omnikey-Background-Loop als auch vom manuellen /api/rfid/lookup
+    Endpoint aufgerufen.
+
+    Match erfolgt gegen ``patient["rfid_tag_id"]`` — das Feld das der
+    Jetson nach erfolgreichem RC522-Write setzt und via /api/ingest an
+    uns schickt.
+    """
+    uid_norm = (uid or "").strip().upper()
+    patient = None
+    patient_id = None
+
+    # Linearsuche ist OK — selbst bei 1000 Patienten <1 ms
+    for pid, p in state.patients.items():
+        tag = (p.get("rfid_tag_id") or "").strip().upper()
+        if tag and tag == uid_norm:
+            patient = p
+            patient_id = pid
+            break
+
+    result = {
+        "type": "rfid_scan_result",
+        "uid": uid_norm,
+        "found": patient is not None,
+        "patient_id": patient_id,
+        "patient": patient,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    # Event in den Feed damit man den Scan im Verlauf sieht
+    if patient:
+        add_event(
+            "rfid_scan",
+            f"Karte gelesen: {patient.get('name', 'Unbekannt')} ({uid_norm})",
+            patient_id=patient_id,
+        )
+    else:
+        add_event("rfid_scan", f"Unbekannte Karte gelesen: {uid_norm}")
+
+    await broadcast(result)
+    return result
+
+
+@app.post("/api/rfid/lookup")
+async def rfid_lookup(body: dict):
+    """Manueller Lookup-Endpoint — nimmt eine UID entgegen und
+    broadcastet das Match-Ergebnis. Für Tests per ``curl`` oder als
+    Fallback wenn pyscard/Omnikey nicht verfügbar ist.
+
+    Beispiel:
+        curl -X POST http://ai-station:8080/api/rfid/lookup \\
+             -H 'Content-Type: application/json' \\
+             -d '{"uid":"8AEF10C3"}'
+    """
+    uid = (body.get("uid") or "").strip()
+    if not uid:
+        return {"status": "error", "error": "uid fehlt"}
+    return await _handle_rfid_uid(uid)
 
 
 # ---------------------------------------------------------------------------
@@ -1105,4 +1173,20 @@ async def startup():
     asyncio.create_task(_heartbeat_loop())
     asyncio.create_task(_system_stats_loop())
     asyncio.create_task(_oled_loop())
+
+    # Omnikey RFID Reader: Background-Task polled PC/SC-Reader und feuert
+    # _handle_rfid_uid() pro gelesener Karte. Bricht nicht wenn pyscard
+    # fehlt — das Modul loggt eine Warnung und return'ed dann.
+    try:
+        from backend.omnikey_reader import start_reader_loop
+    except ImportError:
+        try:
+            from omnikey_reader import start_reader_loop  # wenn backend/ im path
+        except ImportError as e:
+            print(f"  Omnikey-Reader Modul nicht importierbar: {e}")
+            start_reader_loop = None
+    if start_reader_loop is not None:
+        asyncio.create_task(start_reader_loop(_handle_rfid_uid))
+        print("  Omnikey Reader-Task gestartet (wartet auf pyscard/Reader)")
+
     print("Warte auf Verbindungen von Feldgeräten...")

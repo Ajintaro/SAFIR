@@ -958,6 +958,18 @@
         .role1-tp-patient.t1 { animation: r1-pulse-t1 2s ease-in-out infinite; }
         @keyframes r1-pulse-t1 { 0%,100% { background: transparent; } 50% { background: rgba(255,0,0,0.06); } }
 
+        /* RFID-Scan-Highlight: Wenn das Surface per Omnikey eine Karte
+           liest, pulsiert die zugehörige Row in der Patientendatenbank
+           in Cyan damit der Demonstrator sie sofort sieht. */
+        tr.rfid-hit {
+            animation: rfid-hit-pulse 1.2s ease-in-out 4;
+            box-shadow: inset 0 0 0 2px rgba(0,210,255,0.9);
+        }
+        @keyframes rfid-hit-pulse {
+            0%, 100% { background-color: rgba(0,210,255,0.05); }
+            50%      { background-color: rgba(0,210,255,0.35); }
+        }
+
         /* Patient Detail Modal */
         .r1-detail-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -1449,10 +1461,6 @@
                     <button class="btn" onclick="sendToBackend()" style="padding:8px 14px;font-size:12px;background:#2ECC71;border-color:#2ECC71;color:#fff" id="btn-send-backend">&#9889; Alle melden</button>
                     <button class="btn" onclick="rfidBatchWrite()" style="padding:8px 14px;font-size:12px;background:var(--mil-tan,#c8b878);border-color:var(--mil-tan,#c8b878);color:#000" id="btn-rfid-batch" title="Alle Patienten ohne RFID-Karte nacheinander auf Karten schreiben">&#128179; RFID-Batch</button>
                     <button class="btn" onclick="exportDocx()" style="padding:8px 14px;font-size:12px">&#128196; Export</button>
-                    <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-                        <button class="btn btn-cgi" onclick="rfidScan()" style="padding:6px 12px;font-size:11px;display:flex;align-items:center;gap:4px" id="rfid-scan-btn"><span style="font-size:14px">&#128179;</span> RFID</button>
-                        <input type="text" id="rfid-input" placeholder="Tag-ID" style="width:120px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:10px;font-family:monospace">
-                    </div>
                 </div>
 
                 <!-- Patientenliste (Hauptbereich) -->
@@ -1469,6 +1477,7 @@
                 <input id="medic" value="">
                 <input id="patient-triage" value="">
                 <input id="patient-name" value="">
+                <input id="rfid-input" value="">
                 <span id="transcript-count"></span>
                 <div id="transcript-list"></div>
                 <span id="fz-patient-id"></span>
@@ -2592,6 +2601,12 @@
                     if (rfidEl) rfidEl.value = msg.tag_id || '';
                 }
                 break;
+            case 'rfid_scan_result':
+                // Omnikey am Surface hat eine Karte gelesen — Patienten-DB
+                // öffnen und den Treffer visuell highlighten. Demo-Beweis
+                // dafür dass die Patient-ID auf der Karte steht.
+                handleRfidScanResult(msg);
+                break;
             case 'rfid_prompt':
                 showToast('RFID-Tag scannen und am Patienten befestigen', '&#128179;');
                 break;
@@ -2954,25 +2969,91 @@
         }
     }
 
-    // Admin-Tabelle "Öffnen": Patient als aktiv setzen, zur Aufnahme-Seite
-    // navigieren (im Fahrzeug-Modus), Karte auffalten.
-    async function openPatientFromAdmin(pid) {
+    // Admin-Tabelle "Öffnen": Zeigt ein Detail-Modal mit allen Patient-
+    // Infos aus dem lokalen Cache. Kein API-Call, keine Seiten-Navigation
+    // — funktioniert sowohl im Jetson-Feld-Dashboard als auch auf der
+    // Surface-Leitstelle (beide nutzen dasselbe Template).
+    function openPatientFromAdmin(pid) {
         const p = patients[pid];
         if (!p) {
             showToast('Patient nicht im Cache', '&#9888;');
             return;
         }
-        await selectPatient(pid);
-        navigateTo('recording');
-        // Fahrzeug-Modus und Patient-Card aufklappen
-        try { setMode('fahrzeug'); } catch (e) {}
-        setTimeout(() => {
-            const el = document.querySelector(`details[data-pid="${pid}"]`);
-            if (el) {
-                el.open = true;
-                el.scrollIntoView({behavior: 'smooth', block: 'center'});
-            }
-        }, 200);
+        const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+        const triageColor = (window.TRIAGE_COLORS && window.TRIAGE_COLORS[p.triage]) || '#555';
+        const fmtDate = iso => {
+            if (!iso) return '—';
+            try { const d = new Date(iso); return d.toLocaleString('de-DE'); } catch (e) { return iso; }
+        };
+
+        // Vitals
+        const v = p.vitals || {};
+        const vitalsRows = [
+            ['Puls', v.pulse], ['RR', v.bp], ['Atmung', v.resp_rate], ['SpO₂', v.spo2]
+        ].filter(([, val]) => val).map(([k, val]) =>
+            `<tr><td style="color:var(--text-dim);padding:3px 10px 3px 0">${k}</td><td>${esc(val)}</td></tr>`
+        ).join('');
+
+        // Verletzungen
+        const injuriesHtml = (p.injuries || []).length
+            ? '<ul style="margin:4px 0;padding-left:18px">' + p.injuries.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>'
+            : '<span style="color:var(--text-dim)">—</span>';
+
+        // Transkripte (inkl. denen aus patientTranscripts store)
+        const tx = (p.transcripts && p.transcripts.length ? p.transcripts : (patientTranscripts[pid] || []));
+        const txHtml = tx.length
+            ? tx.map(t => `<div style="margin:6px 0;padding:8px;background:var(--bg-elevated);border-left:2px solid var(--cgi-red);border-radius:var(--radius)"><div style="font-size:9px;color:var(--text-dim)">${esc(t.time || '')}</div><div style="font-size:11px;white-space:pre-wrap">${esc(t.text || '')}</div></div>`).join('')
+            : '<div style="color:var(--text-dim);font-size:11px">Keine Aufnahmen</div>';
+
+        // Timeline
+        const tlHtml = (p.timeline || []).length
+            ? '<ul style="margin:4px 0;padding-left:18px;font-size:11px">' + p.timeline.map(e =>
+                `<li><span style="color:var(--text-dim)">${esc(e.time ? (e.time.split('T')[1] || e.time).slice(0,8) : '')}</span> — <strong>${esc(e.event)}</strong> ${esc(e.details || '')}</li>`
+              ).join('') + '</ul>'
+            : '<span style="color:var(--text-dim)">—</span>';
+
+        // Modal erzeugen / ersetzen
+        let modal = document.getElementById('patient-detail-modal');
+        if (modal) modal.remove();
+        modal = document.createElement('div');
+        modal.id = 'patient-detail-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        modal.innerHTML = `
+            <div style="background:var(--bg-surface);border:2px solid var(--mil-tan,#c8b878);border-radius:var(--radius-lg);max-width:640px;width:100%;max-height:90vh;overflow-y:auto;padding:16px">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+                    <span style="display:inline-block;min-width:36px;padding:4px 8px;background:${triageColor};color:#fff;font-weight:800;text-align:center;border-radius:4px;font-size:12px">${esc(p.triage || '--')}</span>
+                    <h3 style="margin:0;font-size:17px;color:var(--text-primary)">${esc(p.name || 'Unbekannt')}${p.rank ? ' <span style="font-size:12px;color:var(--text-dim)">('+esc(p.rank)+')</span>' : ''}</h3>
+                    <button onclick="document.getElementById('patient-detail-modal').remove()" style="margin-left:auto;background:none;border:none;color:var(--text-dim);font-size:24px;cursor:pointer;padding:0 8px">×</button>
+                </div>
+                <div style="font-size:11px;color:var(--text-dim);font-family:monospace;margin-bottom:12px">
+                    ${esc(p.patient_id)} · erstellt ${fmtDate(p.timestamp_created)} ·
+                    ${p.analyzed ? '<span style="color:#5DADE2">analysiert</span>' : '<span style="color:var(--text-dim)">nicht analysiert</span>'} ·
+                    ${p.synced ? '<span style="color:#2ECC71">gemeldet</span>' : '<span style="color:var(--mil-tan,#c8b878)">Entwurf</span>'}
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px">
+                    <div>
+                        <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">VITALS</div>
+                        ${vitalsRows ? '<table style="font-size:11px">' + vitalsRows + '</table>' : '<span style="color:var(--text-dim);font-size:11px">—</span>'}
+                    </div>
+                    <div>
+                        <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">VERLETZUNGEN</div>
+                        <div style="font-size:11px">${injuriesHtml}</div>
+                    </div>
+                </div>
+                <div style="margin-bottom:12px">
+                    <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">TRANSKRIPTE</div>
+                    ${txHtml}
+                </div>
+                <div>
+                    <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">TIMELINE</div>
+                    ${tlHtml}
+                </div>
+            </div>`;
+        // Klick auf Overlay (nicht auf Box) schließt das Modal
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+        document.body.appendChild(modal);
     }
 
     async function analyzePendingById(id) {
@@ -3877,6 +3958,59 @@
         });
     }
 
+    // ---- Omnikey RFID-Scan (Leitstelle/Surface) ----
+    // Wird aufgerufen wenn das Backend via WS ein "rfid_scan_result" Event
+    // schickt (Quelle: HID Omnikey am Surface). Öffnet die Patienten-DB,
+    // stellt den Row-Filter so ein dass der Treffer sichtbar ist,
+    // scrollt zu ihm und lässt ihn in Cyan aufblinken.
+    function handleRfidScanResult(msg) {
+        const uid = (msg.uid || '').toUpperCase();
+
+        if (!msg.found || !msg.patient_id) {
+            showToast('RFID-Karte unbekannt: ' + uid, '&#9888;');
+            return;
+        }
+
+        // Patient in den lokalen Store mergen (falls das Surface uns einen
+        // frischeren Stand liefert als wir kennen)
+        if (msg.patient && msg.patient.patient_id) {
+            patients[msg.patient.patient_id] = msg.patient;
+        }
+
+        const pid = msg.patient_id;
+        const patient = patients[pid] || msg.patient;
+        const name = (patient && patient.name) || pid;
+
+        // Falls der Patient ein Entwurf ist, den Filter auf "Entwürfe anzeigen"
+        // stellen damit die Row überhaupt sichtbar ist
+        const showDraftsCheckbox = document.getElementById('admin-patients-show-drafts');
+        if (showDraftsCheckbox && patient && !patient.synced && !showDraftsCheckbox.checked) {
+            showDraftsCheckbox.checked = true;
+        }
+
+        // Zur Patientendatenbank navigieren (rendered die Tabelle neu)
+        navigateTo('patients');
+
+        // Nach dem Render: Row finden, scrollen, Highlight-Klasse setzen
+        setTimeout(() => {
+            const row = document.getElementById('admin-row-' + pid);
+            if (!row) {
+                console.warn('[RFID] Row nicht gefunden für', pid);
+                return;
+            }
+            try { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+            // Bestehende Highlights entfernen (falls schnell hintereinander gescannt)
+            document.querySelectorAll('tr.rfid-hit').forEach(r => r.classList.remove('rfid-hit'));
+            // Force-reflow für Retrigger der Animation
+            void row.offsetWidth;
+            row.classList.add('rfid-hit');
+            // Nach 5 s den Highlight wieder abnehmen
+            setTimeout(() => row.classList.remove('rfid-hit'), 5000);
+        }, 120);
+
+        showToast('RFID: ' + name + ' (' + uid + ')', '&#128179;', 'voice');
+    }
+
     // ---- Verwaltung > Patienten (Datenbank-Ansicht) ----
     // Standard: nur synced=True zeigen (= "offiziell in der Datenbank").
     // Mit Toggle "Entwürfe anzeigen" werden auch drafts sichtbar.
@@ -3921,7 +4055,7 @@
 
             const rfidShort = (p.rfid_tag_id || '').slice(0, 10) || '—';
             return `
-                <tr style="border-bottom:1px solid var(--border)">
+                <tr id="admin-row-${p.patient_id}" data-pid="${p.patient_id}" style="border-bottom:1px solid var(--border);transition:background-color 0.3s">
                     <td style="padding:7px 10px;font-family:monospace;color:var(--text-dim)">${fmtTime(p.timestamp_created)}</td>
                     <td style="padding:7px 10px;font-family:monospace;font-size:10px">${p.patient_id || ''}</td>
                     <td style="padding:7px 10px">${p.name || 'Unbekannt'}${p.rank ? ' <span style="color:var(--text-dim);font-size:10px">('+p.rank+')</span>' : ''}</td>
@@ -4026,11 +4160,16 @@
 
     async function selectPatient(pid) {
         const res = await api('/api/patient/' + pid + '/select', 'POST');
-        if (res.status === 'ok') {
+        if (res && res.status === 'ok') {
             const pRes = await api('/api/patient/' + pid);
-            if (!pRes.error) {
+            // Robuster Check: Surface-Backend hat den GET-Endpoint nicht
+            // (gibt 404 / {detail: "Not Found"} zurück) — wir überschreiben
+            // den Cache NUR wenn wirklich ein valides Patient-Objekt kommt.
+            if (pRes && pRes.patient_id && !pRes.error && !pRes.detail) {
                 patients[pid] = pRes;
                 setActivePatient(pRes);
+            } else if (patients[pid]) {
+                setActivePatient(patients[pid]);
             }
         }
     }

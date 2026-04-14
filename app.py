@@ -1197,12 +1197,28 @@ async def voice_write_card():
                 "event": "rfid_written",
                 "details": f"Karte UID {result} von {op_label}",
             })
+            # UID persistent im Patient-Record ablegen — damit das Surface
+            # den Patient per UID-Lookup wiederfinden kann (Omnikey-Flow).
+            patient["rfid_tag_id"] = result
+            patient["timestamp_updated"] = datetime.now().isoformat()
+            state.rfid_map[result] = pid
             state.last_rfid_uid = result
             await broadcast({
                 "type": "rfid_written",
                 "patient_id": pid,
                 "uid": result,
             })
+            # Den gesamten Patient-Record neu broadcasten, damit Frontend
+            # die RFID-Spalte in der Datenbank-Tabelle aktualisiert und das
+            # Surface die UID ebenfalls mitbekommt.
+            await broadcast({"type": "patient_update", "patient": patient})
+            # Direkt ans Surface pushen (auch wenn schon synced) — sonst
+            # kennt das Surface die neue UID nicht und kann sie beim
+            # Omnikey-Scan nicht zuordnen.
+            try:
+                await push_single_patient(patient)
+            except Exception as e:
+                print(f"[RFID] push_single_patient nach Write fehlgeschlagen: {e}", flush=True)
             await hardware_service.flash_success(0.7)
             tts.speak(f"Karte {idx + 1} fertig")
             written += 1
@@ -2566,6 +2582,49 @@ async def _handle_backend_event(msg: dict):
                 state.patients[pid]["synced"] = True
             await broadcast({"type": "transfer_update", "patient_id": pid,
                              "transfer_state": new_state})
+
+    elif mtype == "rfid_scan_result":
+        # Surface hat eine RFID-Karte am Omnikey eingelesen und liefert
+        # das Matching-Ergebnis. Wir reichen das unverändert ans lokale
+        # Frontend durch — der Jetson selbst braucht den State nicht,
+        # aber das Dashboard soll die Patientendatenbank öffnen und
+        # den Treffer highlighten.
+        await broadcast(msg)
+
+
+async def push_single_patient(patient: dict) -> bool:
+    """Pusht genau einen Patienten sofort ans Surface-Backend (z.B. direkt
+    nach RFID-Write damit das Surface die neue UID kennt und beim
+    Omnikey-Scan zuordnen kann). Läuft auch wenn der Patient schon
+    ``synced`` ist — das Surface-Merge akzeptiert Updates."""
+    cfg = load_config()
+    backend_url = cfg.get("backend", {}).get("url", "")
+    if not backend_url:
+        return False
+
+    transfer = copy.deepcopy(TRANSFER_SCHEMA)
+    transfer["source_device"] = "jetson"
+    transfer["device_id"] = cfg.get("device_id", "jetson-01")
+    transfer["unit_name"] = cfg.get("unit_name", "")
+    transfer["timestamp"] = datetime.now().isoformat()
+    transfer["patient"] = patient
+    transfer["flow_status"] = patient.get("flow_status", "")
+    transfer["rfid_tag_id"] = patient.get("rfid_tag_id", "")
+
+    try:
+        # httpx-Post in Executor — sonst blockiert der Event-Loop während
+        # des HTTP-Calls (das würde den Taster/OLED verzögern).
+        loop = asyncio.get_event_loop()
+        def _do_post():
+            return httpx.post(f"{backend_url}/api/ingest", json=transfer, timeout=6)
+        response = await loop.run_in_executor(None, _do_post)
+        if response.status_code == 200:
+            patient["synced"] = True
+            return True
+        print(f"[push_single] HTTP {response.status_code} für {patient.get('patient_id')}", flush=True)
+    except Exception as e:
+        print(f"[push_single] Fehler: {e}", flush=True)
+    return False
 
 
 async def sync_all_patients() -> dict:
