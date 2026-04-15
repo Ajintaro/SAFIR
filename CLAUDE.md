@@ -1,5 +1,19 @@
 # SAFIR — Projekt-Kontext für Claude Code
 
+> ## 🟢 AKTUELLER STAND — IMMER ZUERST `docs/PROGRESS.md` LESEN
+>
+> Wir arbeiten gerade an einem mehrphasigen Implementierungsplan für die
+> AFCEA-Messe (in 3–4 Wochen). **Phasen 1–4 sind komplett, Phase 5 ist
+> als nächstes dran.** Wenn der User sagt „weiter mit dem Plan" oder
+> „mach weiter wo wir gestern aufgehört haben", lies SOFORT
+> `docs/PROGRESS.md` — dort steht der vollständige Status (Commits,
+> Befunde, Limitations, nächste Schritte) und eine Schritt-für-Schritt-
+> Anleitung wie ich die Arbeit fortsetzen soll.
+>
+> **Plan-Datei lokal:** `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md`
+> (lokal, nicht im Repo, aber im Jetson-/Surface-Repo gespiegelt durch
+> `docs/PROGRESS.md`).
+
 ## Was ist SAFIR?
 Sprachgestützte Assistenz für Informationserfassung in der Rettungskette. KI-gestütztes Dokumentationssystem
 entlang der Rettungskette der Bundeswehr. Erste Demo für Bundeswehr-Delegation war am **19.03.2026**.
@@ -125,6 +139,22 @@ MacBook kann sich verbinden: `ssh jetson@jetson-orin` oder `ssh jetson@100.126.1
 | 3 | Backend-Sync finalisieren | ✓ bi-direktional (`/api/ingest` + WS-Client) |
 | 4 | Headless-Boot für Messe | ✓ `systemctl set-default multi-user.target` + Autostart via `safir.service` |
 
+## Status AFCEA-Implementierungsplan (siehe `docs/PROGRESS.md`)
+
+| Phase | Inhalt | Status |
+|---|---|---|
+| **1** | Quick Wins (Theme, Reset, Triage Role 0 raus, Aufnahme-Bug) | ✓ |
+| **2** | Segmenter num_ctx + Post-Merge 3 (Defense in Depth). 3B nicht möglich neben Whisper. | ✓ |
+| **3** | Demo-Story (Sim raus, BAT-Standort + Rückfahrt, Testdaten-Generator) | ✓ |
+| **4.1** | RFID-Sektor-2-Bug behoben (Hardware-Reset zwischen Sektoren) | ✓ |
+| **4.2** | OLED NETZWERK-Seite mit großen Fonts | ✓ |
+| **4.3** | Audio Multi-Output + Hot-Plug-Watcher | ✓ (mit Caveat: neuer Insert braucht Service-Restart) |
+| **5** | 9-Liner Voice-Recognition (Template + Auto-Detect + UI) | ⏳ NEXT |
+| **6** | Export & Interoperabilität (DOCX/PDF/JSON/XML) | pending |
+| **7** | Encryption-Story + Use-Case-Vision-Page | pending |
+| **8** | Remote Audio MVP (Browser → WebSocket → Jetson) | pending |
+| **9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | pending |
+
 ## Multi-Patient-Flow (BAT-Workflow)
 
 1. Sanitäter **startet Aufnahme** (Taster B lang / Sprachbefehl "Neuer Patient" / "Aufnahme starten") — kein Patient-Record wird vorab angelegt
@@ -136,7 +166,41 @@ MacBook kann sich verbinden: `ssh jetson@jetson-orin` oder `ssh jetson@100.126.1
 7. **RFID-Batch schreiben** (OLED "RFID schreiben" / Sprachbefehl / Fahrzeug-GUI-Button) — iteriert durch alle Patienten ohne `rfid_written`-Timeline-Event, OLED/TTS führt Karte für Karte durch
 8. **Melden** sendet alle `analyzed && !synced` Patienten via `POST /api/ingest` an das Surface-Backend. Surface broadcastet via WS zurück an alle BATs.
 
-Triage wird **manuell** gesetzt (Triage-Buttons im Dashboard oder Sprachbefehl "Triage rot/gelb/grün/blau") — Qwen erfindet sonst Werte die nicht im Text stehen.
+Triage wird **erst in Role 1 (Rettungsstation)** manuell gesetzt — Triage-Buttons im Dashboard oder Sprachbefehl "Triage rot/gelb/grün/blau". In Phase 0 (BAT) sind Triage-Updates **deaktiviert** (`voice_set_triage` und `update_patient` ignorieren das Feld bei `current_role == "phase0"`, TTS-Hinweis: "Triage erfolgt erst in der Rettungsstation"). Qwen erfindet sonst Werte die nicht im Text stehen — deshalb auch keine Auto-Triage im LLM-Prompt.
+
+## Demo-Story: BAT-Standort + Rückfahrt zur Rettungsstation (Phase 3)
+
+Ersetzt die alte Frontend-Simulation. Voreingestellte Bonn-Standorte
+(Beuel, Hardthöhe, Bad Godesberg, Endenich, Rheinaue) als Dropdown im
+Fahrzeug-Modus. Sanitäter wählt Standort → drückt "Rückfahrt zur
+Rettungsstation" → BAT-Marker bewegt sich animiert (40 Steps × 1.5 s
+= 60 s) auf der Surface-Karte zur Rettungsstation
+(`config.json:rescue_station`, default 50.7374/7.0982 Bonn).
+Voice-Command "rückfahrt zur rettungsstation" mit Variants. API:
+`/api/bat/position/presets`, `/api/bat/position`, `/api/bat/position/set`,
+`/api/bat/return-to-station`. Background-Task: `bat_position_loop()`.
+
+## OLED-Pages (4 Stück seit Phase 4.2)
+
+`PAGES = ["models", "network", "operator", "patient"]`. Wechseln per
+Taster A (rot, Pin 11) Short-Press. NETZWERK-Seite zeigt WLAN-SSID, IP,
+Tailscale-Status, Backend-Erreichbarkeit mit großen Fonts (FONT_LG/MD,
+nicht FONT_SM). Datenquelle: `oled_menu.network_info`, alle 2 s
+befüllt vom `_oled_update_loop` via `_get_wifi_status()`,
+`_get_tailscale_state()`, `_get_eth_ip()`, `_get_primary_ip()`.
+
+## Audio Multi-Output (Phase 4.3)
+
+`shared/tts.py` spielt parallel auf ALLEN erkannten Speaker-Devices
+(`_output_devices` als Liste, ein Thread pro Device). USB-Headset +
+Lautsprecher gleichzeitig — der Messebesucher mit Headset hört
+genauso wie die Umstehenden über den Lautsprecher.
+Hot-Plug-Watcher (`_audio_device_watcher_loop`) überwacht
+`/proc/asound/cards` alle 3 s und triggert Refresh + OLED-/TTS-
+Notification. **Bekannte Limitation**: Beim Einstecken eines neuen
+USB-Audio-Devices während des Betriebs wird es OLED+TTS angekündigt,
+aber Multi-Output greift erst nach `systemctl restart safir`
+(PortAudio cached die ALSA-Geräteliste auf Linux hartnäckig).
 
 ## Konventionen
 - Deutsche Umlaute verwenden (ä, ö, ü, ß) — NICHT ae, oe, ue, ss

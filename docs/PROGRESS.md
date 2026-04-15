@@ -1,0 +1,272 @@
+# SAFIR — Implementierungs-Fortschritt vor AFCEA-Messe
+
+> **Für Claude Code beim Session-Start lesen.** Wenn der User sagt
+> „mit dem Plan fortfahren" oder „weiter mit Phase X" — diese Datei ist
+> die Wahrheit über aktuelle Phasen-Status, Befunde, Limitations und
+> nächste Schritte. Der ursprüngliche Plan liegt unter
+> `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md` (lokal,
+> nicht im Repo).
+
+**Letzte Session:** 15.04.2026 (~15:00–23:15)
+**Demo-Ziel:** AFCEA-Messe in 3–4 Wochen
+**Nächste Aktion:** Phase 5 — 9-Liner Voice-Recognition
+
+---
+
+## Wie wir arbeiten
+
+- **Surface** = Microsoft Surface, Hostname `ai-station`, Tailscale `100.101.80.64`. Lokales Repo unter `C:\Users\the_s\Documents\SAFIR`. Hier sitze ich (Claude Code) und editiere den Code.
+- **Jetson** = NVIDIA Jetson Orin Nano, Hostname `jetson-orin`, Tailscale `100.126.179.27`. Repo unter `/home/jetson/cgi-afcea-san/`. Erreichbar via `ssh jetson@jetson-orin` (Tailscale SSH + Public-Key-Auth, kein Passwort nötig).
+- **Workflow**: Lokal auf Surface editieren → committen → push → Jetson `git pull` → `sudo systemctl restart safir`. Manchmal direkt-Upload via `ssh jetson "cat > path" < file` für schnelle Test-Iteration, dann Commit nach Erfolg.
+- Beide Repos teilen sich `templates/index.html` im Repo-Root, das wird vom Backend bevorzugt vor `backend/templates/index.html` gerendert.
+
+## Tools die der User bereitstellt
+
+- **Hardware-Tests am Jetson**: User sitzt physisch beim Jetson. Bei RFID/OLED/Audio-Tests stoppe ich `safir.service`, führe Diagnose-Skript aus, User reagiert (Karte auflegen, Stecker rein/raus), ich starte Service neu. **TTS-Audio-Signale verwenden** für User-Prompts statt Bildschirm-Watch — der User hört das Jetson direkt.
+- **Voice-Trigger der RFID-Karte für Audio-Tests**: User wurde wegen Tailscale-SSH-Auth-Cache-Ablauf manchmal aufgefordert, einen Browser-Auth-Link zu klicken (https://login.tailscale.com/a/...).
+
+## Architektur-Entscheidungen (User-bestätigt)
+
+| Entscheidung | Wahl | Begründung |
+|---|---|---|
+| Zeitrahmen | 3–4 Wochen | Komfortabel, alles im Scope außer Custom-Crypto |
+| Remote Audio (Phase 8) | MVP-Variante | Browser-Mic via WebSocket → Jetson, ~2 Tage |
+| Encryption (Phase 7) | Talking Points + Architektur-Diagramm | Tailscale-WireGuard erklären, kein Custom-Crypto |
+| PDF-Library (Phase 6) | reportlab | Self-contained, Jetson-tauglich |
+| Segmenter-Modell | qwen2.5:1.5b mit Post-Merge 3 | 3B getestet, sprengt VRAM neben Whisper |
+
+---
+
+## Phasen-Übersicht
+
+| Phase | Inhalt | Status | Commit |
+|---|---|---|---|
+| **Setup** | WIP-Änderungen auf Jetson verworfen, beide Repos clean | ✅ DONE | (kein commit) |
+| **Phase 1** | Quick Wins: Bundeswehr-Theme, Datenbereinigung, Triage Role 0 raus, Aufnahme-Bug | ✅ DONE | `ecebe02` |
+| **Phase 2** | Segmenter-Migration (3B versucht → Rollback), num_ctx + Post-Merge 3 | ✅ DONE (mit Caveat) | `34aafba` + `d13ea38` |
+| **Phase 3** | Demo-Story Refactor: Sim raus, BAT-Standort, Rückfahrt-Animation, Testdaten-Generator | ✅ DONE | `e638323` |
+| **Phase 4.1** | RFID Sektor-2-Bug behoben (Hardware-Reset zwischen Sektoren) | ✅ DONE | `d878b48` |
+| **Phase 4.2** | OLED NETZWERK-Seite mit großen Fonts | ✅ DONE | `a17e7aa` |
+| **Phase 4.3** | Audio Multi-Output + Hot-Plug-Watcher (mit Restart-Hinweis) | ✅ DONE (mit Caveat) | `5e1535a` |
+| **Phase 5** | 9-Liner Voice-Recognition (Template + Auto-Detect + UI) | ⏳ NEXT | — |
+| **Phase 6** | Export & Interoperabilität (DOCX/PDF/JSON/XML) | pending | — |
+| **Phase 7** | Encryption-Story + Use-Case-Vision-Page | pending | — |
+| **Phase 8** | Remote Audio MVP (Browser → WebSocket → Jetson) | pending | — |
+| **Phase 9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | pending | — |
+
+**Git-Stand zuletzt:** `5e1535a` (origin/main). Jetson ist auf demselben Commit, Service läuft.
+
+---
+
+## Was Phase 1–4 gemacht haben (Details)
+
+### Phase 1 — Quick Wins (`ecebe02`)
+
+- **1.1 Bundeswehr-Olive Theme freigeschaltet**: CSS-Variablen waren schon vollständig in `templates/index.html` Zeilen 92–117, JS-Maps `THEMES`/`THEME_ICONS`/`THEME_LABELS` enthielten `bundeswehr` schon — fehlte nur die `<option>` im Settings-Dropdown. 1-Zeilen-Fix.
+- **1.2 `/api/data/reset` vervollständigt**:
+  - **Jetson `app.py`**: leerte vorher nur 4 von ~10 State-Feldern. Jetzt zusätzlich: `pending_transcripts`, `sessions`, `vosk_command_queue`, `audio_chunks`, `current_operator`, `last_rfid_uid`, `peers`. Sendet auch `operator_changed`-Broadcast für UI-Logout.
+  - **Surface `backend/app.py`**: `state.peers` wurde übersehen → alte BAT-Marker blieben nach Reset auf der Karte. Jetzt mit drin.
+- **1.3 Triage aus Role 0 entfernt** (User-Wunsch: Triage erfolgt erst in Rettungsstation):
+  - `voice_set_triage()` und `update_patient()` blocken Triage-Updates wenn `current_role == "phase0"`. TTS-Hinweis: „Triage erfolgt erst in der Rettungsstation".
+  - Frontend: Triage-Buttons im Fahrzeug-Modus werden nur gerendert wenn `p.current_role !== 'phase0'` (siehe `templates/index.html` Patient-Card-Render).
+  - Hilfetext im Sprachbefehl-Guide angepasst.
+- **1.4 `_split_sentences` Aufnahme-Bug**: Kurze End-Fragmente (< 15 chars wie „Aufnahme") werden jetzt auch dann ans vorherige angehängt wenn das vorherige bereits ≥ 30 chars hat. Verhindert dass „Aufnahme" als 4. Patient rausfällt.
+
+### Phase 2 — Segmenter-Migration (`34aafba` + Rollback `d13ea38`)
+
+- **2.1 `_call_ollama` `num_ctx` Parameter eingebaut**, default 2048, lesbar aus `config.json` als `ollama.num_ctx`. Auch im `/api/config` Hot-Reload-Pfad.
+- **2.2 + 2.5 Modell-Wechsel auf qwen2.5:3b versucht und gerollback**:
+  - 3B startete mit num_ctx=2048 (Hybrid 40% CPU / 60% GPU, 2.6 GB), aber Whisper-Modell konnte danach nicht mehr geladen werden (`whisper_init_from_file_with_params_no_state` failed → `WARNUNG: Modell konnte nicht geladen werden!`). Free RAM nur 110 MB nach 3B-Load — kein 1.2 GB zusammenhängender Block für Whisper.
+  - Rollback: `config.json` wieder auf `qwen2.5:1.5b` (`num_ctx=2048` bleibt), `safir-start.sh` Preload zurück auf 1.5b.
+  - **Lessons-Learned-Kommentar in `safir-start.sh`** dokumentiert den Befund und die kritische `num_ctx`-Setting.
+- **2.3 Post-Merge 3 in `segment_transcript_to_patients`**: Defense-in-Depth gegen LLM-Halluzinationen. Jetson `app.py` ~Z. 1890. Segmente ohne explizites Patient-Start-Signal UND ohne Rang/Patient-Marker werden ans vorherige gemerged. Fängt z.B. „Wir müssten Blutkonserven bereithalten" als Fortsetzung von Meyer ab.
+- **`scripts/ab_test_segmenter.py`** als Tool für künftige Modell-Vergleiche. Stoppt safir nicht, callt Ollama direkt mit beiden Modellen + identischen Optionen.
+
+### Phase 3 — Demo-Story Refactor (`e638323`)
+
+- **3.1 Simulation-Button entfernt** (sowohl Surface backend `/api/simulation/reset` als auch Jetson Stub und Frontend `role1StartSimulation`/`role1ResetSimulation`/`role1FetchRoute`). `role1ArrivedBats` als leeres Object behalten für die neue Rückfahrt-Animation.
+- **3.2 + 3.3 BAT-Standort-Setting + Rückfahrt zur Rettungsstation**:
+  - Refactor des früheren `GPS_ROUTE`-Loops (10s, hardcoded) zu `bat_position_loop()` mit `_bat_pos_state`-Maschine. 40 Steps × 1.5s = 60 s Gesamtdauer.
+  - **Bonn-Presets** (`BAT_POSITION_PRESETS`): Beuel, Hardthöhe, Bad Godesberg, Endenich, Rheinaue.
+  - **Rettungsstation-Koordinaten** in `config.json` als `rescue_station: {lat, lon, label}`, default 50.7374 / 7.0982 (Bonn).
+  - **Neue API-Endpoints** auf dem Jetson:
+    - `GET /api/bat/position/presets`
+    - `GET /api/bat/position`
+    - `POST /api/bat/position/set` (`{preset_id}` oder `{lat, lon}`)
+    - `POST /api/bat/return-to-station`
+    - `POST /api/bat/return-to-station/stop`
+  - **Frontend**: Standort-Dropdown + Rückfahrt-Button im Fahrzeug-Modus. Lädt Presets beim ersten Wechsel in den Fahrzeug-Modus.
+  - **Voice-Command** „rückfahrt zur rettungsstation" mit vielen Variants in `config.json`. Fällt auf Hardthöhe-Preset zurück wenn vorher kein Standort gesetzt.
+  - Auto-Start beim Patient-Senden entfernt (war Demo-Zufall in der alten Version).
+- **3.4 Testdaten-Generator** (Jetson + Surface, beide mit `/api/data/test-generate`):
+  - Jetson erzeugt 6 realistische Test-Patienten in verschiedenen Status (registered/analyzed/synced, Phase0/Role1, mit/ohne Triage).
+  - Surface erzeugt 6 Patienten alle synced+role1+triage, plus einen Test-BAT auf der Karte bei Bonn-Endenich.
+  - Patient-IDs alle mit `TEST-` Prefix.
+  - Frontend-Button in Settings → System neben dem Reset-Button.
+
+### Phase 4.1 — RFID-Write-Bug (`d878b48`)
+
+- **Problem**: User-Beschwerde „Karten werden nicht richtig überschrieben — alte Daten bleiben drauf". `rc522_write_patient_to_card` meldete `success=True`, aber Sektor 2 (Block 8/9/10 = Name + Mechanismus) blieb unverändert.
+- **Diagnose**: `scripts/rfid_write_diag.py` — schreibt Test-Patient + liest sofort wieder + vergleicht hex. Mit TTS-Audio-Prompts ("Jetzt Karte auflegen") damit User nicht den Bildschirm beobachten muss.
+- **Root Cause**: Nach erfolgreichem Sektor-1-Auth + Operations sind RC522-Register und Karten-Crypto1-State so verwoben, dass weder REQA, WUPA noch `_rc522_stop_crypto` allein die Karte für Sektor-2-Auth zurückholen. `_rc522_auth` meldete fälschlich `True` (wegen Status2-Bit vom alten Sektor 1), der Write ging mit dem alten Crypto1-Sektor-1-State, Karte lehnte still ab, Verify-Read sah „alte Daten" ohne Mismatch zu erkennen.
+- **Fix in `shared/rfid.py`**: Vor jedem neuen Sektor-Auth einen kompletten **Hardware-Reset des RC522** (`_rc522_stop_crypto` + `_rc522_halt` + `rc522_init()` + neue REQA + Anticoll + Select). Latenz pro Karte: ~0.65s → ~1.04s. Auch zusätzliche `log.info`-Logs für Sektor-Auth und Block-Write hinzugefügt.
+- **`_PICC_WUPA = 0x52`** als Konstante hinzugefügt (war Zwischenversuch).
+- **Live-Test verifiziert**: `diag exit: 0`, alle Block 5/6/8/9/10 stimmen exakt mit erwarteten Bytes überein.
+
+### Phase 4.2 — OLED NETZWERK-Seite (`a17e7aa`)
+
+- **Vierte Page** zwischen `models` und `operator`: `PAGES = ["models", "network", "operator", "patient"]`.
+- **`_render_network` Methode** in `jetson/oled.py` mit FONT_LG (13 px) und FONT_MD (11 px), nicht FONT_SM (9 px) wie alte Diagnose-Pages. Layout:
+  - Z. 14 (FONT_LG): SSID oder „WLAN OK"/„OHNE WLAN"
+  - Z. 30 (FONT_MD): „IP 192.168.x.y"
+  - Z. 44 (FONT_MD): „Tailnet ON/OFF/--"
+  - Z. 56 invertierter Bottom-Bar: „ALLES OK" (wenn WLAN+Tailscale+Backend) oder „WARN: WLAN TS BE"
+- **Backend-Polling**: 4 neue Helper in `app.py`:
+  - `_get_wifi_status()` via `nmcli` + `ip addr show wlan0`
+  - `_get_eth_ip()` via `ip addr show eth0`
+  - `_get_tailscale_state()` via `tailscale status --json` → BackendState
+  - `_get_tailscale_ip()` (existierte schon) via `tailscale ip -4`
+- `_oled_update_loop` befüllt `oled_menu.network_info` alle 2 s mit allen Feldern (`wifi_state`, `wifi_ssid`, `wifi_ip`, `eth_ip`, `tailscale`, `tailscale_ip`, `backend_ok`).
+- **User-Verifikation am Jetson**: NETZWERK-Seite ist gut lesbar (User-Antwort auf AskUserQuestion).
+
+### Phase 4.3 — Audio Multi-Output (`5e1535a`)
+
+- **`shared/tts.py`**:
+  - `_output_devices: list[int]` (statt singular) — alle passenden Speaker-Devices werden parallel bespielt.
+  - `_is_speaker_device()` Filter (USB/HDA/Jabra/Logitech/Plantronics/Creative/etc.), schließt HDMI/Loopback/dmix/iec958/etc. aus, plus Duplikat-Filter.
+  - `_speak_internal`: Pro Device einen Thread mit eigenem Sample-Rate-Picking + Resample (USB-Headset 48 kHz vs. C-Media 44.1 kHz). `threading.Thread.join()` syncronisiert.
+  - `rescan_devices()`, `get_output_device_count()` als reusable Helpers.
+- **`app.py` Audio-Hotplug-Watcher**:
+  - `_audio_device_watcher_loop()`: Background-Task, prüft alle 3 s die `/proc/asound/cards`-MD5-Signatur, triggert Refresh bei Änderung.
+  - `_refresh_audio_devices_async()`: Stoppt Vosk-Stream → `sd._terminate` → `importlib.reload(sounddevice)` → `tts.rescan_devices()` → Vosk-Stream wieder hochfahren. Im Executor damit der Event-Loop nicht blockiert.
+  - **OLED-Status + TTS-Ansage** je nach Befund:
+    - new > old → "AUDIO + N Lautsprecher" / „N Audiogerate aktiv"
+    - new < old → "AUDIO - N Lautsprecher" / „Audiogerat entfernt"
+    - sig change aber gleiche Anzahl → "AUDIO NEU, SAFIR neu starten" / „Audiogerat erkannt. Service neu starten."
+- **Verifizierung am Jetson** mit Jabra SPEAK 510 + C-Media USB Audio Device:
+  - ✅ Service-Start mit beiden: `TTS: 2 Speaker-Device(s) — Multi-Output`
+  - ✅ Abziehen während Betrieb: `Hot-Reload 2 → 1`, OLED + TTS auf verbleibendem Jabra
+  - ⚠ **Einstecken während Betrieb** (Limitation): OLED zeigt „AUDIO NEU", TTS sagt „Service neu starten", aber **Multi-Output greift erst nach `systemctl restart safir`**. Linux/PortAudio cached die ALSA-Geräteliste in einem internen Pool, den auch `sd._terminate; sd._initialize` und `importlib.reload(sounddevice)` nicht zur Laufzeit aufgelöst kriegen.
+- **`scripts/list_audio_devices.py`**: Standalone-Diagnose-Tool das alle PortAudio-Devices listet.
+
+---
+
+## Bekannte Limitations
+
+1. **Qwen 2.5 3B passt nicht parallel zu Whisper auf 7.4 GB Unified Memory.** Auch mit `num_ctx=2048` reicht der zusammenhängende RAM-Block nicht für Whispers 1.2 GB Modell. Wir bleiben bei 1.5b + Code-Workaround. Dokumentiert in `scripts/safir-start.sh` Kommentar.
+2. **PortAudio Hot-Plug auf Linux**: Neu eingestecktes USB-Audio wird vom `/proc/asound/cards`-Watcher erkannt, OLED + TTS reagieren, aber PortAudio's interner Cache liefert das neue Device erst nach Service-Restart. Workaround: User-Notification "SAFIR neu starten" beim Insert.
+3. **1.5b Determinismus**: Auch mit `temperature=0.0` und `top_k=1` ist Qwen 2.5 1.5b nicht 100% deterministisch zwischen Service-Restarts. Selber Input → manchmal andere Boundary-Liste. Post-Merge 3 fängt das ab.
+4. **Tailscale-SSH-Auth-Cache läuft alle ~20 Minuten ab**. Browser-Klick auf `https://login.tailscale.com/a/...` jeweils nötig wenn neuer SSH-Connect aus einer kalten Session. Workaround für AFCEA: Tailscale-SSH auf dem Jetson deaktivieren oder `checkPeriod` in der ACL verlängern (siehe Plan Phase 7+ Open Decisions).
+
+## Hardware-Setup (Stand 15.04.)
+
+- **Jetson Orin Nano Super DevKit** mit Headless-Boot (`multi-user.target`). Boot-RAM ~6.7 GB available, Service-RAM ~3.5 GB used.
+- **Audio**: Jabra SPEAK 510 USB als Mikro+Speaker (default), beim Audio-Test war zusätzlich ein C-Media USB Audio Device angeschlossen. Beide sind heute Abend noch dran (User-Bestätigung beim Hotplug-Test).
+- **RFID**: RC522 Reader mit MIFARE Classic 1K Karten. Karten haben Standard-Key A (`FFFFFFFFFFFF`) auf Sektor 1 und 2.
+- **OLED**: SSD1306 128×64 auf I2C Bus 7, Adresse 0x3C.
+- **Tailscale**: beide Geräte aktiv, Direct-Connection meistens (`direct 192.168.178.152:41641` im Heim-Netz).
+
+---
+
+## Nächste Aktion: Phase 5 — 9-Liner Voice-Recognition
+
+Aus dem ursprünglichen Plan (lokale Datei `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md`):
+
+### 5.1 9-Liner-Template (laminierbar)
+
+Output: Eine Datei `docs/nine-liner-template.md` mit 9 Zeilen + Kurzbeispiel-Sätzen. Wird später als A5 gedruckt + laminiert für Messebesucher.
+
+```
+1. ZEILE Position (Grid)
+2. ZEILE Funkfrequenz / Rufzeichen
+3. ZEILE Anzahl Patienten / Priorität
+4. ZEILE Spezielle Ausrüstung
+5. ZEILE Anzahl liegend / sitzend
+6. ZEILE Sicherheit am LZ
+7. ZEILE Markierungsmethode
+8. ZEILE Patient Nationalität / Status
+9. ZEILE NBC-Kontamination
+```
+
+### 5.2 Auto-Detect im Segmenter
+
+- **Befund**: 9-Liner ist im `PATIENT_SCHEMA` (`shared/models.py:88-98`) als `nine_liner` Dict mit `line1`–`line9` definiert. Template-Type `"9liner"` existiert in `app.py:155-178`. ABER `run_patient_enrichment()` füllt das Dict **nicht automatisch** — nur wenn Template-Type explizit `"9liner"` gewählt ist.
+- **Konzept**: Voice-Command oder Button "9-Liner" → separater Extraction-Prompt. Alternative: Auto-Detect auf Keywords ("Grid", "Funkfrequenz", "MGRS", "NBC").
+- **Implementierung**: Neue Funktion `extract_nine_liner(transcript: str) -> dict` mit dediziertem Prompt. Aufgerufen wenn Voice-Command "neun liner" empfangen oder Patient-Type-Selector im UI. Resultat füllt `patient["nine_liner"]` Dict + setzt `patient["template_type"] = "9liner"`.
+
+### 5.3 9-Liner-Anzeige im UI
+
+- Neue Component `<nine-liner-card>` in `templates/index.html`, eingebettet im Patient-Detail-View, sichtbar wenn `template_type == "9liner"`.
+- Neuer Endpoint `/api/patients/{pid}/nine-liner` (GET).
+
+**Aufwand:** ~6 h. Komplett software-only — kann ohne User-Hardware-Tests gemacht werden, nur am Ende ein Voice-Test mit "neun liner" + Diktat zur Verifikation.
+
+---
+
+## Nach Phase 5: Phase 6 — Export & Interoperabilität (~8 h)
+
+- **6.1 DOCX-Export auf alle Patienten** statt nur Sessions. Neue Funktion `generate_docx_all_patients()`.
+- **6.2 PDF-Export via reportlab** (in venv installieren). Layout in Bundeswehr-Olive für Brand-Konsistenz.
+- **6.3 JSON-Export** trivial.
+- **6.4 XML-Export** via `xml.etree.ElementTree`.
+- **6.5 Export-UI in Settings** — Sektion `settings-data` zwischen `interop` und `system`.
+
+## Phase 7 — Encryption-Story + Use-Case-Vision-Page (~6 h)
+
+- **7.1 `docs/security-architecture.md`** mit Tailscale-WireGuard-Erklärung, Curve25519/ChaCha20-Poly1305-Beschreibung, Zero-Trust, ASCII-Diagramm. Plus Settings-Page-Sektion „SICHERHEIT" mit 5 Talking Points.
+- **7.2 Use-Case-Vision-Page** (Feuerwehr/Polizei/THW/Logistik/zivile Sanitätsdienste). Tabelle mit Hardware-Anpassungen.
+
+## Phase 8 — Remote Audio MVP (~16 h, riskant)
+
+- Browser MediaRecorder (`audio/webm;codecs=opus`) → WebSocket Audio-Chunks → Jetson decode (`pyav`/`ffmpeg-python`) → Whisper. Fallback auf lokales Mikro.
+
+## Phase 9 — Final Polish, Demo-Run, Stress-Test (~6 h)
+
+- 5–10 Diktate hintereinander ohne Service-Restart, `tegrastats` parallel, kein OOM erlaubt.
+- Latenz-Targets: Diktat-Stopp → Whisper < 5 s, Analyse → Patient < 15 s, Sync zum Surface < 2 s.
+- Backup: Git-Tag `pre-demo`, USB-Stick mit Repo-Snapshot.
+
+---
+
+## Open Decisions (User-Entscheidung steht aus)
+
+1. **Tailscale-SSH-Cache verlängern oder deaktivieren?** Aktuell läuft alle ~20 min ab. Für AFCEA-Demo am besten `sudo tailscale set --ssh=false` auf dem Jetson — der Public Key in `~/.ssh/authorized_keys` reicht für SSH-Auth ohne Browser-Flow.
+2. **Bundeswehr-Theme**: Sind die im CSS schon definierten Farben final, oder gibt es ein offizielles CGI-Bundeswehr-Branding-Doc?
+3. **Phase 8 Browser-Codec**: opus (modern, klein) oder wav (einfach, groß)?
+
+---
+
+## Wichtige Files (Übersicht für Quick-Reference)
+
+| Datei | Was | Phasen |
+|---|---|---|
+| `app.py` (Repo-Root) | **Jetson Hauptcode** (~4400 Zeilen). FastAPI + Whisper + Vosk + Ollama + Hardware-Integration. Nur auf dem Jetson lauffähig — der Surface-Spiegel ist nur für Editieren. | 1.2, 1.3, 1.4, 2.1–2.5, 3.2, 3.3, 3.4, 4.2, 4.3 |
+| `backend/app.py` | **Surface Backend** (~900 Zeilen). FastAPI Leitstelle mit Lagekarte. Hier läuft `preview_start` lokal. | 1.2, 3.1, 3.4 |
+| `templates/index.html` (Repo-Root) | **Gemeinsames Frontend**, beide Backends servieren das. ~5000 Zeilen, alles inline (kein Build-System). | 1.1, 1.3, 3.1, 3.4, 4.3-OLED-indirect |
+| `shared/rfid.py` | RC522 Bit-Bang SPI + MIFARE Classic Read/Write. | 4.1 |
+| `shared/tts.py` | Piper TTS + Multi-Output Audio | 4.3 |
+| `shared/models.py` | `PATIENT_SCHEMA`, `TRANSFER_SCHEMA`, Enums | (Phase 5 Read) |
+| `jetson/oled.py` | SSD1306 OLED-Menü, Pages, Render | 4.2 |
+| `config.json` (Repo-Root) | Jetson-Config: voice_commands, ollama, backend, BAT_POSITION, rescue_station, voice_triggers | 2.2, 3.2, 3.3 |
+| `backend/config.json` | Surface-Config: device_id, unit_name, role | (lokaler Override für Surface) |
+| `scripts/safir-start.sh` | systemd-Boot-Skript, Ollama-Preload, Whisper-Start | 2.5 (Lessons-Learned) |
+| `scripts/rfid_write_diag.py` | Standalone RFID Diagnose-Tool mit TTS-Prompts | 4.1 |
+| `scripts/ab_test_segmenter.py` | A/B-Test-Tool für Modell-Vergleich | 2 |
+| `scripts/list_audio_devices.py` | Listet alle PortAudio Output-Devices | 4.3 |
+| `docs/PROGRESS.md` | **DIESE DATEI** — Single-Source-of-Truth für Session-Continuity | (alle) |
+| `docs/surface-diagnose-setup.md` | SSH-Setup-Guide vom Jetson für den Surface | (Setup) |
+
+---
+
+## Wenn der User sagt „weiter mit dem Plan"
+
+1. Diese Datei (`docs/PROGRESS.md`) lesen
+2. TodoWrite-Liste neu anlegen mit den 11 Items aus dem Phasen-Übersicht-Block (Phase 1–4 als `completed`, Phase 5 als `in_progress`, Rest `pending`)
+3. **Phase 5.1** anfangen: `docs/nine-liner-template.md` schreiben
+4. Dann **Phase 5.2** im Jetson `app.py` — Auto-Detect-Logik + neue `extract_nine_liner`-Funktion
+5. **Phase 5.3** im `templates/index.html` — UI-Component
+6. Live-Test mit Voice-Command "neun liner"
+7. Commit + Push + Jetson pull + Restart
+8. Diese Datei (`docs/PROGRESS.md`) updaten mit Phase 5 als `completed`, Phase 6 als `in_progress`
+
+Bei Unsicherheit über Code-Stellen oder Architektur: **erst grep/read im Repo**, nicht annehmen. Im Zweifel den User fragen.
