@@ -152,7 +152,7 @@
     },
     "ollama": {
         "url": "http://127.0.0.1:11434",
-        "model": "qwen2.5:3b",
+        "model": "qwen2.5:1.5b",
         "num_ctx": 2048
     },
     "backend": {
