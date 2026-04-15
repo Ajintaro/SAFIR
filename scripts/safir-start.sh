@@ -93,21 +93,23 @@ fi
 
 # 5. Ollama starten + Qwen PERMANENT im RAM halten (headless hat genug Platz)
 #    Im Headless-Mode hat der Jetson ~4.8 GiB frei nach Boot. Whisper braucht
-#    ~1.2 GiB, Qwen2.5-1.5B ~1.5 GiB. Beide laufen parallel — keine GPU-Swap
-#    Logik mehr, keine Entlade-Orgie.
+#    ~1.2 GiB, Qwen2.5-3B mit num_ctx=2048 ~3.4 GiB (2.4 GiB Modell + 0.5 GiB
+#    KV-Cache + 0.5 GiB Working). Beide laufen parallel mit ~0.8 GiB Reserve.
+#    KRITISCH: num_ctx MUSS 2048 sein — mit Default 4096 sprengt der KV-Cache
+#    das Memory-Budget (cudaMalloc OOM auf Tegra Unified Memory).
 oled_status "SAFIR" "Ollama laden..."
-echo "Ollama: Starte und lade Qwen permanent (keep_alive=-1)..."
+echo "Ollama: Starte und lade Qwen 3B permanent (keep_alive=-1, num_ctx=2048)..."
 systemctl --user start ollama 2>/dev/null || sudo systemctl start ollama 2>/dev/null
 sleep 2
 # Warm-Start mit keep_alive=-1 → Modell bleibt bis Ollama gestoppt wird.
 # "num_gpu": 20 forciert GPU-Layer auf Tegra (sonst fällt ollama auf CPU zurück).
-# Zuerst 3B entladen falls da (aus früherem Test); dann 1.5B permanent laden
+# Zuerst 1.5b entladen falls da (aus früherem Setup); dann 3b permanent laden.
 curl -s http://127.0.0.1:11434/api/generate \
-    -d '{"model":"qwen2.5:3b","prompt":"","keep_alive":0}' > /dev/null 2>&1
+    -d '{"model":"qwen2.5:1.5b","prompt":"","keep_alive":0}' > /dev/null 2>&1
 curl -s http://127.0.0.1:11434/api/generate \
-    -d '{"model":"qwen2.5:1.5b","prompt":"Hi","stream":false,"options":{"num_gpu":20},"keep_alive":-1}' \
+    -d '{"model":"qwen2.5:3b","prompt":"Hi","stream":false,"options":{"num_gpu":20,"num_ctx":2048},"keep_alive":-1}' \
     > /dev/null 2>&1
-echo "Ollama: Modell qwen2.5:1.5b auf GPU vorgeladen (permanent)"
+echo "Ollama: Modell qwen2.5:3b auf GPU vorgeladen (permanent, num_ctx=2048)"
 
 # 6. SAFIR Server im Vordergrund starten (lädt Whisper intern)
 #    exec ersetzt die Shell durch uvicorn — systemd sieht einen einzigen

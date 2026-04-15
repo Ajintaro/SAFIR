@@ -89,6 +89,12 @@ _config = load_config()
 WHISPER_SERVER_PORT = _config.get("whisper", {}).get("server_port", 8178)
 OLLAMA_URL = _config.get("ollama", {}).get("url", "http://127.0.0.1:11434")
 OLLAMA_MODEL = _config.get("ollama", {}).get("model", "qwen2.5:1.5b")
+# Context-Fenster für Ollama-Calls. Default Ollama ist 4096, was bei 3B-
+# Modellen auf dem Jetson Orin Nano (7.4 GB Unified Memory) zu OOM führt
+# weil der KV-Cache linear mit num_ctx skaliert (~1 GB bei 4096 für 3B).
+# 2048 reicht für unsere Prompts (Boundary-Segmenter ~1700 Tokens, Feld-
+# Extraktion ~1200) und halbiert den KV-Cache → 3B passt parallel zu Whisper.
+OLLAMA_NUM_CTX = _config.get("ollama", {}).get("num_ctx", 2048)
 VOICE_COMMANDS = build_voice_commands(_config)
 
 app = FastAPI(title="CGI San-Feldeinsatz")
@@ -1560,7 +1566,9 @@ def _call_ollama(prompt: str, label: str = "LLM") -> dict:
     Whisper+Qwen-Parallelbetrieb im Headless-Mode.
     temperature=0 + num_predict=400 macht den Decode deterministisch und
     schneller — für Feld-Extraktion und Segmentierung kein Kreativitäts-
-    bedarf, Schnelligkeit zählt."""
+    bedarf, Schnelligkeit zählt.
+    num_ctx (siehe OLLAMA_NUM_CTX) begrenzt das Context-Fenster damit der
+    KV-Cache klein bleibt — sonst passt 3B nicht neben Whisper ins VRAM."""
     for num_gpu in [20, 0]:
         gpu_label = f"GPU:{num_gpu}" if num_gpu > 0 else "CPU"
         try:
@@ -1576,6 +1584,7 @@ def _call_ollama(prompt: str, label: str = "LLM") -> dict:
                         "temperature": 0.0,
                         "num_predict": 400,
                         "top_k": 1,
+                        "num_ctx": OLLAMA_NUM_CTX,
                     },
                     "keep_alive": -1,
                 },
@@ -1878,7 +1887,36 @@ def segment_transcript_to_patients(transcript: str) -> dict:
             merged2[-1]["text"] = merged2[-1]["text"] + " " + t
             continue
         merged2.append({"patient_nr": len(merged2) + 1, "text": t, "summary": p.get("summary", "")})
-    patients = merged2
+
+    # Post-Merge 3 (Defense in Depth): Segmente ohne explizites Patient-
+    # Start-Signal UND ohne Rang/Patient-Marker sind eine Fortsetzung des
+    # vorherigen Patienten — egal womit sie beginnen ("Wir müssten...",
+    # "Blutkonserven bereithalten", "Bewusstsein klar"). Fängt Fälle ab,
+    # die Post-Merge 2 nicht erwischt weil das Segment nicht mit einem
+    # Pronomen anfängt. Beispiel aus dem Schmidt/Meyer-Test:
+    #   "Wir müssten dort Blutkonserten der Blutgruppe B positiv bereithalten"
+    # → kein Patient-Marker, kein Start-Signal → Fortsetzung von Meyer.
+    START_MARKERS = (
+        "nächste patient", "nächster patient", "nächster verwundete",
+        "nächste verwundete", "als nächstes", "zweiter patient",
+        "dritter patient", "weiter mit", "jetzt zum nächsten",
+        "eine weitere verletzte", "haben wir einen verwundeten",
+        "patient ist", "verwundete ist", "es folgt",
+        "erster patient", "erste patient", "der erste",
+    )
+    merged3: list[dict] = []
+    for p in merged2:
+        t = p["text"].strip()
+        t_low = t.lower()
+        head = t_low[:80]
+        has_start_marker = any(m in head for m in START_MARKERS)
+        has_patient_marker = any(m in t_low for m in PATIENT_MARKERS)
+        if merged3 and not has_start_marker and not has_patient_marker:
+            # Keine Indikatoren für einen neuen Patient → Fortsetzung
+            merged3[-1]["text"] = merged3[-1]["text"] + " " + t
+            continue
+        merged3.append({"patient_nr": len(merged3) + 1, "text": t, "summary": p.get("summary", "")})
+    patients = merged3
 
     if not patients:
         patients = [{"patient_nr": 1, "text": transcript.strip(), "summary": ""}]
@@ -3684,7 +3722,7 @@ async def get_config():
 @app.post("/api/config")
 async def update_config(body: dict):
     """Aktualisiert die Konfiguration und laedt Sprachbefehle neu."""
-    global VOICE_COMMANDS, OLLAMA_URL, OLLAMA_MODEL
+    global VOICE_COMMANDS, OLLAMA_URL, OLLAMA_MODEL, OLLAMA_NUM_CTX
     cfg = load_config()
     # Deep-merge: top-level keys ersetzen
     for key, value in body.items():
@@ -3698,6 +3736,7 @@ async def update_config(body: dict):
     # Ollama Config neu laden
     OLLAMA_URL = cfg.get("ollama", {}).get("url", OLLAMA_URL)
     OLLAMA_MODEL = cfg.get("ollama", {}).get("model", OLLAMA_MODEL)
+    OLLAMA_NUM_CTX = cfg.get("ollama", {}).get("num_ctx", OLLAMA_NUM_CTX)
     return {"status": "ok"}
 
 
