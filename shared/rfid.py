@@ -199,7 +199,8 @@ _PCD_TRANSCEIVE  = 0x0C
 _PCD_AUTHENT     = 0x0E
 _PCD_SOFTRESET   = 0x0F
 
-_PICC_REQIDL     = 0x26
+_PICC_REQIDL     = 0x26  # REQA — spricht nur Karten im IDLE-Zustand an
+_PICC_WUPA       = 0x52  # Wake-Up All — spricht ALLE Karten an, auch nach Auth
 _PICC_ANTICOLL   = 0x93
 _PICC_SElECTTAG  = 0x93
 _PICC_AUTHENT1A  = 0x60
@@ -578,11 +579,58 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
             return (False, f"Block {blk}: {detail}")
 
         try:
-            for sector, blocks in sector_blocks.items():
+            import time as _t3
+            for sector_idx, (sector, blocks) in enumerate(sector_blocks.items()):
                 auth_block = blocks[0]  # Auth auf ersten Block des Sektors
+                # KRITISCH: Vor jedem NEUEN Sektor-Auth zuerst einen
+                # KOMPLETTEN HARDWARE-RESET des RC522 + die Karte neu
+                # finden. Hintergrund: Nach erfolgreicher Sektor-1-Auth
+                # + Operations bleiben RC522-Register und Karten-Crypto1-
+                # State so verwoben, dass weder REQA noch WUPA noch
+                # einfaches stop_crypto die Karte fuer einen Sektor-2-
+                # Auth zurueckholen. Nur ein Soft-Reset des RC522
+                # (rc522_init) + neue REQA + Anticoll + Select bringt
+                # die Hardware in einen sauberen State, in dem der
+                # zweite Sektor-Auth funktioniert.
+                #
+                # Ohne diesen Reset schlug Sektor-2-Auth still fehl,
+                # _rc522_auth meldete trotzdem True (wegen Status2-Bit
+                # vom alten Sektor 1), und die Block-8/9/10 Writes
+                # gingen ins Nirvana — Block 5/6 (patient_id, vitals)
+                # waren neu, aber Block 8/9 (Name) blieben alt.
+                # Der User-Bug "Karte schreibt aber alte Daten drauf"
+                # waren genau die Name-Blocks aus Sektor 2.
+                # Diagnose siehe scripts/rfid_write_diag.py
+                # (Phase 4.1 vom 15.04.2026).
+                if sector_idx > 0:
+                    _rc522_stop_crypto()
+                    _rc522_halt()
+                    _t3.sleep(0.05)
+                    rc522_init()
+                    _t3.sleep(0.05)
+                    # Karte neu finden — kann ein paar REQA-Cycles brauchen
+                    found = False
+                    for _attempt in range(20):
+                        ok_req, _ = _rc522_request(_PICC_REQIDL)
+                        if not ok_req:
+                            _t3.sleep(0.05)
+                            continue
+                        uid5_re = _rc522_anticoll()
+                        if uid5_re is None:
+                            _t3.sleep(0.05)
+                            continue
+                        if _rc522_select(uid5_re) is None:
+                            _t3.sleep(0.05)
+                            continue
+                        found = True
+                        break
+                    if not found:
+                        log.warning(f"RFID-Write: Karte nach Reset vor Sektor {sector} nicht wiedergefunden")
+                        return (False, f"Karte nach Reset vor Sektor {sector} nicht wiedergefunden")
                 if not _rc522_auth(auth_block, uid_bytes):
                     log.warning(f"RFID-Write: Auth fehlgeschlagen auf Sektor {sector}")
                     return (False, f"Auth fehlgeschlagen auf Sektor {sector}")
+                log.info(f"RFID-Write: Sektor {sector} authentifiziert (Block {auth_block})")
                 for blk in blocks:
                     data = payload.get(blk)
                     if data is None:
@@ -591,7 +639,8 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
                     if not ok:
                         log.warning(f"RFID-Write: Fehlgeschlagen auf Block {blk}: {err}")
                         return (False, f"Block {blk}: {err}")
-            log.info(f"RFID-Write erfolgreich: UID {uid_hex}")
+                    log.info(f"RFID-Write: Block {blk} OK ({len(data)} bytes)")
+            log.info(f"RFID-Write erfolgreich (alle Sektoren): UID {uid_hex}")
             return (True, uid_hex)
         finally:
             _rc522_stop_crypto()
