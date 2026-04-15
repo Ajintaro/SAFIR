@@ -932,6 +932,15 @@ async def process_vosk_commands():
                     await voice_write_card()
                 elif action == "mic_test":
                     await voice_mic_test()
+                elif action == "bat_return_to_station":
+                    # Sprachbefehl "Rueckfahrt zur Rettungsstation" → startet
+                    # die BAT-Animation auf der Surface-Lagekarte. Erfordert
+                    # dass vorher ein Standort gesetzt wurde (Settings-UI
+                    # oder /api/bat/position/set per Default-Preset).
+                    if _bat_pos_state["start_lat"] is None:
+                        # Default-Preset "Hardthoehe" als bequemer Fallback
+                        await bat_position_set({"preset_id": "hardthoehe"})
+                    await bat_return_to_station()
             except Exception as e:
                 print(f"Vosk Befehl Fehler: {e}")
                 tts.announce_error()
@@ -2746,11 +2755,8 @@ async def sync_all_patients() -> dict:
 
     state.backend_reachable = (sent > 0 or skipped > 0) and failed == 0
 
-    # GPS-Simulation starten wenn Patienten gesendet wurden
-    global _gps_active, _gps_index
-    if sent > 0 and not _gps_active:
-        _gps_active = True
-        _gps_index = 0
+    # (Keine Auto-GPS-Animation mehr beim Senden — Sanitaeter triggert die
+    # Rueckfahrt explizit ueber Settings-UI / Voice-Command "rueckfahrt".)
 
     await broadcast({
         "type": "sync_complete",
@@ -2777,12 +2783,6 @@ async def receive_position(body: dict):
             "speed_kmh": body.get("speed_kmh", 0),
         },
     })
-    return {"status": "ok"}
-
-
-@app.post("/api/simulation/reset")
-async def reset_simulation():
-    """Setzt die Simulation zurück."""
     return {"status": "ok"}
 
 
@@ -2840,6 +2840,114 @@ async def data_reset():
         "pending_removed": pending_count,
         "sessions_removed": session_count,
     }
+
+
+@app.post("/api/data/test-generate")
+async def data_test_generate():
+    """Erzeugt einen realistischen Mix von Test-Patienten in verschiedenen
+    Zustaenden, damit der komplette Patient-Flow demonstriert werden kann
+    ohne vorher diktieren zu muessen. Patient-IDs haben das Prefix TEST-
+    damit sie via /api/data/reset oder gezielt entfernt werden koennen."""
+    import copy as _copy
+    import uuid as _uuid
+
+    cfg = load_config()
+    device_id = cfg.get("device_id", "jetson-01")
+    operator = cfg.get("default_medic", "OFA Hugendubel")
+    now = datetime.now().isoformat()
+
+    # Vorlage fuer einen Test-Patienten
+    def _mk_patient(name: str, rank: str, injuries: list[str], vitals: dict,
+                    flow_status: str, analyzed: bool, synced: bool,
+                    triage: str = "", current_role: str = "phase0",
+                    transcript_text: str = "") -> dict:
+        p = _copy.deepcopy(PATIENT_SCHEMA)
+        p["patient_id"] = f"TEST-{_uuid.uuid4().hex[:8].upper()}"
+        p["timestamp_created"] = now
+        p["current_role"] = current_role
+        p["flow_status"] = flow_status
+        p["analyzed"] = analyzed
+        p["synced"] = synced
+        p["device_id"] = device_id
+        p["created_by"] = operator
+        p["name"] = name
+        p["rank"] = rank
+        p["unit"] = cfg.get("unit_name", "BAT Alpha42")
+        p["triage"] = triage
+        p["status"] = "stable"
+        p["injuries"] = injuries
+        p["vitals"].update(vitals)
+        p["timeline"] = [{
+            "time": now,
+            "role": current_role,
+            "event": "registered",
+            "details": f"Test-Patient generiert ({operator})",
+        }]
+        if transcript_text:
+            p["transcripts"] = [{
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "text": transcript_text,
+                "speaker": "sanitaeter",
+                "role_level": current_role,
+            }]
+        return p
+
+    test_patients = [
+        # 1. Frisch registriert, noch nicht analysiert (Entwurf)
+        _mk_patient(
+            "Markus Hoffmann", "Hauptgefreiter",
+            [],
+            {},
+            flow_status="registered", analyzed=False, synced=False,
+            transcript_text="Patient Hoffmann hat sich eine Knie-Verletzung beim Sturz zugezogen, ist ansprechbar.",
+        ),
+        # 2. Frisch registriert, noch nicht analysiert
+        _mk_patient(
+            "Andrea Wenzel", "Soldatin",
+            [],
+            {},
+            flow_status="registered", analyzed=False, synced=False,
+            transcript_text="Soldatin Wenzel mit oberflaechlicher Schnittwunde am Unterarm, blutet leicht.",
+        ),
+        # 3. Analysiert, noch nicht gemeldet
+        _mk_patient(
+            "Stefan Becker", "Stabsunteroffizier",
+            ["Splitterverletzung re. Oberschenkel", "moderate Blutung"],
+            {"pulse": "98", "spo2": "94", "bp": "110/70"},
+            flow_status="analyzed", analyzed=True, synced=False,
+        ),
+        # 4. Analysiert, noch nicht gemeldet
+        _mk_patient(
+            "Lea Schwarz", "Hauptgefreite",
+            ["Prellung Brustkorb", "Atemnot"],
+            {"pulse": "115", "spo2": "89", "resp_rate": "24"},
+            flow_status="analyzed", analyzed=True, synced=False,
+        ),
+        # 5. An Surface gemeldet (BAT-Sicht), Phase 0, noch keine Triage
+        _mk_patient(
+            "Tobias Krueger", "Feldwebel",
+            ["Schussverletzung li. Unterschenkel", "Tourniquet angelegt"],
+            {"pulse": "132", "spo2": "92", "bp": "95/60"},
+            flow_status="reported", analyzed=True, synced=True,
+        ),
+        # 6. In Role 1 angekommen, Triage T2 gesetzt
+        _mk_patient(
+            "Julia Mueller", "Oberleutnant",
+            ["Kopfprellung", "Beinfraktur"],
+            {"pulse": "88", "spo2": "97", "bp": "120/80", "gcs": "14"},
+            flow_status="reported", analyzed=True, synced=True,
+            triage="T2", current_role="role1",
+        ),
+    ]
+
+    for p in test_patients:
+        state.patients[p["patient_id"]] = p
+
+    await broadcast({"type": "init", "patients": list(state.patients.values()),
+                     "backend_reachable": state.backend_reachable})
+    print(f"Test-Daten generiert: {len(test_patients)} Patient(en) (TEST-* Prefix)")
+    return {"status": "ok", "created": len(test_patients),
+            "patient_ids": [p["patient_id"] for p in test_patients]}
 
 
 # ---------------------------------------------------------------------------
@@ -3847,38 +3955,81 @@ async def websocket_endpoint(ws: WebSocket):
 # GPS-Simulation (Demo: BAT fährt zur Rettungsstation)
 # ---------------------------------------------------------------------------
 # Route: Startpunkt südlich von Bonn → Rettungsstation Bonn Zentrum
-GPS_ROUTE = [
-    (50.6900, 7.0700),  # Startpunkt (Feld/POI)
-    (50.6950, 7.0750),
-    (50.7000, 7.0780),
-    (50.7050, 7.0820),
-    (50.7100, 7.0850),
-    (50.7150, 7.0880),
-    (50.7200, 7.0900),
-    (50.7250, 7.0920),
-    (50.7300, 7.0950),
-    (50.7350, 7.0980),  # Rettungsstation (Ziel)
+# ---------------------------------------------------------------------------
+# BAT-Position / Rueckfahrt zur Rettungsstation
+# ---------------------------------------------------------------------------
+# Ersetzt den frueheren GPS_ROUTE-Loop durch ein user-driven System:
+#   - Sanitaeter waehlt einen Standort (Preset oder benutzerdefiniert)
+#   - Druckt "Rueckfahrt zur Rettungsstation" → BAT-Marker bewegt sich
+#     auf der Surface-Karte vom Standort zur Rettungsstation
+#   - Position wird alle 1.5s interpoliert und ans Surface gesendet
+#
+# Bonn-Voreinstellungen (lat, lon, Label):
+BAT_POSITION_PRESETS = [
+    {"id": "beuel",      "label": "Bonn-Beuel",         "lat": 50.7397, "lon": 7.1469},
+    {"id": "hardthoehe", "label": "Hardthoehe",          "lat": 50.6961, "lon": 7.0742},
+    {"id": "godesberg",  "label": "Bad Godesberg",       "lat": 50.6886, "lon": 7.1556},
+    {"id": "endenich",   "label": "Bonn-Endenich",       "lat": 50.7251, "lon": 7.0644},
+    {"id": "rheinaue",   "label": "Bonn-Rheinaue",       "lat": 50.7062, "lon": 7.1267},
 ]
-_gps_index = 0
-_gps_active = False
+
+# Rettungsstation-Koordinaten (kommen aus config, mit Default fuer Bonn)
+def _rescue_station_coords() -> tuple[float, float]:
+    cfg = load_config()
+    rs = cfg.get("rescue_station", {})
+    return (
+        float(rs.get("lat", 50.7374)),
+        float(rs.get("lon", 7.0982)),
+    )
+
+# State der laufenden Animation
+_bat_pos_state: dict = {
+    "active": False,           # True solange eine Animation laeuft
+    "start_lat": None,         # Standort (Origin)
+    "start_lon": None,
+    "current_lat": None,       # Aktuelle interpolierte Position
+    "current_lon": None,
+    "step": 0,                 # Aktueller Schritt
+    "total_steps": 40,         # 40 Schritte * 1.5s = 60 s Gesamtdauer
+}
 
 
-async def gps_simulation_loop():
-    """Sendet periodisch GPS-Positionen an das Backend (alle 10 Sekunden)."""
-    global _gps_index, _gps_active
+def _interpolate_position(start_lat: float, start_lon: float,
+                          end_lat: float, end_lon: float,
+                          progress: float) -> tuple[float, float]:
+    """Lineare Interpolation zwischen Start und Ziel. progress in [0, 1]."""
+    lat = start_lat + (end_lat - start_lat) * progress
+    lon = start_lon + (end_lon - start_lon) * progress
+    return (lat, lon)
+
+
+async def bat_position_loop():
+    """Background-Task der die laufende Rueckfahrt-Animation alle 1.5s
+    Schritt-fuer-Schritt zur Surface-Lagekarte schickt. Idle wenn
+    _bat_pos_state['active'] False ist."""
     while True:
-        await asyncio.sleep(10)
-        if not _gps_active:
+        await asyncio.sleep(1.5)
+        if not _bat_pos_state["active"]:
             continue
         cfg = load_config()
         backend_url = cfg.get("backend", {}).get("url", "")
         unit_name = cfg.get("unit_name", "BAT Alpha")
         device_id = cfg.get("device_id", "jetson-01")
-
-        if not backend_url or _gps_index >= len(GPS_ROUTE):
+        if not backend_url:
             continue
 
-        lat, lon = GPS_ROUTE[_gps_index]
+        end_lat, end_lon = _rescue_station_coords()
+        step = _bat_pos_state["step"]
+        total = _bat_pos_state["total_steps"]
+        progress = min(1.0, step / total)
+
+        lat, lon = _interpolate_position(
+            _bat_pos_state["start_lat"], _bat_pos_state["start_lon"],
+            end_lat, end_lon, progress,
+        )
+        _bat_pos_state["current_lat"] = lat
+        _bat_pos_state["current_lon"] = lon
+
         try:
             httpx.post(f"{backend_url}/api/position", json={
                 "unit_name": unit_name,
@@ -3886,30 +4037,123 @@ async def gps_simulation_loop():
                 "lat": lat,
                 "lon": lon,
                 "heading": 0,
-                "speed_kmh": 40,
+                "speed_kmh": 35.0 if progress < 1.0 else 0.0,
             }, timeout=5)
-            _gps_index += 1
-            if _gps_index >= len(GPS_ROUTE):
-                _gps_index = 0  # Loop für Demo
-                _gps_active = False
         except Exception:
             pass
 
+        _bat_pos_state["step"] += 1
+        if step >= total:
+            _bat_pos_state["active"] = False
+            await broadcast({
+                "type": "bat_arrived",
+                "unit_name": unit_name,
+                "lat": end_lat,
+                "lon": end_lon,
+            })
 
-@app.post("/api/gps/start")
-async def start_gps_sim():
-    """Startet die GPS-Simulation."""
-    global _gps_active, _gps_index
-    _gps_active = True
-    _gps_index = 0
-    return {"status": "ok", "message": "GPS-Simulation gestartet"}
+
+@app.get("/api/bat/position/presets")
+async def bat_position_presets():
+    """Voreingestellte Bonn-Standorte fuer die UI-Auswahl."""
+    return {"presets": BAT_POSITION_PRESETS}
 
 
-@app.post("/api/gps/stop")
-async def stop_gps_sim():
-    """Stoppt die GPS-Simulation."""
-    global _gps_active
-    _gps_active = False
+@app.get("/api/bat/position")
+async def bat_position_get():
+    """Aktueller BAT-Status: Standort, Animation aktiv?, Ziel."""
+    end_lat, end_lon = _rescue_station_coords()
+    return {
+        "active": _bat_pos_state["active"],
+        "start_lat": _bat_pos_state["start_lat"],
+        "start_lon": _bat_pos_state["start_lon"],
+        "current_lat": _bat_pos_state["current_lat"],
+        "current_lon": _bat_pos_state["current_lon"],
+        "destination_lat": end_lat,
+        "destination_lon": end_lon,
+        "step": _bat_pos_state["step"],
+        "total_steps": _bat_pos_state["total_steps"],
+    }
+
+
+@app.post("/api/bat/position/set")
+async def bat_position_set(body: dict):
+    """Setzt den aktuellen Standort des BAT (z.B. ueber Preset oder
+    manuell). Stoppt eine laufende Animation und reset den Standort.
+    Body: {"lat": float, "lon": float} oder {"preset_id": "beuel"}."""
+    preset_id = body.get("preset_id")
+    if preset_id:
+        preset = next((p for p in BAT_POSITION_PRESETS if p["id"] == preset_id), None)
+        if not preset:
+            return {"error": f"Unbekanntes Preset: {preset_id}"}
+        lat, lon = preset["lat"], preset["lon"]
+    else:
+        lat = body.get("lat")
+        lon = body.get("lon")
+        if lat is None or lon is None:
+            return {"error": "lat/lon oder preset_id erforderlich"}
+        lat, lon = float(lat), float(lon)
+
+    _bat_pos_state["active"] = False
+    _bat_pos_state["start_lat"] = lat
+    _bat_pos_state["start_lon"] = lon
+    _bat_pos_state["current_lat"] = lat
+    _bat_pos_state["current_lon"] = lon
+    _bat_pos_state["step"] = 0
+
+    # Position einmalig an Surface schicken (statisch, ohne Loop)
+    cfg = load_config()
+    backend_url = cfg.get("backend", {}).get("url", "")
+    if backend_url:
+        try:
+            httpx.post(f"{backend_url}/api/position", json={
+                "unit_name": cfg.get("unit_name", "BAT Alpha"),
+                "device_id": cfg.get("device_id", "jetson-01"),
+                "lat": lat,
+                "lon": lon,
+                "heading": 0,
+                "speed_kmh": 0,
+            }, timeout=5)
+        except Exception:
+            pass
+    return {"status": "ok", "lat": lat, "lon": lon}
+
+
+@app.post("/api/bat/return-to-station")
+async def bat_return_to_station():
+    """Startet die Rueckfahrt-Animation: BAT bewegt sich vom aktuellen
+    Standort zur Rettungsstation. Erfordert dass vorher ein Standort
+    gesetzt wurde (via /api/bat/position/set)."""
+    if _bat_pos_state["start_lat"] is None or _bat_pos_state["start_lon"] is None:
+        return {"error": "Kein Standort gesetzt. Erst /api/bat/position/set aufrufen."}
+    _bat_pos_state["step"] = 0
+    _bat_pos_state["active"] = True
+    end_lat, end_lon = _rescue_station_coords()
+    duration_s = _bat_pos_state["total_steps"] * 1.5
+    tts.speak("Ruckfahrt zur Rettungsstation gestartet")
+    await broadcast({
+        "type": "bat_returning",
+        "start_lat": _bat_pos_state["start_lat"],
+        "start_lon": _bat_pos_state["start_lon"],
+        "destination_lat": end_lat,
+        "destination_lon": end_lon,
+        "duration_s": duration_s,
+    })
+    return {
+        "status": "ok",
+        "start_lat": _bat_pos_state["start_lat"],
+        "start_lon": _bat_pos_state["start_lon"],
+        "destination_lat": end_lat,
+        "destination_lon": end_lon,
+        "duration_s": duration_s,
+    }
+
+
+@app.post("/api/bat/return-to-station/stop")
+async def bat_return_to_station_stop():
+    """Stoppt die laufende Animation (BAT bleibt am aktuellen
+    Interpolations-Punkt stehen)."""
+    _bat_pos_state["active"] = False
     return {"status": "ok"}
 
 
@@ -3986,8 +4230,8 @@ async def startup():
     oled_menu.show_status("SAFIR", "TTS laden...", 85)
     tts.init_tts()
 
-    # GPS-Simulation starten (für Demo)
-    asyncio.create_task(gps_simulation_loop())
+    # BAT-Position-Animation Loop (idle bis "Rueckfahrt" getriggert wird)
+    asyncio.create_task(bat_position_loop())
 
     # Peer Discovery Heartbeat
     asyncio.create_task(_heartbeat_loop())

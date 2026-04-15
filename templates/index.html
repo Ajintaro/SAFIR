@@ -1455,12 +1455,22 @@
             <div id="mode-fahrzeug" style="display:none;flex-direction:column;padding:12px;gap:10px;height:100%">
 
                 <!-- Aktions-Leiste oben -->
-                <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
+                <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap">
                     <button class="btn" onclick="voiceNewPatient()" style="padding:8px 14px;font-size:12px;font-weight:700;background:var(--cgi-red);border-color:var(--cgi-red);color:#fff">+ Neuer Patient</button>
                     <button class="btn" onclick="analyzeSession()" style="padding:8px 14px;font-size:12px" id="btn-analyze">&#129504; Analyse</button>
                     <button class="btn" onclick="sendToBackend()" style="padding:8px 14px;font-size:12px;background:#2ECC71;border-color:#2ECC71;color:#fff" id="btn-send-backend">&#9889; Alle melden</button>
                     <button class="btn" onclick="rfidBatchWrite()" style="padding:8px 14px;font-size:12px;background:var(--mil-tan,#c8b878);border-color:var(--mil-tan,#c8b878);color:#000" id="btn-rfid-batch" title="Alle Patienten ohne RFID-Karte nacheinander auf Karten schreiben">&#128179; RFID-Batch</button>
                     <button class="btn" onclick="exportDocx()" style="padding:8px 14px;font-size:12px">&#128196; Export</button>
+                </div>
+
+                <!-- BAT-Standort + Rueckfahrt zur Rettungsstation (Demo-Story) -->
+                <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;padding:8px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);font-size:11px">
+                    <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">&#127757; Standort</span>
+                    <select id="bat-position-preset" onchange="setBatPositionFromPreset(this.value)" style="padding:5px 8px;border:1px solid var(--border);background:var(--bg-surface2);color:var(--text-primary);font-size:11px;min-width:160px">
+                        <option value="">— Standort wählen —</option>
+                    </select>
+                    <span id="bat-position-status" style="font-size:10px;color:var(--text-dim);flex:1"></span>
+                    <button class="btn" onclick="batReturnToStation()" id="btn-bat-return" style="padding:6px 12px;font-size:11px;font-weight:700;background:var(--info,#5DADE2);border-color:var(--info,#5DADE2);color:#fff" title="BAT bewegt sich animiert vom gewählten Standort zur Rettungsstation">&#9881; Rückfahrt zur Rettungsstation</button>
                 </div>
 
                 <!-- Patientenliste (Hauptbereich) -->
@@ -1575,8 +1585,6 @@
                 <div class="role1-panel">
                     <div class="role1-panel-header">
                         Eingehende Transporte
-                        <button class="btn" id="r1-sim-reset-btn" onclick="role1ResetSimulation()" style="margin-left:auto;padding:4px 12px;font-size:10px;display:none">Reset</button>
-                        <button class="btn" id="r1-sim-btn" onclick="role1StartSimulation()" style="padding:4px 12px;font-size:10px">Simulation</button>
                     </div>
 
                     <!-- Triage-Übersicht -->
@@ -1866,6 +1874,15 @@
                             <div class="settings-card-title">Konfiguration exportieren</div>
                             <div class="btn-group">
                                 <button class="btn" onclick="exportConfig()">config.json herunterladen</button>
+                            </div>
+                        </div>
+                        <div class="settings-card" style="border:1px solid var(--info,#5DADE2)">
+                            <div class="settings-card-title" style="color:var(--info,#5DADE2)">Testdaten generieren</div>
+                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">
+                                Erzeugt einen Mix aus Test-Patienten in verschiedenen Zuständen (Entwurf, analysiert, gemeldet) und einen Test-BAT auf der Karte. So lässt sich der ganze Patient-Flow ohne vorheriges Diktieren demonstrieren. Patient-IDs haben das Prefix <code>TEST-</code>.
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn" style="background:var(--info,#5DADE2);color:#fff" onclick="generateTestData()">Testdaten erzeugen</button>
                             </div>
                         </div>
                         <div class="settings-card" style="border:1px solid var(--warning)">
@@ -2331,6 +2348,20 @@
             showToast(`${res.removed || 0} Patienten gelöscht — System bereit`, 'success');
         } catch(e) {
             showToast('Fehler beim Zurücksetzen: ' + e.message, 'error');
+        }
+    }
+
+    async function generateTestData() {
+        try {
+            const res = await api('/api/data/test-generate', 'POST');
+            if (res && res.error) {
+                showToast('Fehler: ' + res.error, '&#9888;');
+                return;
+            }
+            const count = (res && res.created) || 0;
+            showToast(`${count} Test-Patient(en) erzeugt`, '&#9989;');
+        } catch(e) {
+            showToast('Fehler beim Erzeugen der Testdaten: ' + e.message, '&#9888;');
         }
     }
 
@@ -3717,6 +3748,72 @@
         document.getElementById('btn-mode-fahrzeug').className = mode === 'fahrzeug' ? 'btn btn-cgi' : 'btn';
         // Patientenkarten in beiden Modi synchron halten
         renderPatientCards();
+        // Beim ersten Wechsel in Fahrzeug-Modus: BAT-Position-Presets laden
+        if (mode === 'fahrzeug') loadBatPositionPresets();
+    }
+
+    // ---- BAT-Standort + Rueckfahrt zur Rettungsstation ----
+    let _batPositionPresetsLoaded = false;
+    async function loadBatPositionPresets() {
+        if (_batPositionPresetsLoaded) return;
+        try {
+            const res = await api('/api/bat/position/presets');
+            const sel = document.getElementById('bat-position-preset');
+            if (!sel || !res.presets) return;
+            res.presets.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.label;
+                sel.appendChild(opt);
+            });
+            _batPositionPresetsLoaded = true;
+            // Aktuellen Status anzeigen
+            const cur = await api('/api/bat/position');
+            const status = document.getElementById('bat-position-status');
+            if (cur && cur.start_lat !== null && status) {
+                status.textContent = `aktuell: ${cur.start_lat.toFixed(4)}, ${cur.start_lon.toFixed(4)}`;
+            }
+        } catch (e) { console.warn('BAT-Presets laden fehlgeschlagen:', e); }
+    }
+
+    async function setBatPositionFromPreset(presetId) {
+        if (!presetId) return;
+        const res = await api('/api/bat/position/set', 'POST', { preset_id: presetId });
+        const status = document.getElementById('bat-position-status');
+        if (res && res.lat !== undefined && status) {
+            status.textContent = `gesetzt: ${res.lat.toFixed(4)}, ${res.lon.toFixed(4)}`;
+        }
+        if (res && res.error) {
+            showToast(res.error, '&#9888;');
+        }
+    }
+
+    async function batReturnToStation() {
+        const sel = document.getElementById('bat-position-preset');
+        if (sel && !sel.value) {
+            showToast('Bitte erst einen Standort wählen', '&#9888;');
+            return;
+        }
+        const btn = document.getElementById('btn-bat-return');
+        if (btn) { btn.disabled = true; btn.textContent = '⟳ Rückfahrt läuft...'; }
+        try {
+            const res = await api('/api/bat/return-to-station', 'POST');
+            if (res && res.error) {
+                showToast(res.error, '&#9888;');
+            } else if (res && res.duration_s) {
+                showToast(`Rückfahrt gestartet (~${Math.round(res.duration_s)}s bis Ankunft)`, '&#9881;');
+                // Re-enable nach Ankunft (Animations-Dauer + Puffer)
+                setTimeout(() => {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '&#9881; Rückfahrt zur Rettungsstation';
+                    }
+                }, (res.duration_s + 2) * 1000);
+            }
+        } catch (e) {
+            console.warn('Rueckfahrt-Trigger fehlgeschlagen:', e);
+            if (btn) { btn.disabled = false; btn.innerHTML = '&#9881; Rückfahrt zur Rettungsstation'; }
+        }
     }
 
     // ---- TTS Toggle ----
@@ -4890,243 +4987,15 @@
     }
 
     // ============================================================
-    // Role 1: Simulation — 3 BATs fahren zur Rettungsstation
+    // Role 1: BAT-Status auf der Karte
     // ============================================================
-    let role1SimRunning = false;
-    let role1SimIntervals = [];
-    let role1SimTimeouts = [];
-    let role1RouteLines = [];  // Polylines for routes
-    let role1ArrivedBats = {};  // BATs die angekommen sind
-
-    async function role1FetchRoute(start, end) {
-        // OSRM Public Demo Server for routing
-        try {
-            const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-            const res = await fetch(url);
-            const data = await res.json();
-            if (data.routes && data.routes[0]) {
-                const coords = data.routes[0].geometry.coordinates;
-                // OSRM returns [lng, lat], convert to [lat, lng]
-                return coords.map(c => ({ lat: c[1], lng: c[0] }));
-            }
-        } catch(e) {
-            console.warn('OSRM routing failed, using straight line:', e);
-        }
-        return null;
-    }
-
-    async function role1ResetSimulation() {
-        // Alles stoppen
-        role1SimIntervals.forEach(id => clearInterval(id));
-        role1SimTimeouts.forEach(id => clearTimeout(id));
-        role1SimIntervals = [];
-        role1SimTimeouts = [];
-        role1RouteLines.forEach(line => { if (role1Map) role1Map.removeLayer(line); });
-        role1RouteLines = [];
-        role1ArrivedBats = {};
-        role1SimRunning = false;
-
-        // Buttons zurücksetzen
-        const btn = document.getElementById('r1-sim-btn');
-        const resetBtn = document.getElementById('r1-sim-reset-btn');
-        btn.textContent = 'Simulation';
-        btn.style.background = '';
-        btn.style.borderColor = '';
-        btn.style.color = '';
-        resetBtn.style.display = 'none';
-
-        // Backend-Daten löschen
-        try { await api('/api/simulation/reset', 'POST'); } catch(e) {}
-
-        // Globales patients-Objekt: SIM-Patienten entfernen
-        Object.keys(patients).forEach(pid => {
-            if (pid.startsWith('SIM-')) delete patients[pid];
-        });
-
-        // Marker entfernen und UI aktualisieren
-        Object.keys(role1Markers).forEach(key => {
-            role1Map.removeLayer(role1Markers[key]);
-        });
-        role1Markers = {};
-        role1MarkerPatientCounts = {};
-        role1MarkerPositions = {};
-        role1Positions = {};
-        role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));  // Nur echte Patienten behalten
-        role1CollapsedCards = {};
-        role1MilSymCache = {};
-        role1PrevBySource = {};
-        role1LastBySource = {};
-        role1UpdateUI();
-        renderPatientList();
-        showToast('Simulation zurückgesetzt', '&#8634;');
-    }
-
-    async function role1StartSimulation() {
-        const btn = document.getElementById('r1-sim-btn');
-        const resetBtn = document.getElementById('r1-sim-reset-btn');
-        if (role1SimRunning) {
-            // Stopp (pausiert, Reset-Button bleibt sichtbar)
-            role1SimIntervals.forEach(id => clearInterval(id));
-            role1SimTimeouts.forEach(id => clearTimeout(id));
-            role1SimIntervals = [];
-            role1SimTimeouts = [];
-            role1SimRunning = false;
-            btn.textContent = 'Simulation';
-            btn.style.background = '';
-            btn.style.borderColor = '';
-            btn.style.color = '';
-            return;
-        }
-
-        role1SimRunning = true;
-        btn.textContent = 'Stopp';
-        btn.style.background = 'var(--danger, #E74C3C)';
-        btn.style.borderColor = 'var(--danger, #E74C3C)';
-        btn.style.color = '#fff';
-        resetBtn.style.display = '';
-
-        // Erst alte Demo-Daten aufraumen
-        try { await api('/api/simulation/reset', 'POST'); } catch(e) {}
-
-        role1AddEvent('Simulation gestartet — 3 BATs unterwegs', 'SIM', false);
-
-        const r1 = { lat: 50.7374, lng: 7.0982 };
-
-        const bats = [
-            {
-                name: 'BAT Alpha42',
-                start: { lat: 50.7580, lng: 7.0450 },
-                patients: [
-                    { id: 'SIM-A1', name: 'Huber, Stefan', triage: 'T1', injuries: ['Schusswunde li. Oberschenkel', 'Starke Blutung'], vitals: { pulse: '132', spo2: '88', blood_pressure: '85/55' }, blood_type: 'A+', status: 'critical' },
-                    { id: 'SIM-A2', name: 'Richter, Anna', triage: 'T2', injuries: ['Splitterverletzung re. Arm'], vitals: { pulse: '98', spo2: '95' }, status: 'urgent' },
-                ],
-            },
-            {
-                name: 'BAT Bravo17',
-                start: { lat: 50.7100, lng: 7.0500 },
-                patients: [
-                    { id: 'SIM-B1', name: 'Weber, Thomas', triage: 'T3', injuries: ['Prellungen', 'Schuerfwunden'], vitals: { pulse: '78', spo2: '98' }, status: 'stable' },
-                ],
-            },
-            {
-                name: 'BAT Charlie9',
-                start: { lat: 50.7450, lng: 7.1500 },
-                patients: [
-                    { id: 'SIM-C1', name: 'Klein, Markus', triage: 'T1', injuries: ['Blast-Verletzung', 'Bewusstlos'], vitals: { pulse: '140', spo2: '82', gcs: '6' }, blood_type: '0-', status: 'critical' },
-                    { id: 'SIM-C2', name: 'Fischer, Lisa', triage: 'T2', injuries: ['Fraktur li. Unterarm'], vitals: { pulse: '105', spo2: '96' }, status: 'urgent' },
-                    { id: 'SIM-C3', name: 'Schmidt, Peter', triage: 'T3', injuries: ['Leichte Verbrennung'], vitals: { pulse: '82', spo2: '97' }, status: 'stable' },
-                ],
-            },
-        ];
-
-        // Routen für alle BATs laden (OSRM)
-        showToast('Routen werden berechnet...', '&#9873;');
-        const routes = await Promise.all(bats.map(bat => role1FetchRoute(bat.start, r1)));
-
-        // Route-Polylines auf Karte zeichnen
-        routes.forEach((route, i) => {
-            if (route && role1Map) {
-                const latlngs = route.map(p => [p.lat, p.lng]);
-                const line = L.polyline(latlngs, {
-                    color: ['#E11937', '#F39C12', '#3B82F6'][i],
-                    weight: 3, opacity: 0.5, dashArray: '8 6'
-                }).addTo(role1Map);
-                role1RouteLines.push(line);
-            }
-        });
-
-        // BAT-Boxen sofort im rechten Panel erzeugen (ohne Patienten)
-        const list = document.getElementById('r1-transport-list');
-        const emptyEl = list.querySelector('.empty');
-        if (emptyEl) emptyEl.remove();
-        bats.forEach(bat => {
-            const cardDiv = document.createElement('div');
-            cardDiv.className = 'role1-transport-card';
-            cardDiv.dataset.unit = bat.name;
-            cardDiv.innerHTML = `
-                <div class="role1-transport-header">
-                    <div class="unit-icon">&#9873;</div>
-                    <span class="unit-name">${bat.name}</span>
-                    <span class="unit-dist">—</span>
-                    <span class="unit-meta">unterwegs</span>
-                </div>
-            `;
-            list.appendChild(cardDiv);
-        });
-
-        // BATs bewegen sich entlang der Route (alle 1.5s ein Schritt, ~80 Schritte)
-        // KEINE Patientenmeldungen — nur Bewegung + Entfernung
-        const totalSteps = 80;
-        bats.forEach((bat, bi) => {
-            const route = routes[bi];
-            let step = 0;
-            const interval = setInterval(async () => {
-                if (step >= totalSteps || !role1SimRunning) {
-                    clearInterval(interval);
-                    if (step >= totalSteps && role1SimRunning) {
-                        // BAT ist angekommen
-                        role1ArrivedBats[bat.name] = true;
-                        showToast(`${bat.name} an Rettungsstation eingetroffen`, '&#10003;', 'voice');
-
-                        // Position auf exakt R1 setzen
-                        await api('/api/position', 'POST', {
-                            unit_name: bat.name,
-                            lat: r1.lat, lon: r1.lng,
-                            heading: 0, speed_kmh: 0,
-                            device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
-                        });
-
-                        // Transport-Card visuell markieren
-                        const card = document.querySelector(`.role1-transport-card[data-unit="${bat.name}"]`);
-                        if (card) {
-                            card.classList.add('arrived');
-                            const meta = card.querySelector('.unit-meta');
-                            if (meta) meta.textContent = '✓ Eingetroffen';
-                            const distEl = card.querySelector('.unit-dist');
-                            if (distEl) distEl.textContent = '0 m';
-                        }
-
-                        // Marker auf Ankunft-Icon setzen
-                        if (role1Markers[bat.name]) {
-                            const icon = createBatIconCached(bat.name, 0, true);
-                            role1Markers[bat.name].setIcon(icon);
-                        }
-                    }
-                    return;
-                }
-                step++;
-                const progress = step / totalSteps;
-
-                let lat, lng;
-                if (route && route.length > 2) {
-                    // Entlang der OSRM-Route interpolieren
-                    const idx = Math.min(Math.floor(progress * (route.length - 1)), route.length - 2);
-                    const frac = (progress * (route.length - 1)) - idx;
-                    lat = route[idx].lat + (route[idx + 1].lat - route[idx].lat) * frac;
-                    lng = route[idx].lng + (route[idx + 1].lng - route[idx].lng) * frac;
-                } else {
-                    // Fallback: Gerade Linie mit Wobble
-                    const wobble = Math.sin(progress * Math.PI) * 0.003 * (bi % 2 === 0 ? 1 : -1);
-                    lat = bat.start.lat + (r1.lat - bat.start.lat) * progress + wobble;
-                    lng = bat.start.lng + (r1.lng - bat.start.lng) * progress - wobble * 0.5;
-                }
-
-                // Position an Backend senden
-                await api('/api/position', 'POST', {
-                    unit_name: bat.name, lat, lon: lng,
-                    heading: 0, speed_kmh: 30 + Math.random() * 20,
-                    device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
-                });
-
-                // Entfernung direkt im Frontend aktualisieren (kein DOM-Rebuild)
-                const km = haversineKm(lat, lng, r1.lat, r1.lng);
-                const distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
-                const card = document.querySelector(`.role1-transport-card[data-unit="${bat.name}"] .unit-dist`);
-                if (card) card.textContent = distStr;
-            }, 1500);
-            role1SimIntervals.push(interval);
-        });
-    }
+    // role1ArrivedBats wird vom Live-Position-Update beschrieben sobald
+    // ein BAT die Rettungsstation erreicht hat. Wird in der Marker-
+    // Logik referenziert (createBatIconCached / role1UpdateMarkers).
+    // Die alte Frontend-Simulation ("3 BATs fahren von Bonn rein") wurde
+    // entfernt — Demo-Story laeuft jetzt aus dem BAT-Geraet selbst (Jetson
+    // schickt Position via /api/position, Surface zeigt sie an).
+    let role1ArrivedBats = {};
 
     async function init() {
         connectWS();

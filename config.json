@@ -143,7 +143,26 @@
                 "audiotest",
                 "audio test"
             ]
+        },
+        "bat_return_to_station": {
+            "label": "Rückfahrt zur Rettungsstation",
+            "triggers": [
+                "rueckfahrt zur rettungsstation",
+                "rueckfahrt rettungsstation",
+                "rueckfahrt starten",
+                "zurueck zur rettungsstation",
+                "ruckfahrt zur rettungsstation",
+                "ruckfahrt rettungsstation",
+                "ruckfahrt starten",
+                "zuruck zur rettungsstation",
+                "fahre zur rettungsstation"
+            ]
         }
+    },
+    "rescue_station": {
+        "lat": 50.7374,
+        "lon": 7.0982,
+        "label": "Rettungsstation Bonn"
     },
     "whisper": {
         "model": "small",

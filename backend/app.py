@@ -730,35 +730,9 @@ async def update_patient(patient_id: str, body: dict):
 
 
 # ---------------------------------------------------------------------------
-# Simulation: Reset (löscht SIM-Patienten)
+# Simulation: Reset (entfernt — Demo-Story laeuft jetzt aus dem BAT-Geraet
+# selbst via /api/position aus Phase 3 des Implementierungsplans)
 # ---------------------------------------------------------------------------
-@app.post("/api/simulation/reset")
-async def simulation_reset():
-    """Löscht alle Simulations- und Test-Patienten (IDs mit SIM- oder TEST- Prefix)."""
-    sim_ids = [pid for pid in state.patients if pid.startswith("SIM-") or pid.startswith("TEST-")]
-    for pid in sim_ids:
-        del state.patients[pid]
-        filepath = PATIENTS_DIR / f"{pid}.json"
-        if filepath.exists():
-            filepath.unlink()
-
-    # Transporte mit sim- Devices aufräumen
-    sim_transports = [k for k, v in state.transports.items()
-                      if v.get("device_id", "").startswith("sim-")]
-    for k in sim_transports:
-        del state.transports[k]
-
-    # Positionen mit sim- Devices aufräumen (auch wenn Transport schon weg ist)
-    sim_positions = [k for k, v in state.positions.items()
-                     if v.get("device_id", "").startswith("sim-")]
-    for k in sim_positions:
-        del state.positions[k]
-
-    state.events = []
-    save_state()
-    await broadcast({"type": "init", "patients": list(state.patients.values()),
-                     "transports": state.transports, "positions": state.positions, "events": []})
-    return {"status": "ok", "removed": len(sim_ids)}
 
 
 @app.post("/api/data/reset")
@@ -793,6 +767,96 @@ async def data_reset():
 
     print(f"Daten-Reset: {count} Patienten, {peer_count} Peers gelöscht")
     return {"status": "ok", "removed": count, "peers_removed": peer_count}
+
+
+@app.post("/api/data/test-generate")
+async def data_test_generate():
+    """Erzeugt Test-Patienten + Test-BAT in der Leitstelle, damit die
+    Lagekarte und Patient-Liste ohne echten Jetson demonstrierbar sind.
+    Patient-IDs haben TEST- Prefix."""
+    import uuid as _uuid
+    now = datetime.now().isoformat()
+
+    # Test-Patienten — Surface-Sicht: alle bereits gemeldet (synced), in
+    # Role 1 angekommen, mit gesetzter Triage (oder noch ohne).
+    test_data = [
+        # Patient-Tupel: (name, rank, triage, injuries, vitals, current_role)
+        ("Markus Hoffmann",  "Hauptgefreiter",     "T2", ["Knie-Trauma li.", "Schwellung"],
+            {"pulse": "92", "spo2": "97"}, "role1"),
+        ("Andrea Wenzel",    "Soldatin",           "T3", ["Schnittwunde Unterarm"],
+            {"pulse": "78", "spo2": "98"}, "role1"),
+        ("Stefan Becker",    "Stabsunteroffizier", "T2", ["Splitterverletzung Oberschenkel"],
+            {"pulse": "98", "spo2": "94", "bp": "110/70"}, "role1"),
+        ("Lea Schwarz",      "Hauptgefreite",      "T1", ["Prellung Brustkorb", "Atemnot"],
+            {"pulse": "115", "spo2": "89", "resp_rate": "24"}, "role1"),
+        ("Tobias Krueger",   "Feldwebel",          "T1", ["Schussverletzung Bein", "Tourniquet"],
+            {"pulse": "132", "spo2": "92", "bp": "95/60"}, "role1"),
+        ("Julia Mueller",    "Oberleutnant",       "T2", ["Kopfprellung", "Beinfraktur"],
+            {"pulse": "88", "spo2": "97", "bp": "120/80", "gcs": "14"}, "role1"),
+    ]
+
+    created_ids = []
+    for name, rank, triage, injuries, vitals, role in test_data:
+        pid = f"TEST-{_uuid.uuid4().hex[:8].upper()}"
+        patient = {
+            "patient_id": pid,
+            "timestamp_created": now,
+            "current_role": role,
+            "flow_status": "reported",
+            "synced": True,
+            "analyzed": True,
+            "rfid_tag_id": "",
+            "device_id": "test-generator",
+            "created_by": "Test-Generator",
+            "name": name,
+            "rank": rank,
+            "unit": "BAT TestAlpha",
+            "triage": triage,
+            "status": "stable",
+            "injuries": injuries,
+            "vitals": vitals,
+            "treatments": [],
+            "medications": [],
+            "transcripts": [],
+            "audio_files": [],
+            "handovers": [],
+            "timeline": [{
+                "time": now, "role": role, "event": "test_generated",
+                "details": "Test-Patient generiert (data/test-generate)",
+            }],
+        }
+        state.patients[pid] = patient
+        save_patient(patient)
+        created_ids.append(pid)
+
+    # Plus: Ein Test-BAT auf der Karte (Position bei Bonn-Endenich)
+    state.peers["test-bat-01"] = {
+        "device_id": "test-bat-01",
+        "unit_name": "BAT TestAlpha",
+        "unit_role": "BAT",
+        "system_name": "Test-Generator",
+        "ip": "0.0.0.0",
+        "port": 0,
+        "last_seen": now,
+        "patient_count": len(test_data),
+    }
+    state.positions["BAT TestAlpha"] = {
+        "lat": 50.7251, "lon": 7.0644,  # Bonn-Endenich
+        "heading": 0, "speed_kmh": 0,
+        "device_id": "test-bat-01",
+        "timestamp": now,
+    }
+    save_state()
+
+    await broadcast({
+        "type": "init",
+        "patients": list(state.patients.values()),
+        "transports": state.transports,
+        "positions": state.positions,
+        "events": state.events,
+    })
+    print(f"Test-Daten generiert: {len(created_ids)} Patient(en) + 1 Test-BAT")
+    return {"status": "ok", "created": len(created_ids), "patient_ids": created_ids}
 
 
 # ---------------------------------------------------------------------------
