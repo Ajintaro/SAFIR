@@ -945,11 +945,22 @@ async def process_vosk_commands():
 
 
 async def voice_set_triage(level: str):
-    """Sprachbefehl: Triage setzen für aktiven Patient."""
+    """Sprachbefehl: Triage setzen für aktiven Patient.
+
+    Triage wird in der Bundeswehr-Rettungskette erst in Role 1
+    (Rettungsstation) gesetzt — der BAT (Phase 0) erfasst und transportiert
+    nur. Der Sanitäter im Feld hat oft keinen Überblick um zu priorisieren,
+    und das LLM würde sonst Triage-Werte erfinden, die nicht im Diktat stehen.
+    """
     if not state.active_patient or state.active_patient not in state.patients:
         tts.announce_error()
         return
     patient = state.patients[state.active_patient]
+    if patient.get("current_role", "phase0") == "phase0":
+        # Im Feld (BAT) wird keine Triage gesetzt — das passiert in der
+        # Rettungsstation, sobald der Patient dort eintrifft.
+        tts.speak("Triage erfolgt erst in der Rettungsstation")
+        return
     patient["triage"] = level
     patient["timeline"].append({
         "time": datetime.now().isoformat(),
@@ -1703,7 +1714,11 @@ Sätze:
 def _split_sentences(text: str) -> list[str]:
     """Schlankes Satz-Splitting für deutsche Sanitäts-Transkripte.
     Nutzt Satzzeichen + min. 30 chars Länge — zu kurze Fragmente werden
-    ans vorherige Segment angehängt."""
+    ans vorherige Segment angehängt. Zusätzlich: sehr kurze End-Fragmente
+    (< 15 chars wie 'Aufnahme' oder 'Ende') werden auch dann angehängt,
+    wenn das vorherige Segment bereits voll ist — sonst entstehen
+    Mini-Segmente, die der Boundary-Segmenter als eigenen Patient
+    interpretiert."""
     import re
     # Split bei . ! ? gefolgt von Space/Newline oder Ende
     raw = re.split(r"(?<=[.!?])\s+", text.strip())
@@ -1714,6 +1729,11 @@ def _split_sentences(text: str) -> list[str]:
         if not seg:
             continue
         if merged and len(merged[-1]) < 30:
+            # Vorheriges Segment ist zu kurz → an dieses anhängen
+            merged[-1] = merged[-1] + " " + seg
+        elif merged and len(seg) < 15:
+            # Aktuelles Fragment ist zu kurz (z.B. "Aufnahme" 8 chars) →
+            # an das vorherige hängen, damit es kein eigenes Segment wird
             merged[-1] = merged[-1] + " " + seg
         else:
             merged.append(seg)
@@ -2366,12 +2386,20 @@ async def select_patient(patient_id: str):
 
 @app.post("/api/patient/{patient_id}/update")
 async def update_patient(patient_id: str, body: dict):
-    """Patientendaten aktualisieren (Felder mergen)."""
+    """Patientendaten aktualisieren (Felder mergen).
+
+    Triage-Feld wird in Phase 0 (BAT) bewusst ignoriert — sie wird erst
+    in der Rettungsstation (Role 1+) gesetzt. Siehe voice_set_triage()
+    für die Begründung."""
     if patient_id not in state.patients:
         return {"error": "Patient nicht gefunden"}
     patient = state.patients[patient_id]
     data = body.get("data", {})
+    is_phase0 = patient.get("current_role", "phase0") == "phase0"
     for key, value in data.items():
+        if key == "triage" and is_phase0:
+            # Triage darf in Phase 0 nicht gesetzt werden
+            continue
         if key in patient:
             patient[key] = value
     # Vitals separat mergen
@@ -2722,20 +2750,58 @@ async def reset_simulation():
 
 @app.post("/api/data/reset")
 async def data_reset():
-    """Löscht ALLE Patientendaten für einen sauberen Demo-Neustart."""
+    """Löscht ALLE Patientendaten, Pending-Aufnahmen, Sessions, Operator-State
+    und Peer-Cache für einen sauberen Demo-Neustart. Hardware-/Whisper-/Vosk-
+    State bleibt unangetastet, sonst müsste der Service neu starten."""
     count = len(state.patients)
+    pending_count = len(state.pending_transcripts)
+    session_count = len(state.sessions)
+
+    # Patient-Daten + RFID-Mapping
     state.patients.clear()
     state.rfid_map.clear()
     state.active_patient = ""
+
+    # Pending Transcripts (Multi-Patient-Diktate, die auf Analyse warten)
+    state.pending_transcripts.clear()
+
+    # Sessions (Aufnahme-Sessions, wenn vorhanden)
+    state.sessions.clear()
+    state.active_session = None
+
+    # Voice-Command-Queue leeren (verbleibende Befehle wegwischen)
+    state.vosk_command_queue.clear()
+
+    # Audio-Buffer (sicherheits-halber, falls eine Aufnahme gerade läuft
+    # bleibt state.recording aktiv, aber der Buffer wird gleich neu befüllt)
+    state.audio_chunks = []
+
+    # Operator (zwingt einen frischen Login)
+    state.current_operator = None
+    state.last_rfid_uid = "---"
+
+    # Sync- und Peer-Cache
     state.sync_queue_depth = 0
+    state.peers.clear()
+
     await broadcast({
         "type": "init",
         "model": state.current_model,
         "patients": [],
         "backend_reachable": state.backend_reachable,
     })
-    print(f"Daten-Reset: {count} Patienten gelöscht")
-    return {"status": "ok", "removed": count}
+    # Operator-Logout-Event für die UI (Toolbar etc.)
+    await broadcast({"type": "operator_changed", "operator": None})
+    print(
+        f"Daten-Reset: {count} Patient(en), {pending_count} Pending-Transcript(s), "
+        f"{session_count} Session(s) gelöscht; Operator/Peers/Voice-Queue geleert"
+    )
+    return {
+        "status": "ok",
+        "removed": count,
+        "pending_removed": pending_count,
+        "sessions_removed": session_count,
+    }
 
 
 # ---------------------------------------------------------------------------

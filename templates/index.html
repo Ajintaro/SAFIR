@@ -1421,7 +1421,7 @@
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">3</span>
-                            <div><span style="font-size:11px;font-weight:600">Triage / Abschluss</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Triage rot/gelb/grün/blau"</strong> · <strong>"Patient fertig"</strong> stoppt Aufnahme</span></div>
+                            <div><span style="font-size:11px;font-weight:600">Aufnahme abschließen</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Patient fertig"</strong> stoppt die Aufnahme. Triage erfolgt erst in der Rettungsstation (Role 1).</span></div>
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">&#8634;</span>
@@ -1842,6 +1842,7 @@
                                 <select id="settings-theme" onchange="setTheme(this.value)">
                                     <option value="dark">Dark Mode</option>
                                     <option value="saphir">Saphir Mode 💎</option>
+                                    <option value="bundeswehr">Bundeswehr Olive 🪖</option>
                                     <option value="light">Light Mode</option>
                                 </select>
                             </div>
@@ -4115,14 +4116,20 @@
                       (p.vitals.spo2 ? `<span>SpO2: ${p.vitals.spo2}</span>` : '') +
                       '</div>' : '';
 
-                // Fahrzeug-Modus: Edit-Felder inline in der Karte
+                // Fahrzeug-Modus: Edit-Felder inline in der Karte.
+                // Triage-Buttons werden bewusst NUR für Patienten gerendert,
+                // die schon in Role 1+ angekommen sind — im BAT (Phase 0)
+                // findet keine Triage statt.
+                const isPhase0 = (p.current_role || 'phase0') === 'phase0';
+                const triageButtonsHtml = isPhase0 ? '' : `
+                        <div style="display:flex;gap:2px">
+                            ${['T1','T2','T3','T4'].map(t => `<button onclick="event.stopPropagation();setTriageFor('${p.patient_id}','${t}')" style="width:28px;height:28px;border:2px solid ${p.triage===t?'#fff':'transparent'};border-radius:4px;background:${TRIAGE_COLORS[t]};color:#fff;font-size:9px;font-weight:800;cursor:pointer">${t}</button>`).join('')}
+                        </div>`;
                 const fzEditHtml = isFz ? `
                     <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
                         <input type="text" value="${p.name || ''}" placeholder="Name" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:11px" onblur="savePatientFieldFor('${p.patient_id}','name',this.value)">
                         <input type="text" value="${p.rank || ''}" placeholder="Dienstgrad" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:11px" onblur="savePatientFieldFor('${p.patient_id}','rank',this.value)">
-                        <div style="display:flex;gap:2px">
-                            ${['T1','T2','T3','T4'].map(t => `<button onclick="event.stopPropagation();setTriageFor('${p.patient_id}','${t}')" style="width:28px;height:28px;border:2px solid ${p.triage===t?'#fff':'transparent'};border-radius:4px;background:${TRIAGE_COLORS[t]};color:#fff;font-size:9px;font-weight:800;cursor:pointer">${t}</button>`).join('')}
-                        </div>
+                        ${triageButtonsHtml}
                     </div>
                     <div style="display:flex;gap:4px;margin-top:6px">
                         <input type="text" value="${p.vitals?.pulse||''}" placeholder="Puls" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:10px" onblur="saveVitalFor('${p.patient_id}','pulse',this.value)">

@@ -763,18 +763,21 @@ async def simulation_reset():
 
 @app.post("/api/data/reset")
 async def data_reset():
-    """Löscht ALLE Patientendaten, Transporte, Positionen und Events.
-    Für einen sauberen Demo-Neustart."""
+    """Löscht ALLE Patientendaten, Transporte, Positionen, Events und
+    den Peer-Cache. Für einen sauberen Demo-Neustart. WebSocket-Clients
+    werden bewusst NICHT angefasst, sonst brechen aktive Browser-Sessions ab."""
     # Alle Patienten-Dateien löschen
     count = len(state.patients)
+    peer_count = len(state.peers)
     for filepath in PATIENTS_DIR.glob("*.json"):
         filepath.unlink()
     state.patients.clear()
 
-    # Transporte, Positionen, Events leeren
+    # Transporte, Positionen, Events, Peers leeren
     state.transports.clear()
     state.positions.clear()
     state.events.clear()
+    state.peers.clear()
 
     # state.json zurücksetzen
     save_state()
@@ -788,8 +791,8 @@ async def data_reset():
         "events": [],
     })
 
-    print(f"Daten-Reset: {count} Patienten gelöscht")
-    return {"status": "ok", "removed": count}
+    print(f"Daten-Reset: {count} Patienten, {peer_count} Peers gelöscht")
+    return {"status": "ok", "removed": count, "peers_removed": peer_count}
 
 
 # ---------------------------------------------------------------------------

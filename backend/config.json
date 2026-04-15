@@ -1,6 +1,6 @@
 {
-    "device_id": "macbook-01",
-    "unit_name": "OP Zentrum",
+    "device_id": "surface-01",
+    "unit_name": "Rettungsstation West",
     "role": "role2",
     "role_label": "OP Zentrum (Role 2)",
     "default_medic": "OFA Meier",
