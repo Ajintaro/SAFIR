@@ -26,19 +26,22 @@ _SSD1306_INIT = [
 # Display-Konstanten
 WIDTH = 128
 HEIGHT = 64
-PAGES = ["models", "operator", "patient"]
+PAGES = ["models", "network", "operator", "patient"]
 PAGE_TITLES = {
     "models": "KI-STATUS",
+    "network": "NETZWERK",
     "operator": "BEDIENER",
     "patient": "PATIENT",
 }
 
 # 2-Level-Menü: Liste von (action_id, label) pro Haupt-Screen.
-# "models" hat absichtlich kein Untermenü — reiner Diagnose-Screen.
+# "models" und "network" haben absichtlich kein Untermenü — beides reine
+# Diagnose-Screens.
 # "operator" zeigt "Ausloggen" nur wenn jemand eingeloggt ist (Laufzeit-Check
 # im app.py Handler; Menüstruktur bleibt statisch für Einfachheit).
 PAGE_SUBMENUS = {
     "models": [],
+    "network": [],
     "operator": [
         ("logout", "Ausloggen"),
     ],
@@ -335,6 +338,8 @@ class OledMenu:
             self._render_submenu(draw, page)
         elif page == "models":
             self._render_models_status(draw)
+        elif page == "network":
+            self._render_network(draw)
         elif page == "operator":
             self._render_operator(draw)
         elif page == "patient":
@@ -408,6 +413,62 @@ class OledMenu:
             if not qwen_ok:
                 missing.append("Qwen")
             draw.text((2, 54), f"Warte: {' + '.join(missing)}", font=FONT_SM, fill=1)
+
+    # ---- Seite: NETZWERK (WLAN + IP + Tailscale, alles gross) ----
+    def _render_network(self, draw: ImageDraw):
+        """Zeigt WLAN-/Tailscale-Status mit grossen, gut lesbaren Fonts.
+        network_info wird vom app.py-Background-Task gefuellt mit:
+          - wifi_ssid:    str
+          - wifi_state:   "connected" / "connecting" / "disconnected"
+          - wifi_ip:      str (Wi-Fi-Adresse)
+          - eth_ip:       str (Ethernet-Adresse, falls vorhanden)
+          - tailscale:    "online" / "offline" / ""
+          - tailscale_ip: str (100.x.x.x)
+          - backend_ok:   bool (Surface erreichbar?)
+        """
+        n = self.network_info or {}
+        wifi_state = n.get("wifi_state", "")
+        wifi_ssid = n.get("wifi_ssid", "")
+        ts_state = n.get("tailscale", "")
+
+        # Zeile 1 (y=14): WLAN gross
+        if wifi_state == "connected" and wifi_ssid:
+            label = wifi_ssid[:14]
+            draw.text((2, 14), label, font=FONT_LG, fill=1)
+        elif wifi_state == "connected":
+            draw.text((2, 14), "WLAN OK", font=FONT_LG, fill=1)
+        elif wifi_state == "connecting":
+            draw.text((2, 14), "WLAN ?", font=FONT_LG, fill=1)
+        else:
+            draw.text((2, 14), "OHNE WLAN", font=FONT_LG, fill=1)
+
+        # Zeile 2 (y=30): IP-Adresse — wifi_ip Vorrang, sonst eth_ip
+        ip = n.get("wifi_ip") or n.get("eth_ip") or n.get("tailscale_ip") or "--"
+        draw.text((2, 30), f"IP {ip[:14]}", font=FONT_MD, fill=1)
+
+        # Zeile 3 (y=44): Tailscale-Status
+        if ts_state == "online":
+            ts_text = "Tailnet ON"
+        elif ts_state == "offline":
+            ts_text = "Tailnet OFF"
+        else:
+            ts_text = "Tailnet --"
+        draw.text((2, 44), ts_text, font=FONT_MD, fill=1)
+
+        # Bottom-Bar: Gesamtstatus invertiert
+        backend_ok = bool(n.get("backend_ok"))
+        if wifi_state == "connected" and ts_state == "online" and backend_ok:
+            draw.rectangle([0, 56, WIDTH - 1, 63], fill=1)
+            draw.text((30, 56), "ALLES OK", font=FONT_SM, fill=0)
+        else:
+            issues = []
+            if wifi_state != "connected":
+                issues.append("WLAN")
+            if ts_state != "online":
+                issues.append("TS")
+            if not backend_ok:
+                issues.append("BE")
+            draw.text((2, 56), f"WARN: {' '.join(issues)}", font=FONT_SM, fill=1)
 
     # ---- Seite: BEDIENER (nutzt volle 64 px, kein Header) ----
     def _render_operator(self, draw: ImageDraw):

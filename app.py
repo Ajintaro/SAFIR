@@ -4302,16 +4302,23 @@ async def _oled_update_loop():
                         "unit_name": _config.get("unit_name", ""),
                         "patient_count": len(state.patients),
                     })
-                    # Netzwerk-Info
+                    # Netzwerk-Info — vollstaendig fuer den NETZWERK-Screen
                     try:
                         hostname = socket.gethostname()
                     except Exception:
                         hostname = "jetson"
                     ip = _get_primary_ip()
+                    wifi = _get_wifi_status()
                     oled_menu.update_network({
                         "hostname": hostname,
                         "ip": ip,
                         "tailscale_ip": _get_tailscale_ip(),
+                        "tailscale": _get_tailscale_state(),
+                        "wifi_ssid": wifi["wifi_ssid"],
+                        "wifi_state": wifi["wifi_state"],
+                        "wifi_ip": wifi["wifi_ip"],
+                        "eth_ip": _get_eth_ip(),
+                        "backend_ok": bool(state.backend_reachable),
                         "peers": len(state.peers),
                     })
                     # Operator-Info
@@ -4429,6 +4436,84 @@ def _get_tailscale_ip() -> str:
         return ip or "---"
     except Exception:
         return "---"
+
+
+def _get_tailscale_state() -> str:
+    """Gibt 'online' / 'offline' / '' zurueck. Online wenn der lokale
+    tailscaled BackendState=Running hat. Eigene Identitaet zaehlt als
+    online auch wenn keine Peers da sind — solange das tailscaled
+    selbst angemeldet ist."""
+    try:
+        out = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True, text=True, timeout=1.5,
+        )
+        if out.returncode != 0:
+            return "offline"
+        import json as _json
+        data = _json.loads(out.stdout)
+        backend_state = data.get("BackendState", "")
+        if backend_state == "Running":
+            return "online"
+        return "offline"
+    except Exception:
+        return ""
+
+
+def _get_wifi_status() -> dict:
+    """Liest WLAN-SSID, State und IP via nmcli. Faellt auf iwgetid +
+    ip addr zurueck wenn nmcli nicht da ist. Gibt ein dict mit
+    wifi_state ('connected'/'disconnected'/'unknown'), wifi_ssid und
+    wifi_ip zurueck."""
+    info = {"wifi_state": "unknown", "wifi_ssid": "", "wifi_ip": ""}
+    # Versuch 1: nmcli
+    try:
+        out = subprocess.run(
+            ["nmcli", "-t", "-f", "ACTIVE,SSID,DEVICE", "dev", "wifi"],
+            capture_output=True, text=True, timeout=1.0,
+        )
+        if out.returncode == 0:
+            for line in out.stdout.splitlines():
+                parts = line.split(":")
+                if len(parts) >= 2 and parts[0] == "yes":
+                    info["wifi_state"] = "connected"
+                    info["wifi_ssid"] = parts[1]
+                    break
+            if info["wifi_state"] != "connected":
+                info["wifi_state"] = "disconnected"
+    except Exception:
+        pass
+    # IP der wlan-Schnittstelle
+    try:
+        out = subprocess.run(
+            ["ip", "-4", "-o", "addr", "show", "dev", "wlan0"],
+            capture_output=True, text=True, timeout=1.0,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            # Format: "3: wlan0    inet 192.168.x.y/24 brd ... scope global ..."
+            for token in out.stdout.split():
+                if "/" in token and token.count(".") == 3:
+                    info["wifi_ip"] = token.split("/")[0]
+                    break
+    except Exception:
+        pass
+    return info
+
+
+def _get_eth_ip() -> str:
+    """Liefert die IPv4-Adresse von eth0 (oder leer)."""
+    try:
+        out = subprocess.run(
+            ["ip", "-4", "-o", "addr", "show", "dev", "eth0"],
+            capture_output=True, text=True, timeout=1.0,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            for token in out.stdout.split():
+                if "/" in token and token.count(".") == 3:
+                    return token.split("/")[0]
+    except Exception:
+        pass
+    return ""
 
 
 # Startzeit für Hardware-Service-Uptime
