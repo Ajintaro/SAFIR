@@ -18,28 +18,79 @@ PIPER_CONFIG = PIPER_MODEL.with_suffix(".onnx.json")
 _voice = None
 _lock = threading.Lock()
 _enabled = True
+# Liste von Output-Devices (PortAudio-Device-IDs). Wenn mehrere Speaker-
+# Devices da sind (z.B. USB-Headset + integrierter HDA-Lautsprecher),
+# wird TTS auf ALLEN gleichzeitig ausgegeben — der Messebesucher mit
+# Headset hoert die Antwort genauso wie die Umstehenden ueber den
+# Lautsprecher. _output_device (singular, alt) bleibt fuer Rueckwarts-
+# kompatibilitaet als Alias auf _output_devices[0].
+_output_devices: list[int] = []
 _output_device = None
 
 
+def _is_speaker_device(name: str) -> bool:
+    """Filter fuer 'echte' Speaker-Devices. Schliesst Loopback, HDMI,
+    pulse virtuelle Devices, Modem etc. aus."""
+    n = name.lower()
+    skip_keywords = ("hdmi", "loopback", "modem", "pulse", "default",
+                     "sysdefault", "front", "surround", "iec958", "spdif",
+                     "samplerate", "speexrate", "upmix", "vdownmix",
+                     "dmix", "dsnoop")
+    if any(kw in n for kw in skip_keywords):
+        return False
+    speaker_keywords = ("usb", "headset", "speaker", "jabra", "logitech",
+                        "plantronics", "creative", "razer", "audio", "hda",
+                        "tegra")
+    return any(kw in n for kw in speaker_keywords)
+
+
+def rescan_devices() -> int:
+    """Scannt alle Speaker-Output-Devices neu und befuellt _output_devices.
+    Wird beim init_tts und vom Hot-Plug-Watcher (app.py) aufgerufen.
+    Gibt die Anzahl der gefundenen Devices zurueck."""
+    global _output_devices, _output_device
+    _output_devices.clear()
+    try:
+        devs = sd.query_devices()
+        seen_names = set()  # Duplikate (z.B. mehrere ALSA-Aliase) ausschliessen
+        for i, d in enumerate(devs):
+            if d["max_output_channels"] <= 0:
+                continue
+            name = d["name"]
+            if not _is_speaker_device(name):
+                continue
+            base = name.split("(")[0].strip()
+            if base in seen_names:
+                continue
+            seen_names.add(base)
+            _output_devices.append(i)
+            print(f"TTS Audio-Output [{i}] {name}")
+    except Exception as e:
+        print(f"TTS Device-Scan Fehler: {e}")
+    if _output_devices:
+        _output_device = _output_devices[0]
+    else:
+        _output_device = None
+    n = len(_output_devices)
+    print(f"TTS: {n} Speaker-Device(s) — {'Multi-Output' if n > 1 else 'Single-Output' if n == 1 else 'KEIN Output'}")
+    return n
+
+
+def get_output_device_count() -> int:
+    """Aktuelle Anzahl der Speaker-Output-Devices."""
+    return len(_output_devices)
+
+
 def init_tts() -> bool:
-    """Lädt Piper TTS Modell (einmalig, ~2s)."""
+    """Laedt Piper TTS Modell (einmalig, ~2s) und scannt alle Output-
+    Devices. Mehrere Speaker werden parallel bespielt."""
     global _voice
     if _voice is not None:
         return True
     try:
         from piper import PiperVoice
         _voice = PiperVoice.load(str(PIPER_MODEL), config_path=str(PIPER_CONFIG))
-        # Audio-Output: USB-Headset bevorzugen
-        global _output_device
-        try:
-            devs = sd.query_devices()
-            for i, d in enumerate(devs):
-                if d["max_output_channels"] > 0 and ("USB" in d["name"] or "Logitech" in d["name"]):
-                    _output_device = i
-                    print(f"TTS Audio-Output: [{i}] {d['name']}")
-                    break
-        except Exception:
-            pass
+        rescan_devices()
         print(f"Piper TTS geladen ({PIPER_MODEL.name}, {_voice.config.sample_rate}Hz)")
         return True
     except Exception as e:
@@ -96,9 +147,34 @@ def _pick_output_rate(device, piper_rate: int) -> int:
     return piper_rate  # letzte Rettung
 
 
+def _resample_for_device(audio_float: np.ndarray, piper_rate: int, target_rate: int) -> np.ndarray:
+    """Resample (per linearer Interpolation) wenn target != piper."""
+    if target_rate == piper_rate:
+        return audio_float
+    ratio = target_rate / piper_rate
+    new_len = int(len(audio_float) * ratio)
+    indices = np.linspace(0, len(audio_float) - 1, new_len)
+    return np.interp(indices, np.arange(len(audio_float)), audio_float).astype(np.float32)
+
+
+def _play_one(device_id: int, audio_float: np.ndarray, piper_rate: int):
+    """Spielt das Sample auf einem Device ab — pro Device eigenes Resample,
+    weil USB-Headset (48 kHz) und HDA-Lautsprecher (44.1 kHz) verschieden
+    sein koennen."""
+    try:
+        target_rate = _pick_output_rate(device_id, piper_rate)
+        sample = _resample_for_device(audio_float, piper_rate, target_rate)
+        sd.play(sample, samplerate=target_rate, device=device_id, blocking=True)
+    except Exception as e:
+        print(f"TTS Ausgabe Fehler [device {device_id}]: {e}")
+
+
 def _speak_internal(text: str):
-    """Synthese + Ausgabe über Lautsprecher. Resampled bei Bedarf auf eine
-    sample rate die das konkrete USB-Audio-Device wirklich unterstützt."""
+    """Synthese + parallel auf alle Speaker-Devices ausgeben.
+    Pro Device wird in einem eigenen Thread resampled und gespielt — so
+    laufen Headset und Lautsprecher synchron, jeder mit seiner nativen
+    Sample-Rate. Wenn nur ein Device da ist, ist der Overhead minimal
+    (ein einziger Thread)."""
     with _lock:
         try:
             chunks = list(_voice.synthesize(text))
@@ -108,17 +184,26 @@ def _speak_internal(text: str):
             piper_rate = _voice.config.sample_rate
             audio_float = audio.astype(np.float32) / 32768.0
 
-            target_rate = _pick_output_rate(_output_device, piper_rate)
-            if target_rate != piper_rate:
-                ratio = target_rate / piper_rate
-                new_len = int(len(audio_float) * ratio)
-                indices = np.linspace(0, len(audio_float) - 1, new_len)
-                audio_float = np.interp(
-                    indices, np.arange(len(audio_float)), audio_float
-                ).astype(np.float32)
+            devices = _output_devices or [_output_device] if _output_device is not None else []
+            if not devices:
+                # Letzte Rettung: PortAudio-Default
+                sd.play(audio_float, samplerate=piper_rate, blocking=True)
+                return
 
-            sd.play(audio_float, samplerate=target_rate, device=_output_device)
-            sd.wait()
+            # Pro Device einen Thread starten, dann auf alle warten.
+            # blocking=True in sd.play() blockiert nur den jeweiligen Thread,
+            # nicht den Haupt-Lock — die Threads laufen wirklich parallel.
+            threads = []
+            for dev_id in devices:
+                t = threading.Thread(
+                    target=_play_one,
+                    args=(dev_id, audio_float, piper_rate),
+                    daemon=True,
+                )
+                t.start()
+                threads.append(t)
+            for t in threads:
+                t.join()
         except Exception as e:
             print(f"TTS Ausgabe Fehler: {e}")
 

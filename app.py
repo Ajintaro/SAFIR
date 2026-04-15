@@ -5,6 +5,7 @@ FastAPI Backend mit WebSocket, Templates und Vosk-Sprachsteuerung.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -4233,6 +4234,9 @@ async def startup():
     # BAT-Position-Animation Loop (idle bis "Rueckfahrt" getriggert wird)
     asyncio.create_task(bat_position_loop())
 
+    # Audio Hot-Plug Watcher (erkennt neu eingesteckte USB-Speaker)
+    asyncio.create_task(_audio_device_watcher_loop())
+
     # Peer Discovery Heartbeat
     asyncio.create_task(_heartbeat_loop())
 
@@ -4514,6 +4518,127 @@ def _get_eth_ip() -> str:
     except Exception:
         pass
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Audio-Hotplug-Watcher
+# ---------------------------------------------------------------------------
+# Pollt /proc/asound/cards alle paar Sekunden auf Aenderungen. Wenn ein
+# USB-Audio-Device im laufenden Betrieb angeschlossen oder entfernt wird,
+# resetten wir PortAudio und scannen die TTS-Output-Devices neu, sodass
+# das neue Speaker sofort fuer Multi-Output-TTS zur Verfuegung steht.
+_audio_card_signature = ""
+
+
+def _get_alsa_card_signature() -> str:
+    """Hash-Signatur von /proc/asound/cards. Aendert sich bei jedem
+    USB-Audio-Hotplug."""
+    try:
+        with open("/proc/asound/cards") as f:
+            return hashlib.md5(f.read().encode("utf-8", errors="ignore")).hexdigest()
+    except Exception:
+        return ""
+
+
+async def _refresh_audio_devices_async():
+    """PortAudio-Reset + TTS-Device-Rescan.
+
+    KRITISCH: PortAudio's terminate()/initialize() greift nur durch wenn
+    KEIN aktiver Stream existiert. Wir muessen also Vosk's persistent
+    Input-Stream zuerst stoppen, dann PortAudio resetten, dann den
+    Stream neu aufbauen — sonst sieht der Rescan die neuen USB-Devices
+    nicht (PortAudio cached die Geraeteliste solange ein Stream lebt).
+
+    Wird im Executor ausgefuehrt damit der Event-Loop nicht blockiert."""
+    import sounddevice as sd
+    loop = asyncio.get_event_loop()
+
+    def _do_reset():
+        import time as _t
+        import importlib as _il
+        global sd
+        old_count = tts.get_output_device_count()
+        # 1. Vosk-Input-Stream stoppen (haelt sonst PortAudio offen)
+        vosk_was_listening = state.vosk_listening
+        try:
+            stop_persistent_stream()
+        except Exception as e:
+            print(f"[AUDIO] stop_persistent_stream Fehler: {e}", flush=True)
+        # PortAudio braucht einen Moment um den Stream aufzuraeumen
+        _t.sleep(0.3)
+        # 2. PortAudio nuklear zuruecksetzen — sounddevice komplett
+        # neu importieren. _terminate/_initialize allein reicht nicht
+        # um den ALSA-Device-Cache zu refreshen wenn ein USB-Audio-Device
+        # waehrend des Betriebs angeschlossen wurde (PortAudio cacht die
+        # Geraeteliste in einem internen C-Pool den nur ein voller
+        # Modul-Reload aufloest).
+        try:
+            sd._terminate()
+        except Exception:
+            pass
+        _t.sleep(0.3)
+        try:
+            import sounddevice as _sd_module
+            _il.reload(_sd_module)
+            sd = _sd_module  # globalen alias austauschen
+            # Auch im tts-Modul den sounddevice-Reference austauschen
+            import shared.tts as _tts_module
+            _tts_module.sd = _sd_module
+        except Exception as e:
+            print(f"[AUDIO] sounddevice reload Fehler: {e}", flush=True)
+        _t.sleep(0.5)
+        # 3. Neue Device-Liste holen
+        new_count = tts.rescan_devices()
+        # 4. Vosk-Stream wieder hochfahren wenn er vorher lief
+        if vosk_was_listening:
+            try:
+                start_persistent_stream()
+            except Exception as e:
+                print(f"[AUDIO] start_persistent_stream Fehler: {e}", flush=True)
+        return old_count, new_count
+
+    try:
+        old_n, new_n = await loop.run_in_executor(None, _do_reset)
+        print(f"[AUDIO] Hot-Reload: {old_n} -> {new_n} Speaker-Device(s)", flush=True)
+        # OLED-Einblendung + TTS-Ansage
+        if new_n > old_n:
+            oled_menu.show_status("AUDIO +", f"{new_n} Lautsprecher")
+            tts.speak(f"{new_n} Audiogerate aktiv")
+        elif new_n < old_n and new_n > 0:
+            oled_menu.show_status("AUDIO -", f"{new_n} Lautsprecher")
+            tts.speak("Audiogerat entfernt")
+        elif new_n == 0:
+            oled_menu.show_status("AUDIO !", "Kein Lautsprecher")
+            print("[AUDIO] WARNUNG: Kein Speaker-Device mehr verfuegbar", flush=True)
+        else:
+            # Sig-Change aber gleiche Anzahl: PortAudio hat das neue Device
+            # nicht im Rescan erkannt (Linux/PortAudio Hot-Plug-Limitation).
+            # Wir wissen: ALSA sieht es (sonst kein Sig-Change), aber
+            # PortAudio's Cache liefert es noch nicht. Der User soll den
+            # Service neu starten damit Multi-Output verfuegbar ist.
+            oled_menu.show_status("AUDIO NEU", "SAFIR neu starten")
+            tts.speak("Audiogerat erkannt. Service neu starten fuer Multi Output.")
+        # Status-Einblendung nach 4 s ausblenden
+        await asyncio.sleep(4.0)
+        oled_menu.clear_status()
+    except Exception as e:
+        print(f"[AUDIO] Refresh-Fehler: {e}", flush=True)
+
+
+async def _audio_device_watcher_loop():
+    """Background-Loop der /proc/asound/cards alle 3 s prueft und
+    beim Hotplug einen Audio-Refresh triggert."""
+    global _audio_card_signature
+    _audio_card_signature = _get_alsa_card_signature()
+    print(f"[AUDIO] Hotplug-Watcher gestartet (sig={_audio_card_signature[:8]})", flush=True)
+    while True:
+        await asyncio.sleep(3.0)
+        sig = _get_alsa_card_signature()
+        if sig and sig != _audio_card_signature:
+            old_short = _audio_card_signature[:8] if _audio_card_signature else "(empty)"
+            print(f"[AUDIO] /proc/asound/cards geaendert: {old_short} -> {sig[:8]}", flush=True)
+            _audio_card_signature = sig
+            await _refresh_audio_devices_async()
 
 
 # Startzeit für Hardware-Service-Uptime
