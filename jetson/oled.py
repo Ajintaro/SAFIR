@@ -414,9 +414,9 @@ class OledMenu:
                 missing.append("Qwen")
             draw.text((2, 54), f"Warte: {' + '.join(missing)}", font=FONT_SM, fill=1)
 
-    # ---- Seite: NETZWERK (WLAN + IP + Tailscale, alles gross) ----
+    # ---- Seite: NETZWERK (WLAN/LAN + IP + Tailscale, alles gross) ----
     def _render_network(self, draw: ImageDraw):
-        """Zeigt WLAN-/Tailscale-Status mit grossen, gut lesbaren Fonts.
+        """Zeigt Netzwerk-Status mit grossen, gut lesbaren Fonts.
         network_info wird vom app.py-Background-Task gefuellt mit:
           - wifi_ssid:    str
           - wifi_state:   "connected" / "connecting" / "disconnected"
@@ -429,46 +429,58 @@ class OledMenu:
         n = self.network_info or {}
         wifi_state = n.get("wifi_state", "")
         wifi_ssid = n.get("wifi_ssid", "")
+        wifi_ip = n.get("wifi_ip", "")
+        eth_ip = n.get("eth_ip", "")
         ts_state = n.get("tailscale", "")
+        ts_ip = n.get("tailscale_ip", "")
 
-        # Zeile 1 (y=14): WLAN gross
+        # Zeile 1 (y=14): Primaere Verbindung gross
+        # Prioritaet: aktives WLAN -> aktives Ethernet -> offline
         if wifi_state == "connected" and wifi_ssid:
-            label = wifi_ssid[:14]
-            draw.text((2, 14), label, font=FONT_LG, fill=1)
+            draw.text((2, 14), wifi_ssid[:14], font=FONT_LG, fill=1)
+            primary_ip = wifi_ip or ts_ip
         elif wifi_state == "connected":
             draw.text((2, 14), "WLAN OK", font=FONT_LG, fill=1)
+            primary_ip = wifi_ip or ts_ip
+        elif eth_ip:
+            # Kein WLAN, aber Ethernet aktiv — das ist ein normaler Zustand
+            draw.text((2, 14), "ETHERNET", font=FONT_LG, fill=1)
+            primary_ip = eth_ip
         elif wifi_state == "connecting":
             draw.text((2, 14), "WLAN ?", font=FONT_LG, fill=1)
+            primary_ip = ts_ip or "--"
         else:
-            draw.text((2, 14), "OHNE WLAN", font=FONT_LG, fill=1)
+            draw.text((2, 14), "OHNE NETZ", font=FONT_LG, fill=1)
+            primary_ip = "--"
 
-        # Zeile 2 (y=30): IP-Adresse — wifi_ip Vorrang, sonst eth_ip
-        ip = n.get("wifi_ip") or n.get("eth_ip") or n.get("tailscale_ip") or "--"
-        draw.text((2, 30), f"IP {ip[:14]}", font=FONT_MD, fill=1)
+        # Zeile 2 (y=30): IP-Adresse der aktiven Verbindung
+        draw.text((2, 30), f"IP {primary_ip[:14]}", font=FONT_MD, fill=1)
 
-        # Zeile 3 (y=44): Tailscale-Status
+        # Zeile 3 (y=44): Tailscale-Status (mit IP falls online)
         if ts_state == "online":
-            ts_text = "Tailnet ON"
+            ts_text = f"Tailnet ON {ts_ip[:10]}" if ts_ip else "Tailnet ON"
         elif ts_state == "offline":
             ts_text = "Tailnet OFF"
         else:
             ts_text = "Tailnet --"
-        draw.text((2, 44), ts_text, font=FONT_MD, fill=1)
+        draw.text((2, 44), ts_text[:22], font=FONT_MD, fill=1)
 
-        # Bottom-Bar: Gesamtstatus invertiert
+        # Bottom-Bar: Gesamtstatus invertiert — klare Worte, keine Abkuerzungen
         backend_ok = bool(n.get("backend_ok"))
-        if wifi_state == "connected" and ts_state == "online" and backend_ok:
+        has_link = (wifi_state == "connected") or bool(eth_ip)
+        if has_link and ts_state == "online" and backend_ok:
             draw.rectangle([0, 56, WIDTH - 1, 63], fill=1)
             draw.text((30, 56), "ALLES OK", font=FONT_SM, fill=0)
+        elif not has_link:
+            # Kein Link -> Tailnet/Backend-Status sagt sowieso nichts Sinnvolles
+            draw.rectangle([0, 56, WIDTH - 1, 63], fill=1)
+            draw.text((18, 56), "KEIN NETZWERK", font=FONT_SM, fill=0)
         else:
-            issues = []
-            if wifi_state != "connected":
-                issues.append("WLAN")
+            # Link da, aber Tailnet oder Backend fehlen -> klar benennen
             if ts_state != "online":
-                issues.append("TS")
-            if not backend_ok:
-                issues.append("BE")
-            draw.text((2, 56), f"WARN: {' '.join(issues)}", font=FONT_SM, fill=1)
+                draw.text((2, 56), "KEIN TAILNET", font=FONT_SM, fill=1)
+            elif not backend_ok:
+                draw.text((2, 56), "LEITSTELLE OFFLINE", font=FONT_SM, fill=1)
 
     # ---- Seite: BEDIENER (nutzt volle 64 px, kein Header) ----
     def _render_operator(self, draw: ImageDraw):
