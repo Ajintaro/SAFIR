@@ -7,9 +7,9 @@
 > `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md` (lokal,
 > nicht im Repo).
 
-**Letzte Session:** 15.04.2026 (~15:00–23:15)
+**Letzte Session:** 16.04.2026 (Phase 5 + 6 abgeschlossen)
 **Demo-Ziel:** AFCEA-Messe in 3–4 Wochen
-**Nächste Aktion:** Phase 5 — 9-Liner Voice-Recognition
+**Nächste Aktion:** Phase 7 — Encryption-Story + Use-Case-Vision-Page
 
 ---
 
@@ -48,13 +48,13 @@
 | **Phase 4.1** | RFID Sektor-2-Bug behoben (Hardware-Reset zwischen Sektoren) | ✅ DONE | `d878b48` |
 | **Phase 4.2** | OLED NETZWERK-Seite mit großen Fonts | ✅ DONE | `a17e7aa` |
 | **Phase 4.3** | Audio Multi-Output + Hot-Plug-Watcher (mit Restart-Hinweis) | ✅ DONE (mit Caveat) | `5e1535a` |
-| **Phase 5** | 9-Liner Voice-Recognition (Template + Auto-Detect + UI) | ⏳ NEXT | — |
-| **Phase 6** | Export & Interoperabilität (DOCX/PDF/JSON/XML) | pending | — |
-| **Phase 7** | Encryption-Story + Use-Case-Vision-Page | pending | — |
+| **Phase 5** | 9-Liner Voice-Recognition (Template + Auto-Detect + UI) | ✅ DONE | `9dd4411` + `dbf86a3` |
+| **Phase 6** | Export & Interoperabilität (DOCX/PDF/JSON/XML) + Refactor | ✅ DONE | `1a397dd` + `7e987ea` |
+| **Phase 7** | Encryption-Story + Use-Case-Vision-Page | ⏳ NEXT | — |
 | **Phase 8** | Remote Audio MVP (Browser → WebSocket → Jetson) | pending | — |
 | **Phase 9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | pending | — |
 
-**Git-Stand zuletzt:** `5e1535a` (origin/main). Jetson ist auf demselben Commit, Service läuft.
+**Git-Stand zuletzt:** `7e987ea` (origin/main). Jetson ist auf demselben Commit, Service läuft.
 
 ---
 
@@ -129,6 +129,47 @@
 - `_oled_update_loop` befüllt `oled_menu.network_info` alle 2 s mit allen Feldern (`wifi_state`, `wifi_ssid`, `wifi_ip`, `eth_ip`, `tailscale`, `tailscale_ip`, `backend_ok`).
 - **User-Verifikation am Jetson**: NETZWERK-Seite ist gut lesbar (User-Antwort auf AskUserQuestion).
 
+### Phase 6 — Export & Interoperabilität (`1a397dd` + `7e987ea`)
+
+- **`shared/exports.py`** (NEU, ~560 Zeilen): Zentrale Export-Logik, von beiden Backends importiert:
+  - `generate_json(patients, device_id, unit_name) -> bytes` — schema-versioniert
+  - `generate_xml(patients, device_id, unit_name) -> bytes` — rekursiv für verschachtelte Dicts/Listen
+  - `generate_docx(patients, device_id, unit_name, output_dir) -> Path` — via python-docx
+  - `generate_pdf(patients, device_id, unit_name, output_dir) -> Path` — via reportlab, Bundeswehr-Olive-Styling
+  - Lazy-Imports für python-docx / reportlab — ImportError wird mit klarem Hinweis an den Caller gereicht.
+
+- **reportlab in Jetson-Venv installiert**: `pip install reportlab` (4.4.10). Im Surface-Venv noch NICHT — beim ersten PDF-Export-Versuch im Surface kommt ein `{"error":"reportlab nicht installiert", ...}`-JSON.
+
+- **4 Endpoints auf beiden Backends** (Jetson `app.py` + Surface `backend/app.py`):
+  - `GET /api/export/json/all`
+  - `GET /api/export/xml/all`
+  - `POST /api/export/docx/all`
+  - `POST /api/export/pdf/all`
+
+- **Frontend `templates/index.html` Settings → System**: Neue Karte "Patientendatenbank exportieren" mit 4 Buttons. `exportPatientsFormat(fmt)` JS-Funktion: GET für JSON/XML (direkt `<a href>`-Download), POST für DOCX/PDF (fetch + Blob + URL.createObjectURL). Content-Disposition-Filename wird aus Response ausgelesen.
+
+- **Live verifiziert auf Jetson** mit 6 Test-Patienten:
+  - JSON: 8738 bytes, `application/json`, schema-version 1.0
+  - XML: 9260 bytes, well-formed, verschachtelt
+  - DOCX: 38 KB, Microsoft OOXML (file-command bestätigt)
+  - PDF: 11 KB, **7 Seiten** (1 Übersicht + 6 Patienten-Details)
+  - Alle HTTP 200, korrekte Content-Type-Header.
+
+- **Refactor-Commit** `7e987ea` zieht 442 Zeilen inline aus `app.py` raus in `shared/exports.py`. Jetson läuft identisch, Surface-Backend bekommt die Endpoints via `from shared import exports` (mit sys.path-Fix für das Repo-Root).
+
+### Phase 5 — 9-Liner MEDEVAC Voice-Recognition (`9dd4411` + `dbf86a3`)
+
+- **`docs/nine-liner-template.md`** (NEU): Laminierbares A5-Dokument mit allen 9 NATO-Zeilen, Buchstaben-Codes, Kurz-Referenz und **Beispiel-Diktat** für Messebesucher.
+- **`NINE_LINER_PROMPT`** mit Halluzinations-Schutz (2 Beispiele: Nicht-9-Liner → alle leer; echter 9-Liner → 9 Codes).
+- **`extract_nine_liner(transcript) -> dict`**: garantiert alle 9 Felder.
+- **`looks_like_nine_liner(transcript) -> bool`**: Auto-Detect via 20+ Keywords, greift bei ≥2 Treffern (false-positive-safe).
+- **`_segment_and_create_patients()` erweitert** um `is_nine_liner`-Branch: Wenn aktiv, skip Segmenter → direkt `extract_nine_liner` → einzelner Patient mit `template_type="9liner"`.
+- **`state.next_recording_is_nine_liner`** Flag + Voice-Command `nine_liner_mode` (7 Trigger in config.json: neun liner, medevac, etc.). Beim Recording-Stop wird Flag ans pending_transcript übertragen.
+- **`/api/test/nine-liner`** POST Endpoint für Proof-of-Concept-Tests ohne Recording.
+- **`template_type`**-Feld im PATIENT_SCHEMA, wird automatisch via TRANSFER_SCHEMA ans Surface übertragen.
+- **UI**: 9-Liner-Card im Role1-Detail-Modal (Grid) + kompakter Monospace-Block im Jetson Phase0-Patient-Card + "9-Liner"-Badge in der Summary.
+- **Live verifiziert**: Echter 9-Liner → 9/9 Felder, Patient-Diktat → 0/9 (keine Halluzination), Auto-Detect unterscheidet korrekt. Latenz ~11 s mit qwen2.5:1.5b.
+
 ### Phase 4.3 — Audio Multi-Output (`5e1535a`)
 
 - **`shared/tts.py`**:
@@ -168,50 +209,7 @@
 
 ---
 
-## Nächste Aktion: Phase 5 — 9-Liner Voice-Recognition
-
-Aus dem ursprünglichen Plan (lokale Datei `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md`):
-
-### 5.1 9-Liner-Template (laminierbar)
-
-Output: Eine Datei `docs/nine-liner-template.md` mit 9 Zeilen + Kurzbeispiel-Sätzen. Wird später als A5 gedruckt + laminiert für Messebesucher.
-
-```
-1. ZEILE Position (Grid)
-2. ZEILE Funkfrequenz / Rufzeichen
-3. ZEILE Anzahl Patienten / Priorität
-4. ZEILE Spezielle Ausrüstung
-5. ZEILE Anzahl liegend / sitzend
-6. ZEILE Sicherheit am LZ
-7. ZEILE Markierungsmethode
-8. ZEILE Patient Nationalität / Status
-9. ZEILE NBC-Kontamination
-```
-
-### 5.2 Auto-Detect im Segmenter
-
-- **Befund**: 9-Liner ist im `PATIENT_SCHEMA` (`shared/models.py:88-98`) als `nine_liner` Dict mit `line1`–`line9` definiert. Template-Type `"9liner"` existiert in `app.py:155-178`. ABER `run_patient_enrichment()` füllt das Dict **nicht automatisch** — nur wenn Template-Type explizit `"9liner"` gewählt ist.
-- **Konzept**: Voice-Command oder Button "9-Liner" → separater Extraction-Prompt. Alternative: Auto-Detect auf Keywords ("Grid", "Funkfrequenz", "MGRS", "NBC").
-- **Implementierung**: Neue Funktion `extract_nine_liner(transcript: str) -> dict` mit dediziertem Prompt. Aufgerufen wenn Voice-Command "neun liner" empfangen oder Patient-Type-Selector im UI. Resultat füllt `patient["nine_liner"]` Dict + setzt `patient["template_type"] = "9liner"`.
-
-### 5.3 9-Liner-Anzeige im UI
-
-- Neue Component `<nine-liner-card>` in `templates/index.html`, eingebettet im Patient-Detail-View, sichtbar wenn `template_type == "9liner"`.
-- Neuer Endpoint `/api/patients/{pid}/nine-liner` (GET).
-
-**Aufwand:** ~6 h. Komplett software-only — kann ohne User-Hardware-Tests gemacht werden, nur am Ende ein Voice-Test mit "neun liner" + Diktat zur Verifikation.
-
----
-
-## Nach Phase 5: Phase 6 — Export & Interoperabilität (~8 h)
-
-- **6.1 DOCX-Export auf alle Patienten** statt nur Sessions. Neue Funktion `generate_docx_all_patients()`.
-- **6.2 PDF-Export via reportlab** (in venv installieren). Layout in Bundeswehr-Olive für Brand-Konsistenz.
-- **6.3 JSON-Export** trivial.
-- **6.4 XML-Export** via `xml.etree.ElementTree`.
-- **6.5 Export-UI in Settings** — Sektion `settings-data` zwischen `interop` und `system`.
-
-## Phase 7 — Encryption-Story + Use-Case-Vision-Page (~6 h)
+## Nächste Aktion: Phase 7 — Encryption-Story + Use-Case-Vision-Page (~6 h)
 
 - **7.1 `docs/security-architecture.md`** mit Tailscale-WireGuard-Erklärung, Curve25519/ChaCha20-Poly1305-Beschreibung, Zero-Trust, ASCII-Diagramm. Plus Settings-Page-Sektion „SICHERHEIT" mit 5 Talking Points.
 - **7.2 Use-Case-Vision-Page** (Feuerwehr/Polizei/THW/Logistik/zivile Sanitätsdienste). Tabelle mit Hardware-Anpassungen.
@@ -261,12 +259,15 @@ Output: Eine Datei `docs/nine-liner-template.md` mit 9 Zeilen + Kurzbeispiel-Sä
 ## Wenn der User sagt „weiter mit dem Plan"
 
 1. Diese Datei (`docs/PROGRESS.md`) lesen
-2. TodoWrite-Liste neu anlegen mit den 11 Items aus dem Phasen-Übersicht-Block (Phase 1–4 als `completed`, Phase 5 als `in_progress`, Rest `pending`)
-3. **Phase 5.1** anfangen: `docs/nine-liner-template.md` schreiben
-4. Dann **Phase 5.2** im Jetson `app.py` — Auto-Detect-Logik + neue `extract_nine_liner`-Funktion
-5. **Phase 5.3** im `templates/index.html` — UI-Component
-6. Live-Test mit Voice-Command "neun liner"
-7. Commit + Push + Jetson pull + Restart
-8. Diese Datei (`docs/PROGRESS.md`) updaten mit Phase 5 als `completed`, Phase 6 als `in_progress`
+2. TodoWrite-Liste neu anlegen mit Phase 1–6 als `completed`, Phase 7 als `in_progress`, Rest `pending`
+3. **Phase 7.1** anfangen: `docs/security-architecture.md` schreiben mit:
+   - Tailscale-WireGuard-Erklärung (Curve25519, ChaCha20-Poly1305, Blake2s)
+   - Zero-Trust-Argument (nicht mal Tailscale Inc. kann mitlesen)
+   - ASCII- oder Mermaid-Diagramm: Jetson ↔ WireGuard ↔ Tailnet ↔ WireGuard ↔ Surface
+   - Talking Points für Messebesucher
+4. **Phase 7.2**: `templates/index.html` neue Page/Section für Use-Case-Vision — Feuerwehr, Polizei, THW, Logistik, zivile Sanitätsdienste (DRK/JUH/MHD). Tabelle mit Hardware-Anpassungen pro Branche.
+5. Plus: Settings-Page-Sektion „SICHERHEIT" die auf `docs/security-architecture.md` referenziert + die 5 Kern-Talking-Points zeigt.
+6. Commit + Push + Jetson pull.
+7. PROGRESS.md updaten mit Phase 7 als `completed`, Phase 8 als `in_progress` (ODER `nice-to-have` wenn User weglassen will).
 
 Bei Unsicherheit über Code-Stellen oder Architektur: **erst grep/read im Repo**, nicht annehmen. Im Zweifel den User fragen.
