@@ -1088,6 +1088,22 @@
             max-width: 760px;
             margin-top: var(--space-2);
         }
+        /* Phase 11 Security-Lock: Sidebar + Topbar ghosten wenn gesperrt.
+           User sieht dass Navigation deaktiviert ist, aber die Layout-
+           Struktur bleibt sichtbar (damit klar ist: 'hier ist SAFIR,
+           aber gesperrt'). */
+        body.system-locked .sidebar .nav-item:not([data-page="home"]) {
+            opacity: 0.25;
+            pointer-events: none;
+        }
+        body.system-locked .sidebar .nav-separator {
+            opacity: 0.25;
+        }
+        body.system-locked .header-right .vosk-indicator,
+        body.system-locked .header-right .badge {
+            opacity: 0.5;
+        }
+
         /* Phase 11 Security-Lock Banner auf der Start-Seite */
         .welcome-lock-banner {
             margin-top: var(--space-6);
@@ -2963,6 +2979,13 @@
     // Navigation
     // ============================================================
     function navigateTo(pageId) {
+        // Phase 11: Im Sperrzustand nur die Home-Page zulassen.
+        // Alle anderen Navigationsziele werden auf 'home' umgeleitet,
+        // damit der User den SYSTEM GESPERRT Hinweis sieht.
+        if (document.body.classList.contains('system-locked') && pageId !== 'home') {
+            pageId = 'home';
+        }
+
         // Alle Pages deaktivieren
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -6074,11 +6097,20 @@
         updateLockBanner(status.locked === true);
     }
 
-    // Phase 11: Lock-Banner auf Start-Seite + Body-Klasse fuer Disable-Styles
+    // Phase 11: Lock-Banner auf Start-Seite + Body-Klasse fuer Disable-Styles.
+    // Wenn gesperrt: Home erzwingen, Nav visuell "ghosten".
     function updateLockBanner(locked) {
         const banner = document.getElementById('welcome-lock-banner');
         if (banner) banner.style.display = locked ? 'block' : 'none';
         document.body.classList.toggle('system-locked', locked);
+        if (locked) {
+            // Auf Home zurueckziehen falls User auf anderer Page war
+            const home = document.getElementById('page-home');
+            const isHome = home && home.classList.contains('active');
+            if (!isHome) {
+                try { navigateTo('home'); } catch (e) {}
+            }
+        }
     }
 
     init();

@@ -781,16 +781,12 @@ class HardwareService:
             asyncio.create_task(self._on_combo_fire())
             return
 
-        # Phase 11: Im Sperrzustand Single-Presses verwerfen. Combo (Shutdown)
-        # oben ist bereits durchgelaufen und bleibt erlaubt.
-        lock_check = getattr(self, "_lock_check_cb", None)
-        if lock_check is not None:
-            try:
-                if lock_check():
-                    log.info(f"Single-Press verworfen — System gesperrt: {event.kind} {event.button}")
-                    return
-            except Exception:
-                pass
+        # Phase 11: Taster-Navigation auf dem OLED bleibt im Sperrzustand
+        # erlaubt, damit der User ins LOGIN/VERWALTUNG-Untermenue kommt
+        # (Chip registrieren, Jetzt Sperren). Nur der Action-Callback in
+        # app.py _handle_oled_action() prueft den Lock-Status und verwirft
+        # dort ggf. die Aktion. Page-Wechsel per A-short wird zusaetzlich
+        # in OledMenu.button_a_short() blockiert wenn gesperrt.
 
         # Single-Press: Wake-Gate — wenn OLED im Standby war, nur wecken.
         was_sleeping = getattr(self._oled, "is_sleeping", False)

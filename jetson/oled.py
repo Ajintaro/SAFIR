@@ -30,20 +30,22 @@ PAGES = ["models", "network", "operator", "patient"]
 PAGE_TITLES = {
     "models": "KI-STATUS",
     "network": "VERBINDUNG",
-    "operator": "BEDIENER",
+    "operator": "LOGIN",
     "patient": "PATIENT",
 }
 
 # 2-Level-Menü: Liste von (action_id, label) pro Haupt-Screen.
 # "models" und "network" haben absichtlich kein Untermenü — beides reine
 # Diagnose-Screens.
-# "operator" zeigt "Ausloggen" nur wenn jemand eingeloggt ist (Laufzeit-Check
-# im app.py Handler; Menüstruktur bleibt statisch für Einfachheit).
+# Phase 11: "operator" = LOGIN/VERWALTUNG. Untermenue bietet Chip
+# registrieren (wenn keiner da ist) und manuelles Sofort-Sperren.
+# Ausloggen geht weiterhin ueber das erneute Auflegen des eingeloggten Chips.
 PAGE_SUBMENUS = {
     "models": [],
     "network": [],
     "operator": [
-        ("logout", "Ausloggen"),
+        ("register_chip", "Chip Regis."),
+        ("lock_now", "Jetzt Sperren"),
     ],
     "patient": [
         ("record_toggle", "Aufnahme"),
@@ -238,8 +240,12 @@ class OledMenu:
     # Fallback-Paths) nichts crashen.
 
     def button_a_short(self):
-        """A kurz: Im Hauptmenü nächste Seite. Im Untermenü keine Aktion."""
+        """A kurz: Im Hauptmenü naechste Seite. Im Untermenue keine Aktion.
+        Phase 11: Im Sperrzustand bleibt die Navigation auf der operator-
+        Seite — Page-Wechsel wird ignoriert."""
         self._wake()
+        if self.locked:
+            return
         if not self.submenu_open:
             self.current_page = (self.current_page + 1) % len(PAGES)
 
@@ -337,17 +343,19 @@ class OledMenu:
         img = Image.new("1", (WIDTH, HEIGHT), 0)  # Monochrom, schwarz
         draw = ImageDraw.Draw(img)
 
-        # Phase 11: Im Sperrzustand zeigen wir immer den Lock-Screen, egal
-        # auf welcher Menu-Page man war. Menu-Navigation ist im HardwareService
-        # ohnehin blockiert.
+        # Phase 11: Im Sperrzustand zeigen wir NUR die operator-Seite
+        # (LOGIN / VERWALTUNG), damit der Nutzer ins Untermenue kommen kann
+        # um einen Chip zu registrieren oder manuell zu sperren. Andere
+        # Seiten sind blockiert. Wenn jemand beim Sperren gerade woanders
+        # war, ziehen wir die Page-Position mit.
         if self.locked:
-            self._render_locked(draw)
-            self._display_image(img)
-            return img
+            op_idx = PAGES.index("operator") if "operator" in PAGES else 0
+            if self.current_page != op_idx:
+                self.current_page = op_idx
 
         page = PAGES[self.current_page]
 
-        # Untermenü hat Vorrang: zeigt Action-Liste statt Content
+        # Untermenue hat Vorrang: zeigt Action-Liste statt Content
         if self.submenu_open:
             self._render_submenu(draw, page)
         elif page == "models":
@@ -365,20 +373,19 @@ class OledMenu:
         return img
 
     def set_locked(self, locked: bool):
-        """Phase 11: Lock-Screen aktivieren/deaktivieren."""
+        """Phase 11: Lock-Screen aktivieren/deaktivieren. Im Sperrzustand
+        wird render() die operator-Seite erzwingen; Page-Wechsel per Taster
+        wird in button_a_short() blockiert."""
         self.locked = bool(locked)
-
-    # ---- Seite: GESPERRT (Security-Lock) ----
-    def _render_locked(self, draw: ImageDraw):
-        """Zeigt 'SAFIR / GESPERRT / Chip auflegen' als Vollbild-Sperr-Screen.
-        Wird bei state.locked = True von render() anstelle der normalen
-        Seiten angezeigt."""
-        # SAFIR oben in XL
-        draw.text((2, 2), "SAFIR", font=FONT_XL, fill=1)
-        # GESPERRT darunter in XL (aufgeteilt auf eigene Zeile)
-        draw.text((2, 26), "GESPERRT", font=FONT_XL, fill=1)
-        # Hinweis unten (FONT_MD)
-        draw.text((2, 50), "Chip auflegen", font=FONT_MD, fill=1)
+        if self.locked:
+            # Untermenue zuklappen damit User frisch startet
+            self.submenu_open = False
+            self.submenu_index = 0
+            # Auf LOGIN-Seite springen
+            try:
+                self.current_page = PAGES.index("operator")
+            except ValueError:
+                pass
 
     def render_base64(self) -> str:
         """Rendert und gibt Base64-encodiertes PNG zurück."""
@@ -497,13 +504,16 @@ class OledMenu:
             ts_text = "T: --"
         draw.text((2, 50), ts_text, font=FONT_MD, fill=1)
 
-    # ---- Seite: BEDIENER (nutzt volle 64 px, kein Header) ----
+    # ---- Seite: LOGIN / VERWALTUNG (nutzt volle 64 px) ----
     def _render_operator(self, draw: ImageDraw):
         op = self.operator_info
         if not op.get("logged_in", False):
-            draw.text((2, 4),  "KEIN",   font=FONT_XL, fill=1)
-            draw.text((2, 24), "LOGIN",  font=FONT_XL, fill=1)
-            draw.text((2, 48), "Blaue Karte auflegen", font=FONT_SM, fill=1)
+            # Nicht eingeloggt -> LOGIN / VERWALTUNG als grosser Screen-Name,
+            # darunter Hinweis auf A-Long (Untermenue: Chip registrieren,
+            # Jetzt Sperren).
+            draw.text((2, 2),  "LOGIN",      font=FONT_XL, fill=1)
+            draw.text((2, 24), "VERWALTUNG", font=FONT_XL, fill=1)
+            draw.text((2, 50), "A lang: Menue", font=FONT_SM, fill=1)
             return
 
         label = op.get("label", "?")
@@ -511,14 +521,14 @@ class OledMenu:
         role = op.get("role", "")
         since = op.get("since", "")
 
-        # Oben: Label + Name groß (XL)
+        # Oben: Label + Name gross (XL)
         draw.text((2, 2), f"[{label}] {name[:10]}", font=FONT_XL, fill=1)
         # Mitte: Rolle in MD
         draw.text((2, 24), role[:20], font=FONT_MD, fill=1)
-        # Unten: Login-Zeit (klein) + OK-Hinweis rechtsbündig
+        # Unten: Login-Zeit (klein) + Menue-Hinweis rechtsbuendig
         if since:
             draw.text((2, 40), f"seit {since}", font=FONT_MD, fill=1)
-        self._text_r(draw, 126, 54, "[OK] Logout", FONT_SM)
+        self._text_r(draw, 126, 54, "A lang: Menue", FONT_SM)
 
     # ---- Seite: PATIENT (aktiver Patient) ----
     def _render_patient(self, draw: ImageDraw):

@@ -324,6 +324,12 @@ class AppState:
         # deaktiviert.
         self.locked: bool = True
         self.last_activity: float = 0.0  # monotonic timestamp letzter User-Interaktion
+        # Chip-Registrierungs-Modus: wenn True, wird die naechste gescannte UID
+        # als neuer Operator in config.json gespeichert. Wird durch das OLED-
+        # Untermenue 'Chip Regis.' aktiviert und nach Scan oder Timeout wieder
+        # abgeschaltet.
+        self.chip_register_mode: bool = False
+        self.chip_register_until: float = 0.0  # monotonic timeout
         # Multi-Patient-Flow: Aufnahmen sammeln sich als Liste, jede wartet
         # unabhängig auf manuelle Analyse. Nie überschreiben, immer anhängen.
         # Struktur pro Eintrag:
@@ -420,12 +426,26 @@ def require_unlocked():
 
 
 def _handle_rfid_scan(uid: str):
-    """Callback aus dem RfidService — läuft im asyncio-Task-Kontext.
+    """Callback aus dem RfidService — laeuft im asyncio-Task-Kontext.
 
     Entscheidet ob die UID ein Bediener-Login (blaue Karte) oder eine
-    Patientenkarte (weiße Karte) ist und handled beide Fälle async.
+    Patientenkarte (weisse Karte) ist und handled beide Faelle async.
+
+    Phase 11: Im Chip-Registrierungs-Modus wird die erste gescannte UID
+    als neuer Operator persistiert, unabhaengig davon ob sie schon
+    registriert war.
     """
     state.last_rfid_uid = uid
+
+    # Chip-Registrierung hat Vorrang
+    if state.chip_register_mode:
+        if time.monotonic() <= state.chip_register_until:
+            state.chip_register_mode = False
+            asyncio.create_task(_register_operator_chip(uid))
+            return
+        else:
+            state.chip_register_mode = False  # Timeout abgelaufen
+
     op = _find_operator(uid)
     if op is not None:
         asyncio.create_task(_handle_operator_scan(uid, op))
@@ -434,18 +454,39 @@ def _handle_rfid_scan(uid: str):
 
 
 def _handle_oled_action(action: dict):
-    """Callback vom Hardware-Service: Taster B lang im OLED-Untermenü.
+    """Callback vom Hardware-Service: Taster B lang im OLED-Untermenue.
 
-    Empfängt ein dict mit {"page": <screen>, "action": <action_id>, "label": <text>}
-    aus PAGE_SUBMENUS. Der Hardware-Service scheduled die zurückgegebene
+    Empfaengt ein dict mit {"page": <screen>, "action": <action_id>, "label": <text>}
+    aus PAGE_SUBMENUS. Der Hardware-Service scheduled die zurueckgegebene
     Coroutine automatisch.
     """
     page = action.get("page", "")
     action_id = action.get("action", "")
     print(f"[OLED-ACTION] page={page} action={action_id}", flush=True)
 
-    if page == "operator" and action_id == "logout":
-        return _manual_logout()
+    # Phase 11 LOGIN/VERWALTUNG-Menue: Chip-Registrierung + Sofort-Sperren.
+    # Diese beiden Aktionen sind auch im Sperrzustand erlaubt, alles andere
+    # wird darunter gegated.
+    if page == "operator":
+        if action_id == "register_chip":
+            return _oled_register_chip()
+        if action_id == "lock_now":
+            return _oled_lock_now()
+        # Alte 'logout'-Action behalten fuer Rueckwaertskompat, aber im
+        # neuen Untermenue nicht mehr gelistet.
+        if action_id == "logout":
+            return _manual_logout()
+
+    # Alle anderen Page-Aktionen nur wenn System entsperrt ist
+    if state.locked:
+        print("[OLED-ACTION] verworfen — System gesperrt", flush=True)
+        async def _speak():
+            try:
+                from shared import tts
+                tts.speak("System gesperrt")
+            except Exception:
+                pass
+        return _speak()
 
     if page == "patient":
         if action_id == "record_toggle":
@@ -587,6 +628,136 @@ async def _manual_logout():
     await asyncio.sleep(1.5)
     oled_menu.clear_status()
     await broadcast({"type": "operator_logout", "uid": op.get("uid"), "name": op.get("name")})
+
+
+# ---------------------------------------------------------------------------
+# Phase 11: OLED-Aktionen fuer LOGIN/VERWALTUNG-Untermenue
+# ---------------------------------------------------------------------------
+async def _oled_lock_now():
+    """Menuepunkt 'Jetzt Sperren': System sofort in Sperr-Zustand versetzen."""
+    oled_menu.submenu_open = False
+    oled_menu.show_status("SYSTEM", "GESPERRT")
+    try:
+        tts.speak("System gesperrt")
+    except Exception:
+        pass
+    state.current_operator = None
+    await _lock_system(reason="manual_oled")
+    await asyncio.sleep(1.5)
+    oled_menu.clear_status()
+    await broadcast({"type": "operator_logout", "uid": None, "name": None})
+
+
+async def _oled_register_chip():
+    """Menuepunkt 'Chip Regis.': Naechste gescannte UID als Operator merken.
+    Timeout 30 s. OLED zeigt 'Karte auflegen...', TTS-Prompt ans Mikro."""
+    oled_menu.submenu_open = False
+    state.chip_register_mode = True
+    state.chip_register_until = time.monotonic() + 30.0
+    oled_menu.show_status("CHIP REGIS.", "Karte auflegen")
+    try:
+        tts.speak("Blaue Karte jetzt auflegen")
+    except Exception:
+        pass
+    # 30 s warten oder bis Registrierung abgeschlossen ist. Das eigentliche
+    # Speichern passiert in _register_operator_chip() via _handle_rfid_scan.
+    deadline = time.monotonic() + 30.0
+    while time.monotonic() < deadline:
+        if not state.chip_register_mode:
+            # Erfolg (oder abgebrochen). Status-Screen wird durch
+            # _register_operator_chip gesetzt, hier nichts weiter tun.
+            return
+        await asyncio.sleep(0.3)
+    # Timeout
+    state.chip_register_mode = False
+    oled_menu.show_status("TIMEOUT", "Keine Karte")
+    try:
+        tts.speak("Zeit abgelaufen")
+    except Exception:
+        pass
+    await asyncio.sleep(1.5)
+    oled_menu.clear_status()
+
+
+async def _register_operator_chip(uid: str):
+    """Wird aus _handle_rfid_scan gerufen wenn chip_register_mode aktiv war.
+    Speichert die UID als neuen Operator in config.json und broadcastet."""
+    import json as _json
+    cfg_path = Path(__file__).parent / "config.json"
+    try:
+        cfg = _json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        oled_menu.show_status("FEHLER", "Config lesen")
+        print(f"[CHIP-REG] config.json read error: {e}", flush=True)
+        try:
+            tts.speak("Fehler beim Lesen der Konfiguration")
+        except Exception:
+            pass
+        await asyncio.sleep(1.5)
+        oled_menu.clear_status()
+        return
+
+    rfid_cfg = cfg.setdefault("rfid", {})
+    ops = rfid_cfg.setdefault("operators", [])
+
+    # Check ob UID schon registriert ist
+    uid_upper = uid.upper()
+    for existing in ops:
+        if existing.get("uid", "").upper() == uid_upper:
+            oled_menu.show_status("BEKANNT", existing.get("name", "")[:12])
+            try:
+                tts.speak(f"Karte ist bereits registriert als {existing.get('name', '')}")
+            except Exception:
+                pass
+            await asyncio.sleep(2.0)
+            oled_menu.clear_status()
+            return
+
+    # Neuer Operator. Default: Rolle 'arzt' (volle Rechte), Name + Label
+    # automatisch generiert. Kann spaeter ueber Settings-UI geaendert werden.
+    op_number = len(ops) + 1
+    new_op = {
+        "uid": uid_upper,
+        "label": f"OP{op_number}",
+        "name": f"Bediener {op_number}",
+        "role": "arzt",
+    }
+    ops.append(new_op)
+
+    # config.json atomisch schreiben: erst .tmp, dann rename
+    try:
+        tmp_path = cfg_path.with_suffix(".json.tmp")
+        tmp_path.write_text(_json.dumps(cfg, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
+        tmp_path.replace(cfg_path)
+    except Exception as e:
+        oled_menu.show_status("FEHLER", "Schreiben")
+        print(f"[CHIP-REG] config.json write error: {e}", flush=True)
+        try:
+            tts.speak("Fehler beim Speichern")
+        except Exception:
+            pass
+        await asyncio.sleep(1.5)
+        oled_menu.clear_status()
+        return
+
+    # Reload des Moduls-globalen _config: _find_operator liest daraus,
+    # also muss es neu befuellt werden damit der frisch registrierte Chip
+    # beim naechsten Scan erkannt wird.
+    global _config
+    try:
+        _config = load_config()
+    except Exception:
+        pass
+
+    oled_menu.show_status("REGISTRIERT", new_op["label"])
+    print(f"[CHIP-REG] Neuer Operator: {new_op['label']} ({uid_upper})", flush=True)
+    try:
+        tts.speak(f"Karte registriert als {new_op['name']}")
+    except Exception:
+        pass
+    await asyncio.sleep(2.0)
+    oled_menu.clear_status()
+    await broadcast({"type": "operator_registered", "uid": uid_upper, "label": new_op["label"], "name": new_op["name"]})
 
 
 async def _handle_operator_scan(uid: str, op: dict):
@@ -4094,6 +4265,7 @@ async def delete_file(filename: str):
 # Vosk Toggle
 @app.post("/api/vosk/toggle")
 async def toggle_vosk(body: dict = None):
+    require_unlocked()  # Phase 11
     if not state.vosk_model:
         return {"error": "Vosk nicht verfuegbar"}
     enable = body.get("enabled", not state.vosk_enabled) if body else not state.vosk_enabled
