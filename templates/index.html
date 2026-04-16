@@ -14,8 +14,68 @@
            ============================================================ */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 
         :root {
+            /* ============================================================
+               Phase 10 Design-Token-System — UI Overhaul
+               Siehe docs/ui-overhaul-analysis.md fuer Begruendungen.
+               Absolutes Minimum fuer sichtbaren Text: --fs-body-sm (14px)
+               ============================================================ */
+
+            /* Typografie-Skala (1.25 Major Third + Stress-Aufschlag a la GOV.UK) */
+            --fs-display:   40px;   /* Splash/Empty */
+            --fs-h1:        32px;   /* Seitentitel / Triage-Counter-Werte */
+            --fs-h2:        24px;   /* Panel-Titel */
+            --fs-h3:        20px;   /* Karten-Header */
+            --fs-body-lg:   18px;   /* Transkripte, primaere Lesetexte */
+            --fs-body:      16px;   /* Standard-Fliesstext, Listen, Nav */
+            --fs-body-sm:   14px;   /* Meta-Infos — absolutes Minimum! */
+            --fs-label:     14px;   /* UPPERCASE-Tags, Status-Labels */
+            --fs-mono:      16px;   /* Vitalwerte, Koordinaten, RFID-UIDs */
+
+            /* Line-Heights (auf 4er-Vielfache gerundet) */
+            --lh-display:   48px;
+            --lh-h1:        40px;
+            --lh-h2:        32px;
+            --lh-h3:        28px;
+            --lh-body-lg:   26px;
+            --lh-body:      24px;
+            --lh-body-sm:   20px;
+            --lh-label:     18px;
+            --lh-mono:      24px;
+
+            /* Font-Weights */
+            --fw-regular:   400;
+            --fw-medium:    500;
+            --fw-semibold:  600;
+            --fw-bold:      700;
+
+            /* Letter-Spacing (UPPERCASE weniger extrem: 0.08em statt 0.18em) */
+            --ls-uppercase: 0.08em;
+            --ls-normal:    0;
+
+            /* Spacing-Rhythmus (4-px-Basis) */
+            --space-1:  4px;
+            --space-2:  8px;
+            --space-3:  12px;
+            --space-4:  16px;
+            --space-6:  24px;
+            --space-8:  32px;
+            --space-12: 48px;
+            --space-16: 64px;
+
+            /* Touch-Targets (WCAG 2.2 AA/AAA + Stress-Safe) */
+            --touch-min:     44px;   /* Standard-Buttons, Nav-Items */
+            --touch-primary: 56px;   /* Primary CTAs */
+            --touch-triage:  64px;   /* Triage-Buttons Role 1 — stress-kritisch */
+
+            /* Font-Stacks (Phase 10: Hybrid — Mono nur fuer Zahlen/IDs) */
+            --font-ui:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono:  'JetBrains Mono', 'Share Tech Mono', Consolas, monospace;
+            --font-display: 'Rajdhani', 'Inter', sans-serif; /* nur fuer Hero/H1 bei Bedarf */
+
+            /* Farben Basis */
             --accent: #E11937;
             --accent-dark: #B81430;
             --accent-light: rgba(225, 25, 55, 0.12);
@@ -24,14 +84,20 @@
             --cgi-red-dark: #B81430;
             --cgi-red-light: rgba(225, 25, 55, 0.12);
             --cgi-red-glow: rgba(225, 25, 55, 0.25);
+
+            /* Status-Farben — WCAG 2.2 AA-konform gegen #0D0D1A (Dark-BG) */
             --success: #2ECC71;
             --warning: #F39C12;
-            --danger: #E74C3C;
-            --info: #5DADE2;
+            --danger:  #E74C3C;   /* 5.1:1 gegen Dark — OK fuer Body-Text */
+            --info:    #5DADE2;
+
+            /* Radius */
             --radius: 8px;
             --radius-lg: 12px;
-            --sidebar-width: 56px;
-            --sidebar-width-expanded: 200px;
+
+            /* Sidebar (breiter expanded, damit 16-px-Labels lesbar sind) */
+            --sidebar-width: 64px;
+            --sidebar-width-expanded: 240px;
         }
 
         [data-theme="dark"] {
@@ -281,13 +347,19 @@
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: var(--font-ui);
+            font-size: var(--fs-body);       /* 16 px Base — Phase 10 */
+            line-height: var(--lh-body);
+            font-weight: var(--fw-regular);
             background: var(--bg-primary);
             color: var(--text-primary);
             height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
         }
 
         /* Header */
@@ -305,29 +377,53 @@
         .header-left { display: flex; align-items: center; gap: 12px; }
         .cgi-logo { display: flex; align-items: center; }
         .cgi-wordmark {
-            font-size: 28px; font-weight: 700; letter-spacing: 4px;
+            font-size: var(--fs-h1); font-weight: var(--fw-bold); letter-spacing: 4px;
             color: var(--logo-color);
         }
-        .header-divider { width: 1px; height: 28px; background: var(--border-light); }
-        .app-title .name { font-size: 18px; font-weight: 700; letter-spacing: 2px; color: var(--cgi-red); }
-        .app-title .acronym { display: block; font-size: 9px; color: var(--text-dim); letter-spacing: 0.5px; margin-top: 1px; }
-        .header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .header-divider { width: 1px; height: 32px; background: var(--border-light); }
+        .app-title .name {
+            font-size: var(--fs-h3); font-weight: var(--fw-bold); letter-spacing: 2px;
+            color: var(--cgi-red); line-height: var(--lh-h3);
+        }
+        .app-title .acronym {
+            display: block; font-size: var(--fs-body-sm); color: var(--text-secondary);
+            letter-spacing: 0.3px; margin-top: 2px; line-height: var(--lh-body-sm);
+            font-weight: var(--fw-medium);
+        }
+        .app-title .acronym.unit-name {
+            color: var(--accent);
+            font-weight: var(--fw-semibold);
+            font-size: var(--fs-body);
+            margin-top: 4px;
+            letter-spacing: 0.5px;
+        }
+        .header-right { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 
-        /* Badges */
+        /* Badges — Phase 10: von 10px auf 14px (fs-label), laenger atmendes Padding */
         .badge {
-            padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600;
-            letter-spacing: 0.3px; white-space: nowrap;
+            padding: var(--space-2) var(--space-3);
+            border-radius: 20px;
+            font-size: var(--fs-label);
+            font-weight: var(--fw-semibold);
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+            line-height: var(--lh-label);
         }
         .badge-ok { background: rgba(46,204,113,0.15); color: #2ECC71; }
         .badge-err { background: rgba(231,76,60,0.15); color: #E74C3C; }
         .badge-warn { background: rgba(243,156,18,0.15); color: #F39C12; }
         .badge-cgi { background: var(--cgi-red-light); color: var(--cgi-red); }
 
-        /* Vosk indicator */
+        /* Vosk indicator — Phase 10: auf 14 px (--fs-label), 44 px Touch-Target-nah */
         .vosk-indicator {
-            display: flex; align-items: center; gap: 4px;
-            padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600;
+            display: flex; align-items: center; gap: var(--space-2);
+            padding: var(--space-2) var(--space-3);
+            border-radius: 20px;
+            font-size: var(--fs-label);
+            font-weight: var(--fw-semibold);
+            line-height: var(--lh-label);
             cursor: pointer; transition: all 0.2s;
+            min-height: 36px;
         }
         .vosk-indicator.active {
             background: rgba(46,204,113,0.15); color: #2ECC71;
@@ -335,7 +431,7 @@
         .vosk-indicator.inactive {
             background: var(--bg-elevated); color: var(--text-dim);
         }
-        .vosk-indicator .mic-icon { font-size: 13px; }
+        .vosk-indicator .mic-icon { font-size: 16px; }
         .vosk-indicator.active .mic-icon { animation: pulse-mic 2s ease-in-out infinite; }
         @keyframes pulse-mic {
             0%, 100% { opacity: 1; }
@@ -344,8 +440,12 @@
 
         .theme-toggle, .hw-toggle {
             background: var(--bg-elevated); border: 1px solid var(--border);
-            color: var(--text-secondary); border-radius: 6px; padding: 5px 8px;
-            cursor: pointer; display: flex; align-items: center; gap: 4px;
+            color: var(--text-secondary); border-radius: 6px;
+            padding: var(--space-2) var(--space-3);
+            cursor: pointer; display: flex; align-items: center; gap: var(--space-2);
+            font-size: var(--fs-body-sm);
+            min-height: 36px; min-width: 36px;
+            transition: all 0.2s;
         }
         .theme-toggle:hover, .hw-toggle:hover { border-color: var(--cgi-red); }
         .hw-toggle.active { border-color: var(--cgi-red); color: var(--cgi-red); }
@@ -423,19 +523,22 @@
             flex: 1;
         }
 
+        /* Nav-Item — Phase 10: 16 px Label, 44 px Touch-Target-Hoehe */
         .nav-item {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
+            gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
             border-radius: var(--radius);
             cursor: pointer;
             transition: all 0.15s;
             white-space: nowrap;
             color: var(--text-secondary);
             text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
+            font-size: var(--fs-body);
+            line-height: var(--lh-body);
+            font-weight: var(--fw-medium);
+            min-height: var(--touch-min);
         }
         .nav-item:hover {
             background: var(--bg-elevated);
@@ -444,11 +547,11 @@
         .nav-item.active {
             background: var(--cgi-red-light);
             color: var(--cgi-red);
-            font-weight: 600;
+            font-weight: var(--fw-semibold);
         }
         .nav-icon {
-            font-size: 18px;
-            width: 24px;
+            font-size: 22px;
+            width: 28px;
             text-align: center;
             flex-shrink: 0;
         }
@@ -460,14 +563,16 @@
             opacity: 1;
         }
 
+        /* Sidebar-Footer — Phase 10: 14 px, sonst vom User nicht mehr lesbar */
         .sidebar-footer {
-            padding: 8px;
+            padding: var(--space-3);
             border-top: 1px solid var(--border);
-            font-size: 9px;
+            font-size: var(--fs-body-sm);
             color: var(--text-dim);
             text-align: center;
             white-space: nowrap;
             overflow: hidden;
+            line-height: var(--lh-body-sm);
         }
 
         /* ============================================================
@@ -549,16 +654,37 @@
         .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--cgi-red); }
 
         /* Buttons */
+        /* Buttons — Phase 10: 16 px Body-Size, 44 px Touch-Target */
         .btn {
-            padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius);
-            background: var(--bg-elevated); color: var(--text-primary); font-size: 11px;
-            font-weight: 500; cursor: pointer; transition: all 0.15s;
+            padding: var(--space-3) var(--space-4);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            font-size: var(--fs-body);
+            font-weight: var(--fw-medium);
+            line-height: var(--lh-body);
+            cursor: pointer; transition: all 0.15s;
+            min-height: var(--touch-min);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2);
         }
         .btn:hover { border-color: var(--cgi-red); }
-        .btn-cgi { background: var(--cgi-red); border-color: var(--cgi-red); color: #fff; }
+        .btn:focus-visible {
+            outline: 2px solid var(--cgi-red);
+            outline-offset: 2px;
+        }
+        .btn-cgi { background: var(--cgi-red); border-color: var(--cgi-red); color: #fff; font-weight: var(--fw-semibold); }
         .btn-cgi:hover { background: var(--cgi-red-dark); }
         .btn-export { background: var(--success); border-color: var(--success); color: #fff; }
-        .btn-group { display: flex; gap: 6px; margin-top: 8px; }
+        .btn-sm {
+            font-size: var(--fs-body-sm);
+            padding: var(--space-2) var(--space-3);
+            min-height: 36px;
+        }
+        .btn-group { display: flex; gap: var(--space-2); margin-top: var(--space-3); flex-wrap: wrap; }
 
         /* Record Button */
         .record-btn {
@@ -704,9 +830,15 @@
         .toast .toast-icon { font-size: 16px; }
         @keyframes toast-in { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: translateX(0); } }
 
+        /* Footer-Badge — Phase 10: 14 px, Mixed Case, atmendes Padding */
         .footer-badge {
-            text-align: center; padding: 6px; font-size: 9px; color: var(--text-dim);
-            border-top: 1px solid var(--border); background: var(--bg-surface);
+            text-align: center;
+            padding: var(--space-3);
+            font-size: var(--fs-body-sm);
+            color: var(--text-dim);
+            border-top: 1px solid var(--border);
+            background: var(--bg-surface);
+            line-height: var(--lh-body-sm);
         }
 
         /* ============================================================
@@ -719,32 +851,37 @@
             min-height: 0;
         }
 
+        /* Settings-Sidebar — Phase 10: 240 px, 16 px Labels, 44 px Touch-Target */
         .settings-sidebar {
-            width: 220px;
+            width: 240px;
             background: var(--bg-surface);
             border-right: 1px solid var(--border);
-            padding: 12px 8px;
+            padding: var(--space-4) var(--space-3);
             overflow-y: auto;
             flex-shrink: 0;
         }
 
         .settings-nav-item {
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 12px; border-radius: var(--radius);
+            display: flex; align-items: center; gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+            border-radius: var(--radius);
             cursor: pointer; transition: all 0.15s;
-            font-size: 12px; font-weight: 500;
+            font-size: var(--fs-body);
+            font-weight: var(--fw-medium);
             color: var(--text-secondary);
             margin-bottom: 2px;
+            line-height: var(--lh-body);
+            min-height: var(--touch-min);
         }
         .settings-nav-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
-        .settings-nav-item.active { background: var(--cgi-red-light); color: var(--cgi-red); font-weight: 600; }
-        .settings-nav-icon { font-size: 16px; width: 20px; text-align: center; }
+        .settings-nav-item.active { background: var(--cgi-red-light); color: var(--cgi-red); font-weight: var(--fw-semibold); }
+        .settings-nav-icon { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; }
 
         .settings-content {
             flex: 1;
-            padding: 20px 28px;
+            padding: var(--space-8) var(--space-8);
             overflow-y: auto;
-            max-width: 800px;
+            max-width: 960px;
         }
 
         .settings-section {
@@ -754,76 +891,113 @@
             display: block;
         }
 
+        /* Settings — Phase 10: Title 24 px, Description 16 px, Cards atmend */
         .settings-title {
-            font-size: 18px; font-weight: 700; color: var(--text-primary);
-            margin-bottom: 4px;
+            font-size: var(--fs-h2);
+            font-weight: var(--fw-bold);
+            color: var(--text-primary);
+            margin-bottom: var(--space-2);
+            line-height: var(--lh-h2);
         }
         .settings-desc {
-            font-size: 12px; color: var(--text-dim); margin-bottom: 20px;
+            font-size: var(--fs-body);
+            color: var(--text-secondary);
+            margin-bottom: var(--space-6);
+            line-height: var(--lh-body);
         }
 
         .settings-card {
             background: var(--bg-surface);
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
-            padding: 16px 20px;
-            margin-bottom: 16px;
+            padding: var(--space-6);
+            margin-bottom: var(--space-4);
         }
         .settings-card-title {
-            font-size: 13px; font-weight: 600; color: var(--text-primary);
-            margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+            font-size: var(--fs-h3);
+            font-weight: var(--fw-semibold);
+            color: var(--text-primary);
+            margin-bottom: var(--space-4);
+            display: flex; align-items: center; gap: var(--space-2);
+            line-height: var(--lh-h3);
         }
         .settings-card-title::before {
-            content: ''; width: 3px; height: 14px; background: var(--cgi-red); border-radius: 2px;
+            content: ''; width: 3px; height: 18px; background: var(--cgi-red); border-radius: 2px;
         }
 
-        /* Trigger-Wörter Editor */
+        /* Trigger-Wörter Editor — Phase 10: Chips auf 14 px, komfortables Padding */
         .trigger-group {
-            margin-bottom: 16px;
-            padding: 12px;
+            margin-bottom: var(--space-4);
+            padding: var(--space-4);
             background: var(--bg-surface2);
             border-radius: var(--radius);
             border: 1px solid var(--border);
         }
         .trigger-group-header {
             display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: var(--space-3);
         }
         .trigger-group-label {
-            font-size: 12px; font-weight: 600; color: var(--cgi-red);
+            font-size: var(--fs-body);
+            font-weight: var(--fw-semibold);
+            color: var(--cgi-red);
+            line-height: var(--lh-body);
         }
         .trigger-group-action {
-            font-size: 10px; color: var(--text-dim);
-            background: var(--bg-elevated); padding: 2px 8px; border-radius: 10px;
+            font-size: var(--fs-body-sm);
+            color: var(--text-dim);
+            background: var(--bg-elevated);
+            padding: var(--space-1) var(--space-3);
+            border-radius: 10px;
+            font-family: var(--font-mono);
+            line-height: var(--lh-body-sm);
         }
         .trigger-list {
-            display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;
+            display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);
         }
         .trigger-tag {
-            display: flex; align-items: center; gap: 4px;
-            padding: 4px 10px; background: var(--bg-elevated);
+            display: flex; align-items: center; gap: var(--space-2);
+            padding: var(--space-2) var(--space-3);
+            background: var(--bg-elevated);
             border: 1px solid var(--border); border-radius: 16px;
-            font-size: 11px; color: var(--text-primary);
+            font-size: var(--fs-body-sm);
+            color: var(--text-primary);
+            line-height: var(--lh-body-sm);
+            min-height: 32px;
         }
         .trigger-tag .remove-trigger {
-            cursor: pointer; color: var(--text-dim); font-size: 14px;
+            cursor: pointer; color: var(--text-dim);
+            font-size: 18px;
             line-height: 1; transition: color 0.15s;
+            padding: 2px 4px;
         }
         .trigger-tag .remove-trigger:hover { color: var(--danger); }
         .trigger-add {
-            display: flex; gap: 6px;
+            display: flex; gap: var(--space-2);
         }
         .trigger-add input {
-            flex: 1; padding: 5px 10px; border: 1px solid var(--border);
+            flex: 1;
+            padding: var(--space-2) var(--space-3);
+            border: 1px solid var(--border);
             border-radius: var(--radius); background: var(--bg-primary);
-            color: var(--text-primary); font-size: 11px; font-family: inherit;
+            color: var(--text-primary);
+            font-size: var(--fs-body);
+            font-family: inherit;
+            min-height: 40px;
+            line-height: var(--lh-body);
         }
         .trigger-add input:focus { outline: none; border-color: var(--cgi-red); }
         .trigger-add button {
-            padding: 5px 12px; border: 1px solid var(--cgi-red);
-            border-radius: var(--radius); background: var(--cgi-red-light);
-            color: var(--cgi-red); font-size: 11px; font-weight: 600;
+            padding: var(--space-2) var(--space-4);
+            border: 1px solid var(--cgi-red);
+            border-radius: var(--radius);
+            background: var(--cgi-red-light);
+            color: var(--cgi-red);
+            font-size: var(--fs-body);
+            font-weight: var(--fw-semibold);
             cursor: pointer; transition: all 0.15s;
+            min-height: 40px;
+            line-height: var(--lh-body);
         }
         .trigger-add button:hover { background: var(--cgi-red); color: #fff; }
 
@@ -841,22 +1015,26 @@
             text-shadow: 0 0 40px var(--cgi-red-glow);
         }
         .welcome-full-name {
-            font-size: 13px; font-weight: 400; color: var(--text-secondary);
-            letter-spacing: 2px; margin-bottom: 28px;
+            font-size: var(--fs-body-lg); font-weight: var(--fw-regular); color: var(--text-secondary);
+            letter-spacing: 1px; margin-bottom: 28px; line-height: var(--lh-body-lg); max-width: 760px;
         }
 
         /* Sidebar separator */
+        /* Nav-Separator — Phase 10: 14 px Label, lockeres Letter-Spacing 0.08em */
         .nav-separator {
-            padding: 10px 12px 4px;
-            font-size: 9px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 1px;
+            padding: var(--space-4) var(--space-4) var(--space-2);
+            font-size: var(--fs-body-sm);
+            font-weight: var(--fw-bold);
+            text-transform: uppercase;
+            letter-spacing: var(--ls-uppercase);
             color: var(--text-dim);
             white-space: nowrap;
             overflow: hidden;
+            line-height: var(--lh-body-sm);
         }
         .nav-separator-line {
             height: 1px; background: var(--border);
-            margin: 4px 12px 0;
+            margin: var(--space-2) var(--space-4) 0;
         }
         .nav-separator-label {
             opacity: 0; transition: opacity 0.15s;
@@ -865,10 +1043,14 @@
             opacity: 1;
         }
 
+        /* Nav-Subtitle — Phase 10: 13 px fuer Lesbarkeit */
         .nav-item .nav-subtitle {
             display: none;
-            font-size: 9px; font-weight: 400; color: var(--text-dim);
-            margin-top: 1px;
+            font-size: 13px;
+            font-weight: var(--fw-regular);
+            color: var(--text-dim);
+            margin-top: 2px;
+            line-height: 18px;
         }
         .sidebar:hover .nav-subtitle {
             display: block;
@@ -904,35 +1086,73 @@
             background: var(--bg-surface);
         }
         .role1-panel-header {
-            padding: 10px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-            font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
-            color: var(--accent); display: flex; align-items: center; gap: 8px;
+            padding: var(--space-4);
+            border-bottom: 1px solid var(--border); flex-shrink: 0;
+            font-size: var(--fs-label);
+            font-weight: var(--fw-bold);
+            text-transform: uppercase;
+            letter-spacing: var(--ls-uppercase);
+            color: var(--accent);
+            display: flex; align-items: center; gap: var(--space-2);
+            line-height: var(--lh-label);
         }
         .role1-panel-header::before {
-            content: ''; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;
+            content: ''; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;
         }
+        /* Triage-Counter — Phase 10: Zahlen 32 px dominant, Label darunter 13 px */
         .role1-triage-bar {
-            display: flex; gap: 0; padding: 8px 16px;
+            display: flex; gap: var(--space-2);
+            padding: var(--space-4);
             border-bottom: 1px solid var(--border); flex-shrink: 0;
         }
-        .role1-tc { flex: 1; text-align: center; padding: 6px 4px; font-size: 11px; font-weight: 700; }
-        .role1-tc-num { font-size: 22px; font-weight: 800; display: block; }
-        .role1-transport-list { flex: 1; overflow-y: auto; padding: 8px; }
+        .role1-tc {
+            flex: 1; text-align: center;
+            padding: var(--space-3);
+            font-size: var(--fs-body-sm);
+            font-weight: var(--fw-bold);
+            line-height: var(--lh-body-sm);
+            letter-spacing: 0.3px;
+            border-radius: var(--radius);
+            background: var(--bg-surface2);
+            border: 1px solid var(--border);
+        }
+        .role1-tc-num {
+            font-size: var(--fs-h1);
+            font-weight: var(--fw-bold);
+            display: block;
+            line-height: var(--lh-h1);
+            margin-bottom: var(--space-1);
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
+        }
+        .role1-transport-list { flex: 1; overflow-y: auto; padding: var(--space-3); }
         .role1-transport-card {
             background: var(--bg-surface2); border: 1px solid var(--border);
-            border-radius: 8px; margin-bottom: 8px; overflow: hidden;
+            border-radius: 8px; margin-bottom: var(--space-2); overflow: hidden;
         }
         .role1-transport-header {
-            display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+            display: flex; align-items: center; gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
             cursor: pointer; user-select: none;
+            min-height: var(--touch-min);
         }
         .role1-transport-header:hover { background: rgba(255,255,255,0.03); }
         .role1-transport-header .unit-icon {
-            width: 32px; height: 32px; border-radius: 6px; background: var(--bg-elevated);
-            display: flex; align-items: center; justify-content: center; font-size: 16px;
+            width: 36px; height: 36px; border-radius: 6px; background: var(--bg-elevated);
+            display: flex; align-items: center; justify-content: center; font-size: 18px;
+            flex-shrink: 0;
         }
-        .role1-transport-header .unit-name { font-weight: 700; font-size: 13px; flex: 1; }
-        .role1-transport-header .unit-meta { font-size: 10px; color: var(--text-dim); }
+        .role1-transport-header .unit-name {
+            font-weight: var(--fw-bold);
+            font-size: var(--fs-body);
+            flex: 1;
+            line-height: var(--lh-body);
+        }
+        .role1-transport-header .unit-meta {
+            font-size: var(--fs-body-sm);
+            color: var(--text-dim);
+            line-height: var(--lh-body-sm);
+        }
         .role1-transport-header .unit-dist { font-size: 10px; font-weight: 600; color: var(--info, #5DADE2); margin-right: 4px; }
         .role1-transport-header .eta { font-size: 11px; font-weight: 700; color: var(--warning); }
         .role1-transport-header .toggle-arrow {
@@ -1381,7 +1601,7 @@
         <div class="app-title">
             <span class="name"><svg width="16" height="16" viewBox="0 0 100 100" style="vertical-align:-1px;margin-right:3px;filter:drop-shadow(0 0 4px var(--accent-glow))"><polygon points="50,8 82,32 50,45 18,32" fill="var(--accent)" opacity="0.8"/><polygon points="18,32 50,45 50,92" fill="var(--accent-dark)"/><polygon points="82,32 50,45 50,92" fill="var(--accent)" opacity="0.6"/></svg>SAFIR</span>
             <span class="acronym">Sprachgestützte Assistenz für Informationserfassung in der Rettungskette</span>
-            <span class="acronym" id="header-unit-name" style="color:var(--accent);font-weight:600;font-size:10px;letter-spacing:0.3px"></span>
+            <span class="acronym unit-name" id="header-unit-name"></span>
         </div>
     </div>
     <div class="header-right">
