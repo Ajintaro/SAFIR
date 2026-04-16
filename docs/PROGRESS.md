@@ -7,9 +7,10 @@
 > `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md` (lokal,
 > nicht im Repo).
 
-**Letzte Session:** 16.04.2026 (Phase 7 abgeschlossen, Phase 8 gestartet)
+**Letzte Session:** 16.04.2026 (Phase 7 abgeschlossen, Phase 8 deferred, Phase 9 gestartet)
 **Demo-Ziel:** AFCEA-Messe in 3–4 Wochen
-**Nächste Aktion:** Phase 8 — Remote Audio MVP (Browser → WebSocket → Jetson)
+**Nächste Aktion:** Phase 9 — Final Polish + E2E Demo-Runs + RAM-Stress-Test
+**Phase 8 Entscheidung:** User hat "Überspringen für jetzt" gewählt — Remote-Audio wird als "konzeptionell vorhanden, V2-Roadmap" in der Messe-Präsentation erwähnt, aber nicht implementiert. Priorität auf Demo-Robustheit.
 
 ---
 
@@ -51,10 +52,12 @@
 | **Phase 5** | 9-Liner Voice-Recognition (Template + Auto-Detect + UI) | ✅ DONE | `9dd4411` + `dbf86a3` |
 | **Phase 6** | Export & Interoperabilität (DOCX/PDF/JSON/XML) + Refactor | ✅ DONE | `1a397dd` + `7e987ea` |
 | **Phase 7** | Encryption-Story + Use-Case-Vision-Page | ✅ DONE | `4a804ca` |
-| **Phase 8** | Remote Audio MVP (Browser → WebSocket → Jetson) | ⏳ IN PROGRESS | — |
-| **Phase 9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | pending | — |
+| **Phase 8** | Remote Audio MVP (Browser → WebSocket → Jetson) | 🟡 DEFERRED | — |
+| **Phase 9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | ⏳ IN PROGRESS | — |
 
-**Git-Stand zuletzt:** `4a804ca` (origin/main). Jetson ist auf demselben Commit, Service läuft.
+**Git-Stand zuletzt:** `85afefc` (origin/main). Jetson ist auf demselben Commit, Service läuft.
+
+**Phase 8 ist absichtlich deferred** — User hat beim Phase-Übergang entschieden dass Demo-Robustheit wichtiger ist als ein nice-to-have Feature. Phase 8 wird auf der Messe als "V2-Roadmap" erwähnt.
 
 ---
 
