@@ -7,9 +7,9 @@
 > `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md` (lokal,
 > nicht im Repo).
 
-**Letzte Session:** 16.04.2026 (Phase 5 + 6 abgeschlossen)
+**Letzte Session:** 16.04.2026 (Phase 7 abgeschlossen, Phase 8 gestartet)
 **Demo-Ziel:** AFCEA-Messe in 3–4 Wochen
-**Nächste Aktion:** Phase 7 — Encryption-Story + Use-Case-Vision-Page
+**Nächste Aktion:** Phase 8 — Remote Audio MVP (Browser → WebSocket → Jetson)
 
 ---
 
@@ -50,11 +50,11 @@
 | **Phase 4.3** | Audio Multi-Output + Hot-Plug-Watcher (mit Restart-Hinweis) | ✅ DONE (mit Caveat) | `5e1535a` |
 | **Phase 5** | 9-Liner Voice-Recognition (Template + Auto-Detect + UI) | ✅ DONE | `9dd4411` + `dbf86a3` |
 | **Phase 6** | Export & Interoperabilität (DOCX/PDF/JSON/XML) + Refactor | ✅ DONE | `1a397dd` + `7e987ea` |
-| **Phase 7** | Encryption-Story + Use-Case-Vision-Page | ⏳ NEXT | — |
-| **Phase 8** | Remote Audio MVP (Browser → WebSocket → Jetson) | pending | — |
+| **Phase 7** | Encryption-Story + Use-Case-Vision-Page | ✅ DONE | `4a804ca` |
+| **Phase 8** | Remote Audio MVP (Browser → WebSocket → Jetson) | ⏳ IN PROGRESS | — |
 | **Phase 9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | pending | — |
 
-**Git-Stand zuletzt:** `7e987ea` (origin/main). Jetson ist auf demselben Commit, Service läuft.
+**Git-Stand zuletzt:** `4a804ca` (origin/main). Jetson ist auf demselben Commit, Service läuft.
 
 ---
 
@@ -209,14 +209,31 @@
 
 ---
 
-## Nächste Aktion: Phase 7 — Encryption-Story + Use-Case-Vision-Page (~6 h)
+### Phase 7 — Encryption-Story + Use-Case-Vision-Page (`4a804ca`)
 
-- **7.1 `docs/security-architecture.md`** mit Tailscale-WireGuard-Erklärung, Curve25519/ChaCha20-Poly1305-Beschreibung, Zero-Trust, ASCII-Diagramm. Plus Settings-Page-Sektion „SICHERHEIT" mit 5 Talking Points.
-- **7.2 Use-Case-Vision-Page** (Feuerwehr/Polizei/THW/Logistik/zivile Sanitätsdienste). Tabelle mit Hardware-Anpassungen.
+- **`docs/security-architecture.md`** (NEU, 234 Zeilen): Dreischichtige Sicherheits-Architektur-Dokumentation:
+  - Schicht 1: WireGuard-Tunnel mit Curve25519 (Key-Agreement), ChaCha20 (Payload-Encryption), Poly1305 (MAC), Blake2s (Hashing). Re-Keying alle 2 min / 60 MB.
+  - Schicht 2: Tailscale als Identity-Management, Zero-Trust (Tailscale Inc. sieht nur Public Keys, keine Payloads). NAT-Traversal, ACL.
+  - Schicht 3: Anwendungs-Authentifizierung (UUID-Patient-IDs, RFID-UID-Pointer).
+  - 3 Angriffs-Szenarien: WLAN-Sniffing, verlorener Jetson, NATO-Secret-Einsatz.
+  - Transparente Limits: keine App-Layer-Crypto, keine Hardware-Attestation, keine TPM, keine BSI-Freigabe.
+  - 5 Talking Points für AFCEA-Messebesucher + Appendix mit aktuellem Demo-Status.
+- **Vision-Page** in `templates/index.html` (~130 CSS + ~180 HTML Zeilen):
+  - Hero-Section: "Mehr als Rettungskette"
+  - 4 Prinzip-Karten: Voice-First, Edge/Offline, Hardware-Integriert, E2E-Verschlüsselt
+  - 6 Anwendungsbereich-Karten: Feuerwehr, Polizei, THW, Logistik, zivile Sanitätsdienste, Forschung
+  - Pro Use-Case: Hardware-Anpassung, Modifikationen, Integration
+- **Settings "Sicherheit"-Section**: ASCII-Architekturdiagramm + 5 Talking Points + Kryptographie-Primitives-Tabelle (Curve25519/ChaCha20/Poly1305/Blake2s mit RFC-Referenzen) + Transparente-Limits-Karte.
+- **`config.json` Navigation**: Neuer Eintrag `vision` zwischen Dokumente und Einstellungen.
+- **Settings-Sidebar**: Neuer Eintrag "Sicherheit" (🔑).
+- **Live verifiziert** via Chrome auf http://jetson-orin:8080/: Vision-Page rendert alle 6 Use-Cases korrekt, Sicherheits-Section zeigt Diagramm + Talking Points + Tabelle lesbar.
 
-## Phase 8 — Remote Audio MVP (~16 h, riskant)
+---
+
+## Nächste Aktion: Phase 8 — Remote Audio MVP (~16 h, riskant)
 
 - Browser MediaRecorder (`audio/webm;codecs=opus`) → WebSocket Audio-Chunks → Jetson decode (`pyav`/`ffmpeg-python`) → Whisper. Fallback auf lokales Mikro.
+- Ziel: Messebesucher kann auf seinem Handy/Tablet sprechen, Jetson transkribiert (statt lokales Mikro).
 
 ## Phase 9 — Final Polish, Demo-Run, Stress-Test (~6 h)
 
@@ -259,15 +276,15 @@
 ## Wenn der User sagt „weiter mit dem Plan"
 
 1. Diese Datei (`docs/PROGRESS.md`) lesen
-2. TodoWrite-Liste neu anlegen mit Phase 1–6 als `completed`, Phase 7 als `in_progress`, Rest `pending`
-3. **Phase 7.1** anfangen: `docs/security-architecture.md` schreiben mit:
-   - Tailscale-WireGuard-Erklärung (Curve25519, ChaCha20-Poly1305, Blake2s)
-   - Zero-Trust-Argument (nicht mal Tailscale Inc. kann mitlesen)
-   - ASCII- oder Mermaid-Diagramm: Jetson ↔ WireGuard ↔ Tailnet ↔ WireGuard ↔ Surface
-   - Talking Points für Messebesucher
-4. **Phase 7.2**: `templates/index.html` neue Page/Section für Use-Case-Vision — Feuerwehr, Polizei, THW, Logistik, zivile Sanitätsdienste (DRK/JUH/MHD). Tabelle mit Hardware-Anpassungen pro Branche.
-5. Plus: Settings-Page-Sektion „SICHERHEIT" die auf `docs/security-architecture.md` referenziert + die 5 Kern-Talking-Points zeigt.
-6. Commit + Push + Jetson pull.
-7. PROGRESS.md updaten mit Phase 7 als `completed`, Phase 8 als `in_progress` (ODER `nice-to-have` wenn User weglassen will).
+2. TodoWrite-Liste neu anlegen mit Phase 1–7 als `completed`, Phase 8 als `in_progress`, Phase 9 als `pending`.
+3. **Phase 8** starten — drei Teilschritte:
+   - **8.1 Browser MediaRecorder**: `templates/index.html` um "Mikrofon-Modus"-Toggle erweitern (lokal vs. Browser). Bei Browser-Modus: `navigator.mediaDevices.getUserMedia({audio: true})` → `MediaRecorder` mit `audio/webm;codecs=opus`, 250-ms-Chunks via `ondataavailable`.
+   - **8.2 WebSocket-Streaming**: Chunks als `{type: "audio_chunk", seq, data: base64}` an WebSocket `/ws` senden. Serverseitig in `_broadcast_task` neuen Handler `_handle_audio_chunk()`.
+   - **8.3 Jetson Decode + Whisper**: pyav/ffmpeg-python für opus→PCM, Buffer bis N Sekunden, dann an Whisper-Pipeline. Fallback: Wenn keine aktive Browser-Session, nutze `arecord`/lokales Mikro wie bisher.
+   - Voice-Command zum Umschalten: "Browser Mikrofon" / "Lokales Mikrofon".
+4. Commit + Push + Jetson pull.
+5. PROGRESS.md updaten mit Phase 8 als `completed` oder `nice-to-have` (wenn's zu riskant wird), Phase 9 als `in_progress`.
 
-Bei Unsicherheit über Code-Stellen oder Architektur: **erst grep/read im Repo**, nicht annehmen. Im Zweifel den User fragen.
+**Bei Unsicherheit** über Code-Stellen oder Architektur: **erst grep/read im Repo**, nicht annehmen. Im Zweifel den User fragen.
+
+**Wichtig für Phase 8**: Das ist der riskanteste Phase-Block. Wenn die Latenz/Qualität nicht reicht, rolle zurück und verkaufe es als "konzeptionell vorhanden, wird in V2 vollständig implementiert". Nicht die ganze Messe gefährden für ein nice-to-have.
