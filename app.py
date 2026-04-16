@@ -317,6 +317,13 @@ class AppState:
         # Hardware-Integration (Phase 6+)
         self.current_operator: dict | None = None  # None oder {uid, label, name, role, since}
         self.last_rfid_uid: str = "---"
+        # Security-Lock: System startet gesperrt, blaue Chip-Karte entsperrt.
+        # Sperre schnappt auto zu nach IDLE-Timer (default 30 min) und manuell
+        # durch Wieder-Auflegen derselben Chip. Im gesperrten Zustand sind
+        # Voice, Taster-Aktionen (ausser Shutdown-Combo) und sensible APIs
+        # deaktiviert.
+        self.locked: bool = True
+        self.last_activity: float = 0.0  # monotonic timestamp letzter User-Interaktion
         # Multi-Patient-Flow: Aufnahmen sammeln sich als Liste, jede wartet
         # unabhängig auf manuelle Analyse. Nie überschreiben, immer anhängen.
         # Struktur pro Eintrag:
@@ -387,8 +394,11 @@ def check_permission(permission: str):
     Verwendung in einem Endpoint:
         from fastapi import HTTPException
         check_permission("patient_delete")
-    """
+
+    Phase 11: Blockt auch wenn das System gesperrt ist (423 Locked)."""
     from fastapi import HTTPException
+    if state.locked:
+        raise HTTPException(status_code=423, detail="System gesperrt")
     op = state.current_operator
     if op is None:
         raise HTTPException(status_code=401, detail="Kein Bediener eingeloggt")
@@ -398,6 +408,15 @@ def check_permission(permission: str):
             status_code=403,
             detail=f"Rolle '{role}' hat keine Berechtigung für '{permission}'",
         )
+
+
+def require_unlocked():
+    """Phase 11: Gate fuer sensible APIs die zwar keine Rollen-Permission
+    brauchen, aber im Sperrzustand dicht sein muessen (z.B. Recording,
+    Patient-Create, Export). Wirft HTTPException(423)."""
+    from fastapi import HTTPException
+    if state.locked:
+        raise HTTPException(status_code=423, detail="System gesperrt — Chip auflegen")
 
 
 def _handle_rfid_scan(uid: str):
@@ -486,6 +505,11 @@ async def _start_record_flow():
     """EINE gemeinsame Implementierung für Aufnahme-Start — wird von
     Taster, Sprachbefehl und jedem anderen Einstiegspunkt aufgerufen.
     Stellt sicher dass es KEINEN Unterschied zwischen Taster und Sprache gibt."""
+    # Phase 11: Im Sperrzustand keine Aufnahme starten.
+    if state.locked:
+        tts.speak("System gesperrt")
+        return
+    _mark_activity()
     if state.recording:
         return  # läuft schon
     if state.transcribing:
@@ -505,9 +529,12 @@ async def _stop_record_flow():
     """EINE gemeinsame Implementierung für Aufnahme-Stopp — von Taster,
     Sprachbefehl und jedem anderen Einstiegspunkt identisch.
     TTS-Meldung kommt SOFORT, damit die akustische Rückmeldung nicht
-    auf die Transkription warten muss."""
+    auf die Transkription warten muss.
+    Stop ist auch im Sperrzustand erlaubt (z.B. Auto-Lock waehrend Aufnahme
+    — dann soll die laufende Aufnahme sauber beendet werden)."""
     if not state.recording:
         return
+    _mark_activity()
     trim_chunks = int(1.5 / 0.1)
     if len(state.audio_chunks) > trim_chunks:
         state.audio_chunks = state.audio_chunks[:-trim_chunks]
@@ -563,25 +590,27 @@ async def _manual_logout():
 
 
 async def _handle_operator_scan(uid: str, op: dict):
-    """Login / Logout Toggle für blaue Operator-Transponder."""
+    """Login / Logout Toggle fuer blaue Operator-Transponder.
+    Bedeutet gleichzeitig Entsperren/Sperren des Systems (Security-Lock)."""
     now_iso = datetime.now().strftime("%H:%M")
     current = state.current_operator
     if current and current.get("uid", "").upper() == uid.upper():
-        # Gleicher Bediener scannt erneut → Logout
+        # Gleicher Bediener scannt erneut → Logout + Sperren
         state.current_operator = None
-        oled_menu.show_status("LOGOUT", f"{op.get('name', '')}")
+        await _lock_system(reason="operator_logout")
+        oled_menu.show_status("SYSTEM", "GESPERRT")
         await asyncio.sleep(1.5)
         oled_menu.clear_status()
         await broadcast({"type": "operator_logout", "uid": uid, "name": op.get("name")})
         try:
             from shared import tts
-            tts.speak(f"Abmeldung {op.get('name', '')}")
+            tts.speak(f"Abmeldung {op.get('name', '')}. System gesperrt.")
         except Exception:
             pass
-        print(f"Operator-Logout: {op.get('label')} {op.get('name')}")
+        print(f"Operator-Logout: {op.get('label')} {op.get('name')} — System gesperrt")
         return
 
-    # Anderer Login → direkt ersetzen (kein zweistufiger Handover nötig)
+    # Anderer Login → direkt ersetzen (kein zweistufiger Handover noetig)
     state.current_operator = {
         "uid": uid,
         "label": op.get("label", "?"),
@@ -589,6 +618,8 @@ async def _handle_operator_scan(uid: str, op: dict):
         "role": op.get("role", ""),
         "since": now_iso,
     }
+    # Entsperren — umgekehrte Reihenfolge zum Logout: erst entsperren, dann OLED
+    await _unlock_system(reason="operator_login")
     oled_menu.show_status(
         f"LOGIN [{op.get('label', '?')}]",
         f"{op.get('name', '')} / {op.get('role', '')}",
@@ -615,7 +646,96 @@ async def _handle_operator_scan(uid: str, op: dict):
         tts.speak(f"Willkommen {op.get('name', '')}")
     except Exception:
         pass
-    print(f"Operator-Login: {op.get('label')} {op.get('name')} (Rolle {op.get('role')})")
+    print(f"Operator-Login: {op.get('label')} {op.get('name')} (Rolle {op.get('role')}) — System entsperrt")
+
+
+# ---------------------------------------------------------------------------
+# Security-Lock (Phase 11): System-Sperre mit Inaktivitaets-Timer
+# ---------------------------------------------------------------------------
+# Im Sperrzustand:
+#   * OLED zeigt 'SAFIR / GESPERRT / Chip auflegen' (siehe _render_operator)
+#   * Vosk-Listening ist pausiert (state.vosk_listening = False)
+#   * Taster-Short/Long werden im HardwareService verworfen (ausser Combo/Shutdown)
+#   * Sensible HTTP-APIs antworten mit 423 Locked (siehe _require_unlocked)
+# Entsperren: blauer Chip auflegen (siehe _handle_operator_scan oben)
+# Sperren:    1) selben Chip nochmal auflegen → sofort
+#             2) IDLE > LOCK_IDLE_SECONDS → Watcher-Task sperrt auto
+LOCK_IDLE_SECONDS = 30 * 60  # 30 Minuten Default, ueberschreibbar via config.json
+
+
+async def _lock_system(reason: str = "manual"):
+    """Sperrt das System. Idempotent — kann mehrfach gerufen werden."""
+    if state.locked:
+        return
+    state.locked = True
+    # Voice pausieren (Vosk-Callback prueft state.locked bei jedem Chunk)
+    state.vosk_listening = False
+    # OLED auf Lock-Screen schalten
+    try:
+        oled_menu.set_locked(True)
+    except Exception:
+        pass
+    print(f"[LOCK] System gesperrt (reason={reason})", flush=True)
+    try:
+        await broadcast({"type": "system_locked", "reason": reason})
+    except Exception:
+        pass
+
+
+async def _unlock_system(reason: str = "manual"):
+    """Entsperrt und reaktiviert Voice. Setzt Activity-Timer zurueck."""
+    was_locked = state.locked
+    state.locked = False
+    state.last_activity = time.monotonic()
+    # Voice wieder aktivieren falls Vosk initialisiert ist
+    if state.vosk_enabled and state.vosk_recognizer is not None:
+        state.vosk_listening = True
+    # OLED zurueck auf Menu-Ansicht
+    try:
+        oled_menu.set_locked(False)
+    except Exception:
+        pass
+    if was_locked:
+        print(f"[LOCK] System entsperrt (reason={reason})", flush=True)
+    try:
+        await broadcast({"type": "system_unlocked", "reason": reason})
+    except Exception:
+        pass
+
+
+def _mark_activity():
+    """Von Taster/Voice/API-Calls aufzurufen — setzt den Idle-Timer zurueck."""
+    state.last_activity = time.monotonic()
+
+
+async def _lock_watchdog_loop():
+    """Hintergrund-Task: sperrt das System wenn laenger als
+    LOCK_IDLE_SECONDS keine Aktivitaet registriert wurde. Prueft alle 30 s.
+    """
+    idle_limit = LOCK_IDLE_SECONDS
+    try:
+        from pathlib import Path as _P
+        import json as _json
+        cfg_p = _P(__file__).parent / "config.json"
+        if cfg_p.exists():
+            cfg = _json.loads(cfg_p.read_text())
+            idle_limit = int(cfg.get("security", {}).get("lock_idle_seconds", LOCK_IDLE_SECONDS))
+    except Exception:
+        pass
+    print(f"[LOCK] Watchdog gestartet — Idle-Lock nach {idle_limit}s", flush=True)
+    while True:
+        await asyncio.sleep(30)
+        if state.locked:
+            continue
+        idle = time.monotonic() - state.last_activity
+        if idle >= idle_limit:
+            print(f"[LOCK] Auto-Sperre nach {idle:.0f}s Inaktivitaet", flush=True)
+            await _lock_system(reason="idle_timeout")
+            try:
+                from shared import tts
+                tts.speak("System automatisch gesperrt.")
+            except Exception:
+                pass
 
 
 async def _handle_patient_scan(uid: str):
@@ -805,8 +925,8 @@ def persistent_audio_callback(indata, frames, time_info, status):
     if len(state._mic_test_chunks) > 10:
         state._mic_test_chunks.pop(0)
 
-    # Vosk fuettern — auf 16kHz resampled
-    if state.vosk_enabled and state.vosk_recognizer and not state.transcribing:
+    # Vosk fuettern — auf 16kHz resampled. Phase 11: nicht im Sperrzustand.
+    if state.vosk_enabled and state.vosk_recognizer and not state.transcribing and not state.locked:
         try:
             stream_rate = getattr(state, '_stream_samplerate', SAMPLE_RATE)
             mono = indata[:, 0]
@@ -896,8 +1016,17 @@ async def process_vosk_commands():
     while True:
         if state.vosk_command_queue:
             cmd = state.vosk_command_queue.pop(0)
+            # Phase 11: Im Sperrzustand keine Befehle ausfuehren.
+            # persistent_audio_callback pusht zwar nicht rein, aber falls
+            # noch alte Commands in der Queue liegen — wegwerfen.
+            if state.locked:
+                print(f"[LOCK] Voice-Command verworfen (gesperrt): {cmd.get('action')}", flush=True)
+                await asyncio.sleep(0.05)
+                continue
             action = cmd["action"]
             text = cmd["text"]
+            # Aktivitaet registrieren
+            _mark_activity()
             print(f"Sprachbefehl: '{text}' -> {action}")
 
             await broadcast({
@@ -2072,6 +2201,7 @@ async def analyze_pending_transcript(body: dict):
     """Manueller Trigger: Analysiert ein bestimmtes Pending-Transkript
     (identifiziert über id) und legt N Patienten daraus an.
     Wenn keine id gegeben ist: nimmt das neueste unanalysierte."""
+    require_unlocked()  # Phase 11
     tid = (body or {}).get("id")
     pt: dict | None = None
     if tid:
@@ -2397,6 +2527,9 @@ async def get_status():
         "active_patient": state.active_patient,
         "patient_count": len(state.patients),
         "backend_reachable": state.backend_reachable,
+        # Phase 11: Security-Lock-Status fuer das Frontend
+        "locked": state.locked,
+        "current_operator": state.current_operator,
     }
 
 
@@ -2999,6 +3132,7 @@ async def data_test_generate():
     Zustaenden, damit der komplette Patient-Flow demonstriert werden kann
     ohne vorher diktieren zu muessen. Patient-IDs haben das Prefix TEST-
     damit sie via /api/data/reset oder gezielt entfernt werden koennen."""
+    require_unlocked()  # Phase 11
     import copy as _copy
     import uuid as _uuid
 
@@ -3259,6 +3393,7 @@ CHUNK_SECONDS = 25
 
 @app.post("/api/record/start")
 async def start_recording():
+    require_unlocked()  # Phase 11
     if state.recording:
         return {"error": "Aufnahme läuft bereits"}
     if not state.model_path:
@@ -4574,10 +4709,24 @@ async def startup():
     # Hardware-Service: Taster, LEDs, Shutdown-Geste starten
     hardware_service.set_rfid_callback(_handle_rfid_scan)
     hardware_service.set_oled_action_callback(_handle_oled_action)
+    # Phase 11 Security-Lock: Taster-Single-Press blockieren wenn gesperrt
+    hardware_service.set_lock_check(lambda: state.locked)
     await hardware_service.start()
 
     # Starte OLED-Update-Loop für Menü-Seiten
     asyncio.create_task(_oled_update_loop())
+
+    # Phase 11: Security-Lock. System startet gesperrt, Watchdog-Task prueft
+    # Inaktivitaet und sperrt automatisch nach LOCK_IDLE_SECONDS.
+    state.locked = True
+    state.vosk_listening = False  # keine Voice im Sperrzustand
+    state.last_activity = time.monotonic()
+    try:
+        oled_menu.set_locked(True)
+    except Exception:
+        pass
+    asyncio.create_task(_lock_watchdog_loop())
+    print("[LOCK] System startet im gesperrten Zustand — blauer Chip noetig.", flush=True)
 
 
 async def _oled_update_loop():

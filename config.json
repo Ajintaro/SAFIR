@@ -206,6 +206,9 @@
         "debounce_ms": 15,
         "poll_interval_ms": 8
     },
+    "security": {
+        "lock_idle_seconds": 1800
+    },
     "rfid": {
         "operators": [],
         "roles": {

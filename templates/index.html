@@ -1088,6 +1088,28 @@
             max-width: 760px;
             margin-top: var(--space-2);
         }
+        /* Phase 11 Security-Lock Banner auf der Start-Seite */
+        .welcome-lock-banner {
+            margin-top: var(--space-6);
+            padding: var(--space-6) var(--space-8);
+            border: 2px solid var(--cgi-red);
+            border-radius: var(--radius-lg);
+            background: var(--cgi-red-light);
+            text-align: center;
+        }
+        .welcome-lock-title {
+            font-size: var(--fs-h2);
+            font-weight: var(--fw-bold);
+            color: var(--cgi-red);
+            letter-spacing: var(--ls-uppercase);
+            line-height: var(--lh-h2);
+        }
+        .welcome-lock-sub {
+            font-size: var(--fs-body-lg);
+            color: var(--text-secondary);
+            margin-top: var(--space-2);
+            line-height: var(--lh-body-lg);
+        }
 
         /* Sidebar separator */
         /* Nav-Separator — Phase 10: 14 px Label, lockeres Letter-Spacing 0.08em */
@@ -1829,6 +1851,11 @@
                 </svg>
                 <div class="welcome-logo">SAFIR</div>
                 <div class="welcome-full-name">Sprachgestützte Assistenz für Informationserfassung in der Rettungskette</div>
+                <!-- Phase 11: Security-Lock Banner. Wird via JS ein-/ausgeblendet anhand status.locked -->
+                <div id="welcome-lock-banner" class="welcome-lock-banner" style="display:none">
+                    <div class="welcome-lock-title">SYSTEM GESPERRT</div>
+                    <div class="welcome-lock-sub">Bitte Loginchip auflegen</div>
+                </div>
             </div>
         </div>
 
@@ -3417,6 +3444,25 @@
                     patient_count:'Patientenzahl',
                 };
                 showToast('Sprachbefehl: ' + (labels[msg.action] || msg.action), '&#127908;', 'voice');
+                break;
+            // Phase 11: System-Lock-Status
+            case 'system_locked':
+                updateLockBanner(true);
+                showToast('System gesperrt', '&#128274;');
+                navigateTo('home');
+                break;
+            case 'system_unlocked':
+                updateLockBanner(false);
+                showToast('System entsperrt', '&#128275;', 'voice');
+                break;
+            case 'operator_login':
+                updateLockBanner(false);
+                if (msg.name) showToast('Willkommen ' + msg.name, '&#128100;', 'voice');
+                break;
+            case 'operator_logout':
+                updateLockBanner(true);
+                if (msg.name) showToast('Abmeldung ' + msg.name, '&#128100;');
+                navigateTo('home');
                 break;
             case 'vosk_status':
                 updateVoskIndicator(msg.enabled, msg.listening); break;
@@ -6024,6 +6070,15 @@
             const voskInd = document.getElementById('vosk-indicator');
             if (voskInd) voskInd.style.display = 'none';
         }
+        // Phase 11: Lock-Status sichtbar machen
+        updateLockBanner(status.locked === true);
+    }
+
+    // Phase 11: Lock-Banner auf Start-Seite + Body-Klasse fuer Disable-Styles
+    function updateLockBanner(locked) {
+        const banner = document.getElementById('welcome-lock-banner');
+        if (banner) banner.style.display = locked ? 'block' : 'none';
+        document.body.classList.toggle('system-locked', locked);
     }
 
     init();

@@ -109,6 +109,10 @@ class OledMenu:
         self._last_activity = time.time()  # Burn-in Schutz
         self._display_off = False
         self.SCREENSAVER_SECONDS = 300  # 5 Minuten
+        # Phase 11: Security-Lock. Wenn True, zeigt render() den Lock-Screen
+        # statt der normalen Seiten. Wird von app.py via set_locked()
+        # toggled.
+        self.locked = False
 
     def init_hardware(self):
         """Versucht SSD1306 über I2C zu initialisieren. Fehlschlag = Software-only."""
@@ -325,12 +329,22 @@ class OledMenu:
     # ---- Rendering ----
     def render(self) -> Image.Image:
         """Rendert die aktuelle Seite als 128×64 PIL-Image."""
-        # Im Status-Modus: Vollbild-Status anzeigen
+        # Im Status-Modus: Vollbild-Status anzeigen (auch im Sperrzustand,
+        # damit Login/Logout-Bestaetigungen sichtbar sind)
         if self._status_mode:
             return self._render_fullscreen_status()
 
         img = Image.new("1", (WIDTH, HEIGHT), 0)  # Monochrom, schwarz
         draw = ImageDraw.Draw(img)
+
+        # Phase 11: Im Sperrzustand zeigen wir immer den Lock-Screen, egal
+        # auf welcher Menu-Page man war. Menu-Navigation ist im HardwareService
+        # ohnehin blockiert.
+        if self.locked:
+            self._render_locked(draw)
+            self._display_image(img)
+            return img
+
         page = PAGES[self.current_page]
 
         # Untermenü hat Vorrang: zeigt Action-Liste statt Content
@@ -349,6 +363,22 @@ class OledMenu:
         self._display_image(img)
 
         return img
+
+    def set_locked(self, locked: bool):
+        """Phase 11: Lock-Screen aktivieren/deaktivieren."""
+        self.locked = bool(locked)
+
+    # ---- Seite: GESPERRT (Security-Lock) ----
+    def _render_locked(self, draw: ImageDraw):
+        """Zeigt 'SAFIR / GESPERRT / Chip auflegen' als Vollbild-Sperr-Screen.
+        Wird bei state.locked = True von render() anstelle der normalen
+        Seiten angezeigt."""
+        # SAFIR oben in XL
+        draw.text((2, 2), "SAFIR", font=FONT_XL, fill=1)
+        # GESPERRT darunter in XL (aufgeteilt auf eigene Zeile)
+        draw.text((2, 26), "GESPERRT", font=FONT_XL, fill=1)
+        # Hinweis unten (FONT_MD)
+        draw.text((2, 50), "Chip auflegen", font=FONT_MD, fill=1)
 
     def render_base64(self) -> str:
         """Rendert und gibt Base64-encodiertes PNG zurück."""

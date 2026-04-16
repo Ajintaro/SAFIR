@@ -587,6 +587,12 @@ class HardwareService:
         vor der Scan-Routing-Funktion instanziert wurde)."""
         self._on_rfid_scan_cb = cb
 
+    def set_lock_check(self, cb: Callable[[], bool]):
+        """Phase 11: Callback der True zurueckgibt wenn das System gesperrt
+        ist. Wird vor Single-Button-Events geprueft — gesperrte Single-Presses
+        sind no-op. Combo (Shutdown) funktioniert weiterhin."""
+        self._lock_check_cb = cb
+
     def set_oled_action_callback(self, cb: Callable[[dict], None]):
         """Setzt den Callback der nach einem Button-B-OK-Druck gerufen wird.
 
@@ -774,6 +780,17 @@ class HardwareService:
         if event.kind == "combo_fire":
             asyncio.create_task(self._on_combo_fire())
             return
+
+        # Phase 11: Im Sperrzustand Single-Presses verwerfen. Combo (Shutdown)
+        # oben ist bereits durchgelaufen und bleibt erlaubt.
+        lock_check = getattr(self, "_lock_check_cb", None)
+        if lock_check is not None:
+            try:
+                if lock_check():
+                    log.info(f"Single-Press verworfen — System gesperrt: {event.kind} {event.button}")
+                    return
+            except Exception:
+                pass
 
         # Single-Press: Wake-Gate — wenn OLED im Standby war, nur wecken.
         was_sleeping = getattr(self._oled, "is_sleeping", False)
