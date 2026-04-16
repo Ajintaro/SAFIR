@@ -14,13 +14,21 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 PROJECT_DIR = Path(__file__).parent
 ROOT_DIR = PROJECT_DIR.parent
+
+# Export-Modul im Repo-Root liegt (shared/exports.py). Wir fuegen das
+# ROOT_DIR zum sys.path hinzu damit der Import funktioniert egal von wo
+# uvicorn gestartet wurde.
+import sys as _sys
+if str(ROOT_DIR) not in _sys.path:
+    _sys.path.insert(0, str(ROOT_DIR))
+from shared import exports  # noqa: E402
 TEMPLATES_DIR = ROOT_DIR / "templates"          # Einheitliches Template
 TEMPLATES_DIR_LOCAL = PROJECT_DIR / "templates"  # Fallback
 STATIC_DIR = PROJECT_DIR / "static"
@@ -857,6 +865,93 @@ async def data_test_generate():
     })
     print(f"Test-Daten generiert: {len(created_ids)} Patient(en) + 1 Test-BAT")
     return {"status": "ok", "created": len(created_ids), "patient_ids": created_ids}
+
+
+# ---------------------------------------------------------------------------
+# Export & Interoperabilität (Phase 6) — nutzt shared.exports damit das
+# Surface-Backend dieselbe Logik wie das Jetson-Backend hat. Die vier
+# Endpoints sind identisch zu denen im Jetson app.py, aber auf
+# state.patients des Surface-Backends.
+# ---------------------------------------------------------------------------
+PROTOCOLS_DIR_EXPORT = ROOT_DIR / "backend" / "data" / "exports"
+PROTOCOLS_DIR_EXPORT.mkdir(exist_ok=True, parents=True)
+
+
+def _export_cfg() -> tuple[str, str]:
+    """Liefert (device_id, unit_name) aus der Surface-Config für Exports."""
+    try:
+        cfg_path = PROJECT_DIR / "config.json"
+        if cfg_path.exists():
+            with open(cfg_path, encoding="utf-8") as f:
+                cfg = json.load(f)
+            return cfg.get("device_id", "surface-01"), cfg.get("unit_name", "Leitstelle")
+    except Exception:
+        pass
+    return "surface-01", "Leitstelle"
+
+
+def _export_filename(ext: str) -> str:
+    return f"safir-patients-{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+
+
+@app.get("/api/export/json/all")
+async def export_json_all():
+    device_id, unit_name = _export_cfg()
+    body = exports.generate_json(list(state.patients.values()), device_id, unit_name)
+    return Response(
+        content=body,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{_export_filename("json")}"'},
+    )
+
+
+@app.get("/api/export/xml/all")
+async def export_xml_all():
+    device_id, unit_name = _export_cfg()
+    body = exports.generate_xml(list(state.patients.values()), device_id, unit_name)
+    return Response(
+        content=body,
+        media_type="application/xml; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{_export_filename("xml")}"'},
+    )
+
+
+@app.post("/api/export/docx/all")
+async def export_docx_all():
+    device_id, unit_name = _export_cfg()
+    try:
+        filepath = exports.generate_docx(
+            list(state.patients.values()), device_id, unit_name, PROTOCOLS_DIR_EXPORT
+        )
+    except Exception as e:
+        return {"error": f"DOCX-Export fehlgeschlagen: {e}"}
+    return FileResponse(
+        str(filepath),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=filepath.name,
+    )
+
+
+@app.post("/api/export/pdf/all")
+async def export_pdf_all():
+    device_id, unit_name = _export_cfg()
+    try:
+        filepath = exports.generate_pdf(
+            list(state.patients.values()), device_id, unit_name, PROTOCOLS_DIR_EXPORT
+        )
+    except ImportError as e:
+        return {
+            "error": "reportlab nicht installiert",
+            "hint": "pip install reportlab im Venv des Surface-Backends",
+            "detail": str(e),
+        }
+    except Exception as e:
+        return {"error": f"PDF-Export fehlgeschlagen: {e}"}
+    return FileResponse(
+        str(filepath),
+        media_type="application/pdf",
+        filename=filepath.name,
+    )
 
 
 # ---------------------------------------------------------------------------
