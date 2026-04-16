@@ -290,6 +290,12 @@
             "icon": "&#128196;"
         },
         {
+            "id": "vision",
+            "label": "Vision",
+            "icon": "&#127919;",
+            "subtitle": "Weitere Einsatzgebiete"
+        },
+        {
             "id": "settings",
             "label": "Einstellungen",
             "icon": "&#9881;"

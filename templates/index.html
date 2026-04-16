@@ -1239,6 +1239,136 @@
         .activity-bar .activity-detail {
             font-size: 10px; color: var(--text-dim); font-weight: 400;
         }
+
+        /* ============================================================
+           Vision-Page — Use-Cases & Plattform-Geschichte (Phase 7)
+           ============================================================ */
+        .vision-container {
+            max-width: 1200px; margin: 0 auto; padding: 24px 32px 48px;
+            height: 100%; overflow-y: auto;
+        }
+        .vision-hero {
+            padding: 40px 32px 32px; text-align: center;
+            background: linear-gradient(180deg, var(--bg-elevated) 0%, transparent 100%);
+            border-left: 3px solid var(--accent, #c8b878);
+            margin-bottom: 32px;
+        }
+        .vision-hero-eyebrow {
+            font-size: 11px; color: var(--accent, #c8b878);
+            letter-spacing: 0.25em; text-transform: uppercase; font-weight: 700;
+            margin-bottom: 12px;
+        }
+        .vision-hero-title {
+            font-size: 36px; font-weight: 700; color: var(--text-primary);
+            margin: 0 0 16px; letter-spacing: -0.01em;
+        }
+        .vision-hero-subtitle {
+            font-size: 14px; line-height: 1.7; color: var(--text-secondary);
+            max-width: 760px; margin: 0 auto;
+        }
+        .vision-hero-subtitle strong { color: var(--text-primary); font-weight: 600; }
+
+        .vision-principles {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px; margin-bottom: 40px;
+        }
+        .vision-principle {
+            padding: 18px 20px;
+            background: var(--bg-surface); border: 1px solid var(--border);
+        }
+        .vision-principle .vp-icon {
+            font-size: 20px; color: var(--accent, #c8b878); margin-bottom: 8px;
+        }
+        .vision-principle .vp-title {
+            font-size: 13px; font-weight: 700; color: var(--text-primary);
+            margin-bottom: 6px; letter-spacing: 0.05em; text-transform: uppercase;
+        }
+        .vision-principle .vp-text {
+            font-size: 11px; line-height: 1.5; color: var(--text-secondary);
+        }
+
+        .vision-section-title {
+            font-size: 22px; font-weight: 600; color: var(--text-primary);
+            margin: 40px 0 20px; letter-spacing: -0.01em;
+            padding-bottom: 8px; border-bottom: 1px solid var(--border);
+        }
+
+        .vision-usecase-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 20px; margin-bottom: 32px;
+        }
+        .vision-usecase {
+            background: var(--bg-surface); border: 1px solid var(--border);
+            overflow: hidden; display: flex; flex-direction: column;
+            transition: border-color 0.2s;
+        }
+        .vision-usecase:hover { border-color: var(--accent, #c8b878); }
+        .vision-usecase .vuc-header {
+            display: flex; align-items: center; gap: 14px;
+            padding: 16px 18px; border-bottom: 1px solid var(--border);
+            background: var(--bg-elevated);
+        }
+        .vision-usecase .vuc-icon {
+            width: 48px; height: 48px; display: flex;
+            align-items: center; justify-content: center;
+            font-size: 22px; color: #fff; flex-shrink: 0;
+        }
+        .vision-usecase .vuc-title {
+            font-size: 16px; font-weight: 700; color: var(--text-primary);
+            letter-spacing: 0.02em;
+        }
+        .vision-usecase .vuc-subtitle {
+            font-size: 11px; color: var(--text-dim); margin-top: 2px;
+        }
+        .vision-usecase .vuc-body { padding: 18px; flex: 1; }
+        .vision-usecase .vuc-body p {
+            font-size: 12px; line-height: 1.7; color: var(--text-secondary);
+            margin: 0 0 16px;
+        }
+        .vision-usecase .vuc-body strong { color: var(--text-primary); }
+        .vision-usecase .vuc-details {
+            display: flex; flex-direction: column; gap: 6px;
+            padding-top: 12px; border-top: 1px solid var(--border);
+        }
+        .vision-usecase .vuc-detail-row {
+            display: grid; grid-template-columns: 130px 1fr; gap: 10px;
+            font-size: 10px; align-items: start;
+        }
+        .vision-usecase .vuc-label {
+            color: var(--accent, #c8b878); font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+        }
+        .vision-usecase .vuc-detail-row span:not(.vuc-label) {
+            color: var(--text-secondary); line-height: 1.5;
+        }
+
+        .vision-tech-stack {
+            background: var(--bg-surface); border-left: 3px solid var(--accent, #c8b878);
+            padding: 18px 20px; margin-bottom: 32px;
+        }
+        .vts-row {
+            display: grid; grid-template-columns: 180px 1fr; gap: 14px;
+            padding: 8px 0; border-bottom: 1px dashed var(--border);
+            font-size: 12px;
+        }
+        .vts-row:last-child { border-bottom: none; }
+        .vts-label {
+            color: var(--accent, #c8b878); font-weight: 700;
+            letter-spacing: 0.1em; text-transform: uppercase; font-size: 10px;
+        }
+        .vts-value { color: var(--text-secondary); line-height: 1.6; }
+
+        .vision-footer {
+            text-align: center; padding: 24px 16px;
+            color: var(--text-dim); margin-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+        .vf-title {
+            font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+            text-transform: uppercase; color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        .vf-subtitle { font-size: 11px; font-style: italic; }
     </style>
 </head>
 <body data-theme="dark">
@@ -1658,6 +1788,224 @@
         </div>
 
         <!-- ======================================================
+             PAGE: Vision — weitere Einsatzgebiete
+             ====================================================== -->
+        <div class="page" id="page-vision">
+            <div class="vision-container">
+                <div class="vision-hero">
+                    <div class="vision-hero-eyebrow">SAFIR PLATTFORM</div>
+                    <h1 class="vision-hero-title">Mehr als Rettungskette.</h1>
+                    <p class="vision-hero-subtitle">
+                        Die SAFIR-Architektur — sprachgesteuerte KI-Dokumentation, offline-fähig,
+                        hardware-nah, Edge-optimiert — ist nicht auf den militärischen Sanitätsdienst
+                        beschränkt. Überall wo <strong>Fachkräfte unter Stress schnell und präzise
+                        Daten erfassen müssen</strong>, bringt SAFIR denselben Vorteil:
+                        Hände frei, Augen auf die Situation, das System dokumentiert im Hintergrund.
+                    </p>
+                </div>
+
+                <div class="vision-principles">
+                    <div class="vision-principle">
+                        <div class="vp-icon">&#9658;</div>
+                        <div class="vp-title">Voice-First</div>
+                        <div class="vp-text">Whisper-Transkription + LLM-Feldextraktion. Sanitäter,
+                            Polizist, Feuerwehrmann spricht frei — SAFIR strukturiert.</div>
+                    </div>
+                    <div class="vision-principle">
+                        <div class="vp-icon">&#9673;</div>
+                        <div class="vp-title">Edge / Offline</div>
+                        <div class="vp-text">Alle KI läuft lokal auf dem Jetson. Kein Cloud,
+                            keine Internet-Abhängigkeit während des Einsatzes.</div>
+                    </div>
+                    <div class="vision-principle">
+                        <div class="vp-icon">&#9775;</div>
+                        <div class="vp-title">Hardware-integriert</div>
+                        <div class="vp-text">Taster, OLED, RFID, GPIO. Keine Tastatur, keine Maus
+                            — bedienbar mit Handschuhen, im Regen, auf dem Boden.</div>
+                    </div>
+                    <div class="vision-principle">
+                        <div class="vp-icon">&#9876;</div>
+                        <div class="vp-title">End-zu-End-verschlüsselt</div>
+                        <div class="vp-text">WireGuard-Tunnel zwischen Feldgerät und Leitstelle.
+                            Niemand liest mit — nicht mal der VPN-Provider.</div>
+                    </div>
+                </div>
+
+                <h2 class="vision-section-title">&#9881; Anwendungsbereiche</h2>
+
+                <div class="vision-usecase-grid">
+
+                    <div class="vision-usecase">
+                        <div class="vuc-header">
+                            <div class="vuc-icon" style="background:linear-gradient(135deg,#cc2222,#8b1818)">&#128658;</div>
+                            <div>
+                                <div class="vuc-title">Feuerwehr</div>
+                                <div class="vuc-subtitle">Einsatzdokumentation &middot; MANV</div>
+                            </div>
+                        </div>
+                        <div class="vuc-body">
+                            <p>Atemschutz-Überwachung, Verletzten-Triage bei Großschadenslage, Sprachgestützte Lage-
+                            meldung direkt vom Einsatzort an die Leitstelle. 9-Liner-Template wird zur
+                            <strong>Feuerwehrdienstvorschrift 100 Lageanalyse</strong>.</p>
+                            <div class="vuc-details">
+                                <div class="vuc-detail-row"><span class="vuc-label">Hardware-Anpassung</span>
+                                    <span>Rugged-Case (IP67), Atemschutz-Mikro via Bluetooth</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Modifikationen</span>
+                                    <span>Einsatz-Stichworte (MANV, Brand B, Gefahrgut), Check-Out/In für Atemschutzträger</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Integration</span>
+                                    <span>Schnittstelle zu ELS / FMS-Leitstellensystemen</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="vision-usecase">
+                        <div class="vuc-header">
+                            <div class="vuc-icon" style="background:linear-gradient(135deg,#1e3a8a,#1e40af)">&#128737;</div>
+                            <div>
+                                <div class="vuc-title">Polizei</div>
+                                <div class="vuc-subtitle">Sachverhalt &middot; Zeugenvernehmung</div>
+                            </div>
+                        </div>
+                        <div class="vuc-body">
+                            <p>Mobile Sachverhaltsaufnahme am Einsatzort. Sprachprotokoll von Zeugenaussagen,
+                            automatische Transkription + Personen-/Orts-/Zeit-Extraktion für das Vorgangsbearbeitungssystem.
+                            Bodycam-Integration für synchrone Audio-/Video-Dokumentation.</p>
+                            <div class="vuc-details">
+                                <div class="vuc-detail-row"><span class="vuc-label">Hardware-Anpassung</span>
+                                    <span>Belt-Clip-Variante, Bodycam-Mic-Kopplung, Foto-Attachment</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Modifikationen</span>
+                                    <span>Vorgangs-Nummer, StGB-§-Vorauswahl, digitale Unterschrift</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Integration</span>
+                                    <span>POLIKS / ComVor / ViVA Landes-Vorgangssysteme</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="vision-usecase">
+                        <div class="vuc-header">
+                            <div class="vuc-icon" style="background:linear-gradient(135deg,#1e5f8f,#0d4f7a)">&#9960;</div>
+                            <div>
+                                <div class="vuc-title">THW</div>
+                                <div class="vuc-subtitle">Bergung &middot; Katastrophenschutz</div>
+                            </div>
+                        </div>
+                        <div class="vuc-body">
+                            <p>Ortungs- und Bergungs-Dokumentation bei Einstürzen, Hochwasser, Erdbeben.
+                            Verletzten-Erfassung in chaotischen Einsatzlagen, Ortungsprotokoll mit GPS-Trail,
+                            Schadens-Inventarisierung mit Foto und Sprache. Lage-Meldung an THW-Leitung.</p>
+                            <div class="vuc-details">
+                                <div class="vuc-detail-row"><span class="vuc-label">Hardware-Anpassung</span>
+                                    <span>Wasserdichte Variante (IP68), Solar-Charging-Kit, Funk-Redundanz</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Modifikationen</span>
+                                    <span>MGRS-Grid-Erfassung, Schadens-Kategorien (EKAT), Helfer-Check-In</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Integration</span>
+                                    <span>DIVI-Intensivregister, Länderspezifische Katastrophenschutz-Systeme</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="vision-usecase">
+                        <div class="vuc-header">
+                            <div class="vuc-icon" style="background:linear-gradient(135deg,#8b4513,#a0522d)">&#128230;</div>
+                            <div>
+                                <div class="vuc-title">Logistik &middot; Lager</div>
+                                <div class="vuc-subtitle">Inventur &middot; Quittierung</div>
+                            </div>
+                        </div>
+                        <div class="vuc-body">
+                            <p>Sprachgestützte Inventur-Erfassung, Lieferungs-Quittierung ohne Papier,
+                            Schaden-Dokumentation an Packstücken. Der Mitarbeiter trägt Handschuhe, hat die Hände
+                            voll — spricht die Daten ein, SAFIR strukturiert direkt ins Warehouse-System.</p>
+                            <div class="vuc-details">
+                                <div class="vuc-detail-row"><span class="vuc-label">Hardware-Anpassung</span>
+                                    <span>Headset, Barcode-Scanner-Integration, Wearable-Form-Factor</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Modifikationen</span>
+                                    <span>Artikel-Nr.-Erkennung, Mengen-Erfassung, Beschädigungs-Kategorien</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Integration</span>
+                                    <span>SAP EWM, Oracle WMS, custom WMS via REST</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="vision-usecase">
+                        <div class="vuc-header">
+                            <div class="vuc-icon" style="background:linear-gradient(135deg,#c8b878,#a09060)">&#10010;</div>
+                            <div>
+                                <div class="vuc-title">Zivile Sanitätsdienste</div>
+                                <div class="vuc-subtitle">DRK &middot; JUH &middot; MHD &middot; ASB</div>
+                            </div>
+                        </div>
+                        <div class="vuc-body">
+                            <p>Derselbe Kern-Use-Case wie bei der Bundeswehr — nur zivil. Sanitätsdienste bei
+                            Großveranstaltungen (Konzerte, Sportevents), Massenanfall von Verletzten,
+                            Bereitschaftsdienste. Bestehende Patienten-Registrierungs-Prozesse werden ersetzt
+                            durch Voice-Workflow.</p>
+                            <div class="vuc-details">
+                                <div class="vuc-detail-row"><span class="vuc-label">Hardware-Anpassung</span>
+                                    <span>Standard-Variante, Organisations-Logo auf OLED-Splash</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Modifikationen</span>
+                                    <span>DIVI-Intensivregister, Sichtungskategorien nach PRIOR, Vereins-Datenbank</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Integration</span>
+                                    <span>divi-exchange, KatSys, ELDIS Leitstellen-Protokolle</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="vision-usecase">
+                        <div class="vuc-header">
+                            <div class="vuc-icon" style="background:linear-gradient(135deg,#4a5a3e,#3a4a2e)">&#9876;</div>
+                            <div>
+                                <div class="vuc-title">Out-of-Scope &middot; Forschung</div>
+                                <div class="vuc-subtitle">Feldforschung &middot; Expeditionen</div>
+                            </div>
+                        </div>
+                        <div class="vuc-body">
+                            <p>Feldforschung in abgelegenen Gebieten — Zoologie, Geologie, Archäologie,
+                            Humanitäre Missionen. Der Forscher spricht Beobachtungen ein, SAFIR
+                            strukturiert nach Forschungsprotokoll. Keine Netz-Abhängigkeit, keine
+                            Batterie-fressende Cloud-Synchronisation.</p>
+                            <div class="vuc-details">
+                                <div class="vuc-detail-row"><span class="vuc-label">Hardware-Anpassung</span>
+                                    <span>Solar-Kit, Extended-Battery-Pack, Iridium-Backup-Modem</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Modifikationen</span>
+                                    <span>Taxonomische Ontologie (Art/Gattung/Fundort), Foto-Stitching</span></div>
+                                <div class="vuc-detail-row"><span class="vuc-label">Integration</span>
+                                    <span>iNaturalist, GBIF, Fieldbook, DGfO-Forschungsdaten-Infrastrukturen</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <h2 class="vision-section-title">&#128279; Geteilte Basis</h2>
+
+                <div class="vision-tech-stack">
+                    <div class="vts-row">
+                        <div class="vts-label">Hardware</div>
+                        <div class="vts-value">NVIDIA Jetson Orin Nano Super · Whisper.cpp (GPU) · Qwen 2.5 LLM · Piper TTS</div>
+                    </div>
+                    <div class="vts-row">
+                        <div class="vts-label">Transport</div>
+                        <div class="vts-value">WireGuard (Tailscale-verwaltet) · End-zu-End ChaCha20-Poly1305 verschlüsselt</div>
+                    </div>
+                    <div class="vts-row">
+                        <div class="vts-label">Interoperabilität</div>
+                        <div class="vts-value">DOCX · PDF · JSON · XML · SitaWare CoT · NVG APP-6D</div>
+                    </div>
+                    <div class="vts-row">
+                        <div class="vts-label">Modularität</div>
+                        <div class="vts-value">Template-basiert — pro Use-Case eigenes Feld-Schema, gleicher Voice-Kern</div>
+                    </div>
+                </div>
+
+                <div class="vision-footer">
+                    <div class="vf-title">SAFIR &middot; CGI Deutschland &middot; AFCEA 2026</div>
+                    <div class="vf-subtitle">Entwickelt mit der Bundeswehr für die Bundeswehr — konzipiert für mehr.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================================================
              PAGE: Einstellungen
              ====================================================== -->
         <div class="page" id="page-settings">
@@ -1686,6 +2034,10 @@
                     <div class="settings-nav-item" onclick="showSettingsSection('interop')" data-settings="interop">
                         <span class="settings-nav-icon">&#9878;</span>
                         Interoperabilität
+                    </div>
+                    <div class="settings-nav-item" onclick="showSettingsSection('security')" data-settings="security">
+                        <span class="settings-nav-icon">&#128273;</span>
+                        Sicherheit
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('system')" data-settings="system">
                         <span class="settings-nav-icon">&#9881;</span>
@@ -1836,6 +2188,92 @@
                                 CoT-Events werden als XML exportiert und können direkt in SitaWare, ATAK oder WinTAK importiert werden.
                                 NVG-Overlays enthalten APP-6D SIDC-Symbole für die taktische Lagekarte.
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Sicherheit / Verschlüsselung -->
+                    <div class="settings-section" id="settings-security">
+                        <div class="settings-title">&#128273; Sicherheit</div>
+                        <div class="settings-desc">Wie SAFIR Patientendaten zwischen Feldgerät und Leitstelle schützt.</div>
+
+                        <div class="settings-card">
+                            <div class="settings-card-title">Architektur-Überblick</div>
+                            <pre style="margin:0;padding:14px;background:var(--bg-elevated);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:10px;line-height:1.5;color:var(--text-secondary);white-space:pre;overflow-x:auto">
+[Jetson BAT] ──┐                                    ┌── [Surface R1]
+  SAFIR-App    │                                    │    SAFIR-App
+               │   ╔════════════════════════════╗   │
+               └──▶║ WireGuard End-zu-End       ║◀──┘
+                   ║ ChaCha20-Poly1305          ║
+                   ║ Curve25519 + Blake2s       ║
+                   ║ Re-Key alle 2 min / 60 MB  ║
+                   ╚════════════════════════════╝
+                              ▲
+                              │
+                   ┌──────────┴──────────┐
+                   │  Tailscale Cloud    │  Nur Public Keys
+                   │  (Koordination)     │  + ACL-Regeln
+                   └─────────────────────┘  Keine Payloads!</pre>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="settings-card-title">Fünf Dinge die Sie wissen sollten</div>
+                            <div style="display:flex;flex-direction:column;gap:10px;font-size:12px;line-height:1.6">
+                                <div style="display:flex;gap:10px;padding:8px;border-left:3px solid var(--accent, #c8b878);background:var(--bg-elevated)">
+                                    <span style="color:var(--accent, #c8b878);font-weight:700;min-width:20px">1</span>
+                                    <span>WireGuard ist seit Linux 5.6 Teil des Mainline-Kernels und gilt als Goldstandard der Transport-Verschlüsselung. Deutlich kleinerer Angriffsflächen-Footprint als IPsec/OpenVPN (~4.000 vs. 500.000 Zeilen Code).</span>
+                                </div>
+                                <div style="display:flex;gap:10px;padding:8px;border-left:3px solid var(--accent, #c8b878);background:var(--bg-elevated)">
+                                    <span style="color:var(--accent, #c8b878);font-weight:700;min-width:20px">2</span>
+                                    <span>Jedes Paket End-zu-End mit <strong>ChaCha20-Poly1305</strong> verschlüsselt. Session-Keys rotieren alle 2 Minuten / 60 MB → Perfect Forward Secrecy.</span>
+                                </div>
+                                <div style="display:flex;gap:10px;padding:8px;border-left:3px solid var(--accent, #c8b878);background:var(--bg-elevated)">
+                                    <span style="color:var(--accent, #c8b878);font-weight:700;min-width:20px">3</span>
+                                    <span>Tailscale sieht <strong>nur Metadaten</strong> (Public Keys, Paketgrößen). Schlüsselpaare liegen ausschließlich auf den Endgeräten. Zero-Trust-Architektur.</span>
+                                </div>
+                                <div style="display:flex;gap:10px;padding:8px;border-left:3px solid var(--accent, #c8b878);background:var(--bg-elevated)">
+                                    <span style="color:var(--accent, #c8b878);font-weight:700;min-width:20px">4</span>
+                                    <span>Bewusste Entscheidung für einen auditierten Industriestandard statt eigenem Krypto-Code. <em>Don't roll your own crypto.</em></span>
+                                </div>
+                                <div style="display:flex;gap:10px;padding:8px;border-left:3px solid var(--accent, #c8b878);background:var(--bg-elevated)">
+                                    <span style="color:var(--accent, #c8b878);font-weight:700;min-width:20px">5</span>
+                                    <span>Für Voll-NATO-Einsatz: <strong>Headscale</strong> (self-hosted Coordination-Server) statt Tailscale Cloud. Das Protokoll zwischen den Endgeräten bleibt identisch — WireGuard.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="settings-card-title">Eingesetzte Kryptographie-Primitive</div>
+                            <table style="width:100%;border-collapse:collapse;font-size:11px">
+                                <thead><tr style="background:var(--bg-elevated)">
+                                    <th style="text-align:left;padding:6px 10px;color:var(--accent, #c8b878);letter-spacing:0.08em;text-transform:uppercase;font-size:10px">Aufgabe</th>
+                                    <th style="text-align:left;padding:6px 10px;color:var(--accent, #c8b878);letter-spacing:0.08em;text-transform:uppercase;font-size:10px">Algorithmus</th>
+                                    <th style="text-align:left;padding:6px 10px;color:var(--accent, #c8b878);letter-spacing:0.08em;text-transform:uppercase;font-size:10px">Referenz</th>
+                                </tr></thead>
+                                <tbody>
+                                    <tr><td style="padding:6px 10px">Schlüsselaustausch</td><td style="padding:6px 10px;font-family:'Share Tech Mono',monospace">Curve25519 (ECDH)</td><td style="padding:6px 10px;color:var(--text-dim)">RFC 7748</td></tr>
+                                    <tr><td style="padding:6px 10px">Symmetrische Verschlüsselung</td><td style="padding:6px 10px;font-family:'Share Tech Mono',monospace">ChaCha20</td><td style="padding:6px 10px;color:var(--text-dim)">RFC 8439</td></tr>
+                                    <tr><td style="padding:6px 10px">Message-Authentication</td><td style="padding:6px 10px;font-family:'Share Tech Mono',monospace">Poly1305 (AEAD)</td><td style="padding:6px 10px;color:var(--text-dim)">RFC 8439</td></tr>
+                                    <tr><td style="padding:6px 10px">Hashing</td><td style="padding:6px 10px;font-family:'Share Tech Mono',monospace">Blake2s</td><td style="padding:6px 10px;color:var(--text-dim)">RFC 7693</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="settings-card" style="border:1px solid var(--warning)">
+                            <div class="settings-card-title" style="color:var(--warning)">Transparente Limits</div>
+                            <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+                                Die aktuelle Demo-Konfiguration hat bewusst einige Härtungen <em>nicht</em> aktiv:
+                                <ul style="margin:8px 0 0;padding-left:20px">
+                                    <li>Keine App-Layer-Verschlüsselung <em>zusätzlich</em> zu WireGuard (könnte für Defense-in-Depth ergänzt werden)</li>
+                                    <li>Keine Secure-Boot / TPM-Attestation auf dem Jetson</li>
+                                    <li>Keine Auth-Key-Rotation — Keys laufen bis zum manuellen Widerruf</li>
+                                    <li>MIFARE-Classic-Karten mit Default-Key (für Produktion: MIFARE-DESFire mit AES)</li>
+                                    <li>Keine BSI-VS-NfD / NATO-Restricted Freigabe — das ist regulatorisch, kein technischer Schritt</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div style="margin-top:8px;font-size:11px;color:var(--text-dim);text-align:right">
+                            Ausführliches Dokument: <code>docs/security-architecture.md</code>
                         </div>
                     </div>
 
