@@ -1885,6 +1885,22 @@
                                 <button class="btn" style="background:var(--info,#5DADE2);color:#fff" onclick="generateTestData()">Testdaten erzeugen</button>
                             </div>
                         </div>
+
+                        <div class="settings-card" style="border:1px solid var(--accent,#c8b878)">
+                            <div class="settings-card-title" style="color:var(--accent,#c8b878)">&#128196; Patientendatenbank exportieren</div>
+                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">
+                                Alle Patienten auf diesem Gerät als strukturierte Datei herunterladen. DOCX + PDF für Berichte an die Rettungsstation, JSON + XML für Interoperabilität mit Drittsystemen (SitaWare, NVG, Lagebildsysteme).
+                            </div>
+                            <div class="btn-group" style="gap:6px;flex-wrap:wrap">
+                                <button class="btn" onclick="exportPatientsFormat('docx')" style="padding:6px 12px;font-size:11px">&#128196; DOCX (Word)</button>
+                                <button class="btn" onclick="exportPatientsFormat('pdf')" style="padding:6px 12px;font-size:11px">&#128196; PDF</button>
+                                <button class="btn" onclick="exportPatientsFormat('json')" style="padding:6px 12px;font-size:11px;background:var(--bg-elevated);color:var(--text-primary)">&#123;&#125; JSON</button>
+                                <button class="btn" onclick="exportPatientsFormat('xml')" style="padding:6px 12px;font-size:11px;background:var(--bg-elevated);color:var(--text-primary)">&lt;/&gt; XML</button>
+                            </div>
+                            <div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-style:italic">
+                                JSON + XML enthalten die kompletten Rohdaten (auch leere/unausgefüllte Felder). DOCX + PDF sind für Menschen formatiert, mit Übersichts-Tabelle und Detail-Sektion pro Patient inkl. 9-Liner, Vitals und Timeline.
+                            </div>
+                        </div>
                         <div class="settings-card" style="border:1px solid var(--warning)">
                             <div class="settings-card-title" style="color:var(--warning)">Daten zurücksetzen</div>
                             <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">
@@ -2362,6 +2378,57 @@
             showToast(`${count} Test-Patient(en) erzeugt`, '&#9989;');
         } catch(e) {
             showToast('Fehler beim Erzeugen der Testdaten: ' + e.message, '&#9888;');
+        }
+    }
+
+    // Phase 6 — Export in DOCX/PDF/JSON/XML.
+    // JSON + XML: GET (Browser kann direkt via <a href> herunterladen)
+    // DOCX + PDF: POST (Backend generiert Datei, FileResponse). Für POST
+    // muss der Browser via fetch + Blob-Download arbeiten.
+    async function exportPatientsFormat(fmt) {
+        const url = `/api/export/${fmt}/all`;
+        try {
+            if (fmt === 'json' || fmt === 'xml') {
+                // GET → direkt als Link öffnen, Browser handhabt Download
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = '';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                showToast(`${fmt.toUpperCase()}-Export gestartet`, '&#128196;');
+                return;
+            }
+            // DOCX + PDF: POST → Blob → Browser-Download
+            showToast(`${fmt.toUpperCase()}-Export wird generiert...`, '&#8634;');
+            const resp = await fetch(url, { method: 'POST' });
+            if (!resp.ok) {
+                let errMsg = `HTTP ${resp.status}`;
+                try {
+                    const j = await resp.json();
+                    if (j.error) errMsg = j.error;
+                    if (j.hint) errMsg += ` (Hinweis: ${j.hint})`;
+                } catch(_) {}
+                showToast(`Fehler: ${errMsg}`, '&#9888;');
+                return;
+            }
+            // Content-Disposition Filename ziehen, wenn vorhanden
+            let filename = `safir-patients.${fmt}`;
+            const cd = resp.headers.get('Content-Disposition') || '';
+            const m = cd.match(/filename="?([^"]+)"?/);
+            if (m) filename = m[1];
+            const blob = await resp.blob();
+            const objUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = objUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(objUrl);
+            showToast(`${fmt.toUpperCase()}-Export fertig`, '&#9989;');
+        } catch(e) {
+            showToast(`Fehler beim ${fmt.toUpperCase()}-Export: ${e.message}`, '&#9888;');
         }
     }
 
