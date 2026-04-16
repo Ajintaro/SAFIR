@@ -1978,17 +1978,29 @@ Bedeutung der Zeilen (nach NATO-Standard):
 - line8: Patienten-Nationalitaet (A=US Militaer, B=US Zivil, C=NATO, D=Gegner/POW, E=Zivilisten)
 - line9: ABC-Kontamination (N=keine, B=Biologisch, C=Chemisch) oder Gelaende-Beschreibung
 
-Regeln:
+WICHTIGSTE REGEL — HALLUZINATIONS-SCHUTZ:
+Wenn der Transkript-Text KEIN MEDEVAC-9-Liner ist (z.B. normales Patient-
+Diktat ohne Landezone, Funkfrequenz, etc.) ODER ein Feld im Text nicht
+genannt wird: Gib fuer die entsprechenden Zeilen einen LEEREN STRING ""
+zurueck. NIEMALS die Beispielwerte unten kopieren, wenn sie nicht im
+Input-Text stehen. Ein leerer 9-Liner (alle Zeilen "") ist erlaubt und
+besser als falsche Werte.
+
+Weitere Regeln:
 - Wenn der Sprecher explizit "Zeile eins", "Zeile zwei" etc. sagt, mappe direkt darauf
 - Wenn ein Feld nicht genannt wird: leerer String ""
 - Buchstaben-Codes normalisieren (aus "bravo" wird "B", aus "charlie" wird "C", etc.)
 - Zahlen ausschreiben verstehen ("zwei Patienten" → 2)
 - Kurze, praezise Werte (nicht den ganzen Satz in line1 packen)
 
-BEISPIEL-Transkript:
+BEISPIEL 1 — Nicht-9-Liner (normales Patient-Diktat):
+Transkript: "Hauptgefreiter Schmidt hat Schussverletzung am Bein, Puls 130."
+Antwort: {"line1":"","line2":"","line3":"","line4":"","line5":"","line6":"","line7":"","line8":"","line9":""}
+
+BEISPIEL 2 — echter 9-Liner:
 "Neun liner starten. Zeile eins MGRS drei zwei uniform mike charlie eins zwei drei vier fuenf sechs sieben acht. Zeile zwei Funkfrequenz vierzig komma zwei fuenf null Megahertz, Rufzeichen alpha zwei sechs. Zeile drei zwei Patienten Dringlichkeit alpha. Zeile vier bravo, wir brauchen Winde. Zeile fuenf beide liegend. Zeile sechs papa. Zeile sieben charlie, Rauch. Zeile acht charlie NATO. Zeile neun november, offenes Gelaende."
 
-BEISPIEL-Antwort:
+Antwort fuer BEISPIEL 2:
 {"line1":"32U MC 12345678","line2":"40.250 MHz, Alpha 2-6","line3":"2 A","line4":"B","line5":"L 2","line6":"P","line7":"C","line8":"C","line9":"N"}
 
 Transkript:
@@ -2134,6 +2146,31 @@ async def test_segment(body: dict):
         "input_chars": len(transcript),
     }
     return result
+
+
+@app.post("/api/test/nine-liner")
+async def test_nine_liner(body: dict):
+    """Proof-of-Concept-Endpoint: POST {"transcript": "..."} →
+    Qwen extrahiert die 9 MEDEVAC-Zeilen. Dient zum Testen ohne
+    Recording-Flow (kein Mikro, kein Vosk, direkt Text rein)."""
+    transcript = body.get("transcript", "")
+    if not transcript:
+        return {"error": "no transcript provided"}
+    import time as _t
+    t0 = _t.monotonic()
+    nine_liner = extract_nine_liner(transcript)
+    elapsed = _t.monotonic() - t0
+    filled = sum(1 for v in nine_liner.values() if v)
+    return {
+        "nine_liner": nine_liner,
+        "filled_count": filled,
+        "auto_detected_as_nine_liner": looks_like_nine_liner(transcript),
+        "_meta": {
+            "elapsed_s": round(elapsed, 2),
+            "model": OLLAMA_MODEL,
+            "input_chars": len(transcript),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
