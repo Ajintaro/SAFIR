@@ -414,19 +414,14 @@ class OledMenu:
                 missing.append("Qwen")
             draw.text((2, 54), f"Warte: {' + '.join(missing)}", font=FONT_SM, fill=1)
 
-    # ---- Seite: VERBINDUNG (Typ + lokale IP + Tailscale-IP) ----
+    # ---- Seite: VERBINDUNG ----
     def _render_network(self, draw: ImageDraw):
-        """Header 'VERBINDUNG' + drei Content-Zeilen:
-          Zeile 1: Verbindungstyp (ETHERNET / WLAN-SSID / OHNE NETZ)
-          Zeile 2: Lokale IP (IP 192.168.x.y) wenn vorhanden
-          Zeile 3: Tailscale-IP kompakt (T:100.126.179.27)
-
-        Backend-Status (Leitstelle) wird hier bewusst NICHT gezeigt —
-        das gehoert auf eine andere Seite (Status-Dashboard), nicht auf
-        die Verbindungs-Diagnose."""
-        # Header mit Titel + Uhrzeit + Seitenindikator (nimmt y=0..10)
-        self._draw_header(draw, "network")
-
+        """Vier Zeilen, nichts anderes. Keine Uhr, keine Page-Dots.
+          Z1: VERBINDUNG (Screen-Titel)
+          Z2: Verbindungstyp (ETHERNET / WLAN-SSID / OHNE NETZ)
+          Z3: Lokale IP (IP 192.168.x.y) oder 'IP --'
+          Z4: Tailscale-IP (T:100.126.179.27) oder 'T: --'
+        """
         n = self.network_info or {}
         wifi_state = n.get("wifi_state", "")
         wifi_ssid = n.get("wifi_ssid", "")
@@ -435,8 +430,10 @@ class OledMenu:
         ts_state = n.get("tailscale", "")
         ts_ip = n.get("tailscale_ip", "")
 
-        # Zeile 1 (y=18): Verbindungstyp gross, direkt unter dem Header.
-        # Prioritaet: aktives WLAN -> aktives Ethernet -> connecting -> offline
+        # Z1 (y=2): Screen-Titel
+        draw.text((2, 2), "VERBINDUNG", font=FONT_MD, fill=1)
+
+        # Z2 (y=18): Verbindungstyp
         if wifi_state == "connected" and wifi_ssid:
             draw.text((2, 18), wifi_ssid[:14], font=FONT_LG, fill=1)
             primary_ip = wifi_ip
@@ -453,14 +450,13 @@ class OledMenu:
             draw.text((2, 18), "OHNE NETZ", font=FONT_LG, fill=1)
             primary_ip = ""
 
-        # Zeile 2 (y=36): Lokale IP (wenn vorhanden), sonst Platzhalter
+        # Z3 (y=36): Lokale IP
         if primary_ip:
             draw.text((2, 36), f"IP {primary_ip}", font=FONT_MD, fill=1)
         else:
             draw.text((2, 36), "IP --", font=FONT_MD, fill=1)
 
-        # Zeile 3 (y=50): Tailscale-IP kompakt (volle 100.x.x.x passt
-        # mit FONT_MD in 128 px)
+        # Z4 (y=50): Tailscale-IP
         if ts_state == "online" and ts_ip:
             ts_text = f"T:{ts_ip}"
         elif ts_state == "online":
