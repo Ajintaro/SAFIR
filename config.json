@@ -157,6 +157,18 @@
                 "zuruck zur rettungsstation",
                 "fahre zur rettungsstation"
             ]
+        },
+        "nine_liner_mode": {
+            "label": "9-Liner MEDEVAC Modus",
+            "triggers": [
+                "neun liner",
+                "neunliner",
+                "neun-liner",
+                "9 liner",
+                "medevac",
+                "medevac anfordern",
+                "nato medevac"
+            ]
         }
     },
     "rescue_station": {

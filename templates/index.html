@@ -4213,6 +4213,22 @@
                       (p.vitals.spo2 ? `<span>SpO2: ${p.vitals.spo2}</span>` : '') +
                       '</div>' : '';
 
+                // 9-Liner Kompakt-Anzeige — nur wenn template_type=9liner ODER
+                // mindestens ein line-Feld gefüllt ist. Jetson (Feld + Fahrzeug)
+                // zeigt die 9 Zeilen in einem schmalen Block, Monospace.
+                const nl = p.nine_liner || {};
+                const nlFilled = ['line1','line2','line3','line4','line5','line6','line7','line8','line9'].filter(k => nl[k]).length;
+                const isNlPatient = p.template_type === '9liner' || nlFilled > 0;
+                const nineLinerHtml = isNlPatient
+                    ? `<div style="margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-left:3px solid var(--info,#5DADE2);font-family:'Share Tech Mono',monospace;font-size:10px">
+                        <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;letter-spacing:0.1em;text-transform:uppercase">&#9992; 9-Liner MEDEVAC (${nlFilled}/9)</div>
+                        ${[1,2,3,4,5,6,7,8,9].map(i => {
+                            const v = nl[`line${i}`] || '';
+                            return `<div style="display:flex;gap:6px;${v?'':'opacity:0.35'}"><span style="color:var(--info,#5DADE2);min-width:22px">L${i}</span><span>${v || '—'}</span></div>`;
+                        }).join('')}
+                    </div>`
+                    : '';
+
                 // Fahrzeug-Modus: Edit-Felder inline in der Karte.
                 // Triage-Buttons werden bewusst NUR für Patienten gerendert,
                 // die schon in Role 1+ angekommen sind — im BAT (Phase 0)
@@ -4243,6 +4259,7 @@
                         <div class="triage-dot" style="background:${color}">${p.triage || '--'}</div>
                         <span class="p-name">${p.name || 'Unbekannt'}${p.rank ? ' (' + p.rank + ')' : ''}</span>
                         <div class="p-badges">
+                            ${isNlPatient ? '<span class="badge-sm" style="background:rgba(93,173,226,0.2);color:#5DADE2">&#9992; 9-Liner</span>' : ''}
                             ${p.analyzed ? '<span class="badge-sm" style="background:rgba(93,173,226,0.15);color:#5DADE2">analysiert</span>' : ''}
                             ${p.synced ? '<span class="badge-sm" style="background:rgba(46,204,113,0.15);color:#2ECC71">übermittelt</span>' : ''}
                         </div>
@@ -4251,6 +4268,7 @@
                     </summary>
                     <div class="patient-card-body">
                         <div class="patient-transcripts" data-pid="${p.patient_id}">${transcriptsHtml}</div>
+                        ${nineLinerHtml}
                         ${injuriesHtml}${vitalsHtml}
                         ${fzEditHtml}
                     </div>
@@ -4868,6 +4886,38 @@
             </div>`;
         }
 
+        // 9-Liner MEDEVAC — nur wenn Template-Type 9liner ODER mindestens
+        // ein Line-Feld gefüllt ist. Labels nach NATO-Standard (siehe
+        // docs/nine-liner-template.md).
+        let nineLinerHtml = '';
+        const nineLinerLabels = {
+            line1: 'L1 Koordinaten Landezone',
+            line2: 'L2 Funkfrequenz / Rufzeichen',
+            line3: 'L3 Dringlichkeit',
+            line4: 'L4 Sonderausstattung',
+            line5: 'L5 Liegend / Gehfähig',
+            line6: 'L6 Sicherheitslage',
+            line7: 'L7 Markierung Landeplatz',
+            line8: 'L8 Nationalität / Status',
+            line9: 'L9 Kontamination / Gelände',
+        };
+        const filledLines = Object.keys(nineLinerLabels).filter(k => nineLiner[k]);
+        const isNineLiner = p.template_type === '9liner' || filledLines.length > 0;
+        if (isNineLiner) {
+            const rows = Object.keys(nineLinerLabels).map(k => {
+                const val = nineLiner[k] || '—';
+                const filled = !!nineLiner[k];
+                return `<div class="r1-detail-field" style="${filled ? '' : 'opacity:0.4'}">
+                    <div class="field-label" style="font-size:9px">${nineLinerLabels[k]}</div>
+                    <div class="field-value" style="font-family:'Share Tech Mono',monospace;font-size:12px">${val}</div>
+                </div>`;
+            }).join('');
+            nineLinerHtml = `<div class="r1-detail-section" style="border-left:3px solid var(--info,#5DADE2);padding-left:10px">
+                <div class="r1-detail-section-title">&#9992; 9-Liner MEDEVAC <span style="font-size:10px;color:var(--text-dim);font-weight:400">(${filledLines.length}/9 Felder)</span></div>
+                <div class="r1-detail-grid">${rows}</div>
+            </div>`;
+        }
+
         const overlay = document.createElement('div');
         overlay.className = 'r1-detail-overlay';
         overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
@@ -4890,6 +4940,7 @@
                             ${p.current_role ? `<div class="r1-detail-field"><div class="field-label">Aktuelle Phase</div><div class="field-value">${p.current_role}</div></div>` : ''}
                         </div>
                     </div>
+                    ${nineLinerHtml}
                     ${injuriesHtml}
                     ${vitalsHtml}
                     ${treatmentsHtml}

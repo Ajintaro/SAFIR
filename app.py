@@ -320,8 +320,12 @@ class AppState:
         # unabhängig auf manuelle Analyse. Nie überschreiben, immer anhängen.
         # Struktur pro Eintrag:
         #   {id, full_text, time, datetime, date, duration, analyzed,
-        #    analyzing, created_patient_ids}
+        #    analyzing, created_patient_ids, is_nine_liner}
         self.pending_transcripts: list[dict] = []
+        # 9-Liner-Flag fuer die NAECHSTE Aufnahme. Wird durch Voice-
+        # Command "neun liner" gesetzt und beim Recording-Stop auf
+        # das pending_transcript uebertragen + wieder zurueckgesetzt.
+        self.next_recording_is_nine_liner: bool = False
 
     def available_models(self):
         models = []
@@ -942,6 +946,13 @@ async def process_vosk_commands():
                         # Default-Preset "Hardthoehe" als bequemer Fallback
                         await bat_position_set({"preset_id": "hardthoehe"})
                     await bat_return_to_station()
+                elif action == "nine_liner_mode":
+                    # Naechste Aufnahme als 9-Liner MEDEVAC analysieren
+                    # statt als Multi-Patient-Diktat. Flag wird beim
+                    # Recording-Stop ans pending_transcript vererbt.
+                    state.next_recording_is_nine_liner = True
+                    tts.speak("Neun Liner Modus aktiv. Aufnahme starten.")
+                    oled_menu.show_status("9-LINER", "Modus aktiv", 0)
             except Exception as e:
                 print(f"Vosk Befehl Fehler: {e}")
                 tts.announce_error()
@@ -1934,6 +1945,101 @@ def segment_transcript_to_patients(transcript: str) -> dict:
     return {"patient_count": len(patients), "patients": patients}
 
 
+# ---------------------------------------------------------------------------
+# 9-Liner MEDEVAC Voice-Recognition (Phase 5)
+# ---------------------------------------------------------------------------
+# NATO MEDEVAC 9-Liner: 9 Zeilen mit Koordinaten, Funkfrequenz, Patienten-
+# Dringlichkeit etc. Wird vom Sanitaeter (oder Messebesucher) als
+# zusammenhaengende Ansage eingesprochen. SAFIR extrahiert daraus die
+# 9 Felder via dediziertem LLM-Prompt.
+#
+# Trigger: Voice-Command "neun liner" VOR der Aufnahme setzt
+# state.next_recording_is_nine_liner = True. Die darauf folgende
+# Aufnahme wird als pending_transcript mit is_nine_liner=True markiert.
+# Beim Analysieren wird dann extract_nine_liner() statt der Standard-
+# Segmentierung aufgerufen.
+#
+# Fallback Auto-Detect: Wenn is_nine_liner nicht explizit gesetzt ist,
+# aber der Transkript-Inhalt klare 9-Liner-Keywords enthaelt
+# ("zeile eins", "zeile zwei", "medevac", "MGRS", "Funkfrequenz"),
+# wird der 9-Liner-Pfad auch ohne Voice-Command aktiviert.
+
+NINE_LINER_PROMPT = """Extrahiere aus dem Sanitaeter-Transkript einen NATO MEDEVAC 9-Liner.
+Gib NUR ein JSON mit den Feldern line1 bis line9 zurueck, sonst NICHTS.
+
+Bedeutung der Zeilen (nach NATO-Standard):
+- line1: Koordinaten der Landezone (MGRS-Format, z.B. "32U MC 12345678")
+- line2: Funkfrequenz + Rufzeichen (z.B. "40.250 MHz, Alpha 2-6")
+- line3: Patienten nach Dringlichkeit (A=Urgent <2h, B=Urgent-Surgical, C=Priority <4h, D=Routine, E=Convenience). Format: "<Zahl> <Buchstabe>", z.B. "2 A"
+- line4: Sonderausstattung (A=Keine, B=Winde, C=Bergungsgeraet, D=Beatmungsgeraet)
+- line5: Patienten Liegend/Gehfaehig, Format "L<n>" fuer liegend, "A<n>" fuer gehfaehig
+- line6: Sicherheitslage (N=Kein Feind, P=Moeglicher Feind, E=Feind im Gebiet, X=Bewaffnete Eskorte)
+- line7: Markierung Landeplatz (A=Panels, B=Pyrotechnik, C=Rauch, D=Keine, E=Sonstige)
+- line8: Patienten-Nationalitaet (A=US Militaer, B=US Zivil, C=NATO, D=Gegner/POW, E=Zivilisten)
+- line9: ABC-Kontamination (N=keine, B=Biologisch, C=Chemisch) oder Gelaende-Beschreibung
+
+Regeln:
+- Wenn der Sprecher explizit "Zeile eins", "Zeile zwei" etc. sagt, mappe direkt darauf
+- Wenn ein Feld nicht genannt wird: leerer String ""
+- Buchstaben-Codes normalisieren (aus "bravo" wird "B", aus "charlie" wird "C", etc.)
+- Zahlen ausschreiben verstehen ("zwei Patienten" → 2)
+- Kurze, praezise Werte (nicht den ganzen Satz in line1 packen)
+
+BEISPIEL-Transkript:
+"Neun liner starten. Zeile eins MGRS drei zwei uniform mike charlie eins zwei drei vier fuenf sechs sieben acht. Zeile zwei Funkfrequenz vierzig komma zwei fuenf null Megahertz, Rufzeichen alpha zwei sechs. Zeile drei zwei Patienten Dringlichkeit alpha. Zeile vier bravo, wir brauchen Winde. Zeile fuenf beide liegend. Zeile sechs papa. Zeile sieben charlie, Rauch. Zeile acht charlie NATO. Zeile neun november, offenes Gelaende."
+
+BEISPIEL-Antwort:
+{"line1":"32U MC 12345678","line2":"40.250 MHz, Alpha 2-6","line3":"2 A","line4":"B","line5":"L 2","line6":"P","line7":"C","line8":"C","line9":"N"}
+
+Transkript:
+"""
+
+
+def extract_nine_liner(transcript: str) -> dict:
+    """Extrahiert 9-Liner-Felder aus einem Transkript via LLM.
+    Gibt ein Dict mit line1..line9 zurueck, fehlende Felder als "".
+    """
+    if not transcript or not transcript.strip():
+        return {f"line{i}": "" for i in range(1, 10)}
+    prompt = NINE_LINER_PROMPT + transcript.strip() + "\n\nAntwort:"
+    result = _call_ollama(prompt, "9-Liner")
+    if not isinstance(result, dict):
+        return {f"line{i}": "" for i in range(1, 10)}
+    # Alle 9 Felder sicherstellen (auch wenn das LLM eines ausgelassen hat)
+    out = {}
+    for i in range(1, 10):
+        key = f"line{i}"
+        val = result.get(key, "")
+        out[key] = str(val).strip() if val else ""
+    return out
+
+
+# Keywords die auf einen 9-Liner hindeuten. Wenn mindestens 2 davon im
+# Transkript vorkommen, aktivieren wir den 9-Liner-Pfad automatisch —
+# auch ohne expliziten Voice-Command davor.
+_NINE_LINER_KEYWORDS = (
+    "neun liner", "9-liner", "9 liner", "medevac",
+    "zeile eins", "zeile zwei", "zeile drei", "zeile vier",
+    "zeile fuenf", "zeile fünf", "zeile sechs", "zeile sieben",
+    "zeile acht", "zeile neun",
+    "mgrs", "landezone", "funkfrequenz", "rufzeichen",
+    "dringlichkeit", "liegend", "gehfaehig", "gehfähig",
+    "kontamination", "landeplatz",
+)
+
+
+def looks_like_nine_liner(transcript: str) -> bool:
+    """Heuristischer Auto-Detect ob ein Transkript ein 9-Liner ist.
+    Greift erst bei 2+ Keyword-Treffern um False-Positives zu
+    vermeiden (ein einzelnes 'medevac' koennte auch im normalen
+    Diktat stehen)."""
+    if not transcript:
+        return False
+    low = transcript.lower()
+    hits = sum(1 for kw in _NINE_LINER_KEYWORDS if kw in low)
+    return hits >= 2
+
+
 @app.get("/api/pending")
 async def list_pending_transcripts():
     """Gibt alle noch nicht analysierten (oder gerade wartenden) Transkripte
@@ -1969,15 +2075,21 @@ async def analyze_pending_transcript(body: dict):
     pt["analyzing"] = True
     full_text = pt["full_text"]
     record_time = pt.get("time") or datetime.now().strftime("%H:%M:%S")
+    # 9-Liner Flag vom pending_transcript durchschleifen. body.force_nine_liner
+    # erlaubt manuellen UI-Override ohne dass der Flag im pending stehen muss.
+    is_nine_liner = bool(pt.get("is_nine_liner")) or bool((body or {}).get("force_nine_liner"))
     await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
     try:
-        created = await _segment_and_create_patients(full_text, record_time)
+        created = await _segment_and_create_patients(full_text, record_time, is_nine_liner=is_nine_liner)
     finally:
         pt["analyzing"] = False
     pt["analyzed"] = True
     pt["created_patient_ids"] = created
     count = len(created)
-    tts.speak(f"{count} Patient angelegt" if count == 1 else f"{count} Patienten angelegt")
+    # Bei 9-Liner wird der TTS-Text schon in der 9-Liner-Branch gesagt,
+    # hier nur noch fuer Standard-Segmentierung ansagen.
+    if not is_nine_liner:
+        tts.speak(f"{count} Patient angelegt" if count == 1 else f"{count} Patienten angelegt")
     await broadcast({
         "type": "analysis_complete",
         "pending_id": pt["id"],
@@ -3278,6 +3390,12 @@ async def stop_recording():
     # der User sie analysiert oder verwirft. Jeder Eintrag bekommt eine
     # eindeutige ID damit das Frontend gezielt drauf referenzieren kann.
     import uuid
+    # 9-Liner-Flag vom Voice-Command-Vorlauf ans pending_transcript
+    # transferieren, dann State-Flag zuruecksetzen. Wenn der User vorher
+    # "neun liner" gesagt hat, wird diese Aufnahme als MEDEVAC-9-Liner
+    # statt als Multi-Patient-Diktat analysiert.
+    is_nine_liner = bool(state.next_recording_is_nine_liner)
+    state.next_recording_is_nine_liner = False
     pending_entry = {
         "id": uuid.uuid4().hex[:10],
         "full_text": full_text,
@@ -3288,6 +3406,7 @@ async def stop_recording():
         "analyzed": False,
         "analyzing": False,
         "created_patient_ids": [],
+        "is_nine_liner": is_nine_liner,
     }
     state.pending_transcripts.append(pending_entry)
 
@@ -3308,17 +3427,73 @@ async def stop_recording():
     return {"status": "ok", "result": record_entry}
 
 
-async def _segment_and_create_patients(full_text: str, record_time: str) -> list[str]:
+async def _segment_and_create_patients(full_text: str, record_time: str, is_nine_liner: bool = False) -> list[str]:
     """Ruft Qwen für die Segmentierung auf und legt pro erkanntem Patient
     einen Draft-Record an. Gibt die Liste der erzeugten patient_ids zurück.
 
-    Ablauf:
-      1. Segmentierung (Qwen mit SEGMENTATION_PROMPT)
-      2. Pro Segment: create_patient_record + 9-Liner-Feld-Extraktion
+    Zwei Pfade:
+      A) **Standard-Patient-Diktat** (is_nine_liner=False und Auto-Detect
+         negativ): Segmentierung + pro Segment Enrichment wie bisher.
+      B) **9-Liner MEDEVAC** (is_nine_liner=True oder Auto-Detect positiv):
+         Kein Segmenter — extract_nine_liner() baut ein Dict line1..line9,
+         daraus wird EIN Patient mit template_type="9liner" erzeugt.
+
+    Ablauf Standard:
+      1. Segmentierung (Qwen mit BOUNDARY_PROMPT)
+      2. Pro Segment: create_patient_record + Feld-Extraktion
       3. WebSocket-Broadcast patient_registered pro Patient
-      4. Der ZULETZT erzeugte Patient wird active_patient (für RFID-Schreiben etc.)
+      4. Der ZULETZT erzeugte Patient wird active_patient
     """
     loop = asyncio.get_event_loop()
+
+    # 9-Liner-Auto-Detect falls nicht explizit geflaggt
+    if not is_nine_liner and looks_like_nine_liner(full_text):
+        print(f"[SEGMENT] 9-Liner Auto-Detect angeschlagen — schalte um auf 9-Liner-Pfad", flush=True)
+        is_nine_liner = True
+
+    # Pfad B: 9-Liner
+    if is_nine_liner:
+        print(f"[9LINER] Extrahiere MEDEVAC-Felder aus {len(full_text)} chars ...", flush=True)
+        oled_menu.show_status("9-LINER", "Extrahiere Felder", 30)
+        try:
+            nine_liner = await loop.run_in_executor(None, extract_nine_liner, full_text)
+        except Exception as e:
+            print(f"[9LINER] Fehler: {e}", flush=True)
+            nine_liner = {f"line{i}": "" for i in range(1, 10)}
+        cfg = load_config()
+        patient = create_patient_record(
+            name="MEDEVAC Request",
+            triage="",
+            device_id=cfg.get("device_id", "jetson-01"),
+            created_by=cfg.get("default_medic", ""),
+        )
+        patient["unit"] = cfg.get("unit_name", "")
+        patient["template_type"] = "9liner"
+        patient["nine_liner"] = nine_liner
+        patient["analyzed"] = True
+        pid = patient["patient_id"]
+        patient["transcripts"].append({
+            "time": record_time,
+            "text": full_text,
+            "speaker": "sanitaeter",
+            "role_level": patient["current_role"],
+        })
+        patient["timeline"].append({
+            "time": datetime.now().isoformat(),
+            "role": patient["current_role"],
+            "event": "nine_liner_extracted",
+            "details": f"{sum(1 for v in nine_liner.values() if v)}/9 Felder erkannt",
+        })
+        state.patients[pid] = patient
+        state.rfid_map[patient["rfid_tag_id"]] = pid
+        state.active_patient = pid
+        await broadcast({"type": "patient_registered", "patient": patient})
+        filled = sum(1 for v in nine_liner.values() if v)
+        oled_menu.show_status("9-LINER", f"{filled}/9 Felder erkannt")
+        tts.speak(f"Neun Liner angelegt, {filled} von 9 Feldern erkannt")
+        return [pid]
+
+    # Pfad A: Standard-Segmentierung (bestehender Code)
     try:
         segments = await loop.run_in_executor(None, segment_transcript_to_patients, full_text)
     except Exception as e:

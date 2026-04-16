@@ -84,6 +84,11 @@ PATIENT_SCHEMA = {
     "blood_type": "",
     "allergies": "",
 
+    # Template-Type: "" (default: Patient-Diktat), "9liner" (MEDEVAC),
+    # "tccc", "erstbefund" etc. Steuert welche Felder die UI anzeigt und
+    # welcher LLM-Extraction-Prompt verwendet wird.
+    "template_type": "",
+
     # 9-Liner MEDEVAC (Phase 0 / Role 1)
     "nine_liner": {
         "line1": "",  # Koordinaten Landezone
