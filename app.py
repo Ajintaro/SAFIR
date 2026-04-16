@@ -5535,23 +5535,11 @@ HOTSPOT_PW_FILE = Path(__file__).parent / ".safir_hotspot_pw"
 
 
 def _hotspot_password() -> str:
-    """Liefert das Hotspot-Passwort. Generiert es beim ersten Aufruf und
-    persistiert es in einer Datei (nicht in config.json, damit es nicht
-    versehentlich ins Repo gerät)."""
-    if HOTSPOT_PW_FILE.exists():
-        pw = HOTSPOT_PW_FILE.read_text(encoding="utf-8").strip()
-        if len(pw) >= 8:
-            return pw
-    import secrets
-    # 8 Zeichen Base32-ish — Windows-Hotspot-Dialog erlaubt teilweise
-    # nur 8 Zeichen, deshalb bewusst auf dieses Minimum (WPA2-Minimum ist 8)
-    pw = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
-    try:
-        HOTSPOT_PW_FILE.write_text(pw, encoding="utf-8")
-        HOTSPOT_PW_FILE.chmod(0o600)
-    except Exception:
-        pass
-    return pw
+    """Liefert das Hotspot-Passwort.
+    TEMPORAER HARDCODED fuer Debug-Zwecke (Windows akzeptiert das zufaellig
+    generierte Passwort nicht). Wird spaeter wieder durch eine generierte
+    Variante ersetzt."""
+    return "SAFIR123!"
 
 
 def _hotspot_status() -> dict:
