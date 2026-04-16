@@ -97,7 +97,7 @@
 
             /* Sidebar (breiter expanded, damit 16-px-Labels lesbar sind) */
             --sidebar-width: 64px;
-            --sidebar-width-expanded: 240px;
+            --sidebar-width-expanded: 288px;
         }
 
         [data-theme="dark"] {
@@ -2514,6 +2514,27 @@
                         <div class="settings-title">Gerät &amp; Netzwerk</div>
                         <div class="settings-desc">Einheit, Leitstelle und Audio-Konfiguration.</div>
                         <div class="settings-card">
+                            <div class="settings-card-title">WLAN</div>
+                            <div id="wifi-status-line" style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:var(--space-3)">Status wird geladen…</div>
+                            <div id="wifi-hotspot-banner" style="display:none;padding:var(--space-3);background:var(--cgi-red-light);border:1px solid var(--cgi-red);border-radius:var(--radius);margin-bottom:var(--space-3)">
+                                <div style="font-weight:600;color:var(--cgi-red);margin-bottom:4px">SETUP-HOTSPOT aktiv</div>
+                                <div style="font-size:var(--fs-body-sm);line-height:1.6">
+                                    SSID: <strong id="wifi-hotspot-ssid">SAFIR-Setup</strong><br>
+                                    Passwort: <code id="wifi-hotspot-pw"></code>
+                                </div>
+                                <div style="font-size:var(--fs-body-sm);color:var(--warning);margin-top:var(--space-2)">
+                                    Achtung: Beim Verbinden mit einem echten WLAN wird der Hotspot automatisch beendet — das Surface verliert kurz die Verbindung (10-20 s) und du musst dich danach mit dem neuen WLAN verbinden um weiter auf SAFIR zuzugreifen.
+                                </div>
+                            </div>
+                            <div class="btn-group" style="margin-bottom:var(--space-3)">
+                                <button class="btn btn-cgi" onclick="wifiScan()">Neu scannen</button>
+                                <button class="btn" onclick="wifiHotspotStart()">Hotspot starten</button>
+                                <button class="btn" onclick="wifiHotspotStop()">Hotspot stoppen</button>
+                                <button class="btn" onclick="wifiDisconnect()">WLAN trennen</button>
+                            </div>
+                            <div id="wifi-list" style="display:flex;flex-direction:column;gap:var(--space-2)"></div>
+                        </div>
+                        <div class="settings-card">
                             <div class="settings-card-title">Eigene Einheit</div>
                             <div class="field">
                                 <label>Einheit / Rufzeichen</label>
@@ -2551,25 +2572,6 @@
                                 <span id="backend-save-status" style="font-size:var(--fs-body-sm);margin-left:8px"></span>
                             </div>
                         </div>
-                        <div class="settings-card">
-                            <div class="settings-card-title">WLAN</div>
-                            <div id="wifi-status-line" style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:var(--space-3)">Status wird geladen…</div>
-                            <div id="wifi-hotspot-banner" style="display:none;padding:var(--space-3);background:var(--cgi-red-light);border:1px solid var(--cgi-red);border-radius:var(--radius);margin-bottom:var(--space-3)">
-                                <div style="font-weight:600;color:var(--cgi-red);margin-bottom:4px">SETUP-HOTSPOT aktiv</div>
-                                <div style="font-size:var(--fs-body-sm);line-height:1.6">
-                                    SSID: <strong id="wifi-hotspot-ssid">SAFIR-Setup</strong><br>
-                                    Passwort: <code id="wifi-hotspot-pw"></code>
-                                </div>
-                            </div>
-                            <div class="btn-group" style="margin-bottom:var(--space-3)">
-                                <button class="btn" onclick="wifiScan()">Neu scannen</button>
-                                <button class="btn" onclick="wifiHotspotStart()">Hotspot starten</button>
-                                <button class="btn" onclick="wifiHotspotStop()">Hotspot stoppen</button>
-                                <button class="btn" onclick="wifiDisconnect()">WLAN trennen</button>
-                            </div>
-                            <div id="wifi-list" style="display:flex;flex-direction:column;gap:var(--space-2)"></div>
-                        </div>
-
                         <div class="settings-card">
                             <div class="settings-card-title">Audio-Eingang</div>
                             <div class="field">
@@ -3455,11 +3457,12 @@
     }
 
     async function wifiHotspotStart() {
+        showToast('Hotspot wird gestartet…', '&#128225;');
         try {
             const res = await fetch('/api/wifi/hotspot/start', {method: 'POST'});
             const r = await res.json();
             if (r.success) {
-                showToast('Hotspot gestartet', '&#128225;', 'voice');
+                showToast('Hotspot aktiv: ' + (r.ssid || 'SAFIR-Setup'), '&#9989;', 'voice');
             } else {
                 showToast('Fehler: ' + (r.error || 'unbekannt'), '&#9888;');
             }
@@ -3468,6 +3471,7 @@
     }
 
     async function wifiHotspotStop() {
+        showToast('Hotspot wird gestoppt…', '&#128225;');
         try {
             const res = await fetch('/api/wifi/hotspot/stop', {method: 'POST'});
             const r = await res.json();
