@@ -5016,9 +5016,16 @@ async def _oled_update_loop():
                                     break
                     except Exception:
                         qwen_ok = False
+                    # ram_percent = belegt; wir zeigen auf dem OLED den
+                    # freien Anteil (100 - belegt).
+                    try:
+                        ram_free_percent = max(0, 100 - int(mem.percent))
+                    except Exception:
+                        ram_free_percent = 0
                     oled_menu.update_models_status({
                         "whisper_ok": whisper_ok,
                         "qwen_ok": qwen_ok,
+                        "ram_free_percent": ram_free_percent,
                     })
 
                     # Aktiver Patient für PATIENT-Seite
