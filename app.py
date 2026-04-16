@@ -5543,8 +5543,9 @@ def _hotspot_password() -> str:
         if len(pw) >= 8:
             return pw
     import secrets
-    # 10 Zeichen Base32-ish, gut am Handy tippbar
-    pw = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(10))
+    # 8 Zeichen Base32-ish — Windows-Hotspot-Dialog erlaubt teilweise
+    # nur 8 Zeichen, deshalb bewusst auf dieses Minimum (WPA2-Minimum ist 8)
+    pw = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
     try:
         HOTSPOT_PW_FILE.write_text(pw, encoding="utf-8")
         HOTSPOT_PW_FILE.chmod(0o600)
