@@ -431,7 +431,13 @@ class RfidService:
     """
 
     POLL_TIMEOUT = 0.3      # Sekunden pro Blocking-Read
-    DEBOUNCE_SECONDS = 2.0  # gleiche UID nicht öfter als alle 2 s
+    DEBOUNCE_SECONDS = 2.0  # gleiche UID nicht öfter als alle 2 s,
+                            # waehrend die Karte AUFLIEGT. Nach
+                            # Entfernen (2 leere Polls in Folge) wird
+                            # das Debounce-Flag sofort zurueckgesetzt —
+                            # neu Auflegen derselben Karte loest direkt
+                            # aus (siehe _run()).
+    EMPTY_POLLS_TO_CLEAR = 2  # 2 x 0.3s = 600 ms ohne Karte bis Reset
 
     def __init__(self, on_scan: Optional[Callable[[str], None]] = None):
         self._on_scan = on_scan
@@ -439,6 +445,7 @@ class RfidService:
         self._task: Optional[asyncio.Task] = None
         self._last_uid: Optional[str] = None
         self._last_uid_ts: float = 0.0
+        self._empty_polls: int = 0  # Zaehler fuer aufeinanderfolgende leere Reads
         self._pending_scan: Optional[asyncio.Future] = None  # für await_next_scan()
 
     async def start(self):
@@ -477,19 +484,26 @@ class RfidService:
                     continue
 
                 if uid is None:
-                    # Kein Scan in diesem Intervall — Debounce zurücksetzen
-                    # wenn Karte gerade entfernt wurde
-                    if self._last_uid is not None and \
-                            (time.monotonic() - self._last_uid_ts) > self.DEBOUNCE_SECONDS:
+                    # Karte nicht auf dem Reader. Nach EMPTY_POLLS_TO_CLEAR
+                    # leeren Polls in Folge (~600 ms) Debounce-UID reset —
+                    # ab dann loest die naechste Auflage sofort aus, auch
+                    # wenn es dieselbe Karte ist. Vorher war die Wartezeit
+                    # 2 Sekunden, was das Auflegen-Wegnehmen-Wiederauflegen
+                    # aus dem Flow gerissen hat.
+                    self._empty_polls += 1
+                    if self._last_uid is not None and self._empty_polls >= self.EMPTY_POLLS_TO_CLEAR:
                         self._last_uid = None
                     # Kleine Pause damit ein parallel anstehender Write-Call den
                     # SPI-Lock in shared/rfid.py ohne Starvation greifen kann
                     await asyncio.sleep(0.05)
                     continue
 
+                # Karte aufgelegt -> Empty-Zaehler zuruecksetzen
+                self._empty_polls = 0
                 now = time.monotonic()
                 if uid == self._last_uid and (now - self._last_uid_ts) < self.DEBOUNCE_SECONDS:
-                    # Gleiche Karte noch im Debounce-Fenster — ignorieren
+                    # Gleiche Karte noch durchgehend auf dem Reader — ignorieren,
+                    # sonst feuert jeder 50-ms-Poll einen Scan.
                     await asyncio.sleep(0.05)
                     continue
 
@@ -592,6 +606,12 @@ class HardwareService:
         ist. Wird vor Single-Button-Events geprueft — gesperrte Single-Presses
         sind no-op. Combo (Shutdown) funktioniert weiterhin."""
         self._lock_check_cb = cb
+
+    def set_activity_callback(self, cb: Callable[[], None]):
+        """Phase 11: Wird bei jedem Single-Press-Event gerufen, damit
+        Taster-Druecken den Auto-Lock-Idle-Timer zuruecksetzt (ueblicherweise
+        app.py._mark_activity)."""
+        self._activity_cb = cb
 
     def set_oled_action_callback(self, cb: Callable[[dict], None]):
         """Setzt den Callback der nach einem Button-B-OK-Druck gerufen wird.
