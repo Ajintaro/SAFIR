@@ -203,8 +203,8 @@
         },
         "long_press_seconds": 2.0,
         "shutdown_combo_seconds": 3.0,
-        "debounce_ms": 30,
-        "poll_interval_ms": 20
+        "debounce_ms": 15,
+        "poll_interval_ms": 8
     },
     "rfid": {
         "operators": [],

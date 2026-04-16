@@ -60,7 +60,7 @@ echo "  - /usr/lib/systemd/system-shutdown/safir-oled  (läuft bei jedem Shutdow
 echo ""
 echo "Sofort-Test:"
 echo "  sudo systemctl start safir-boot-splash.service"
-echo "  → sollte auf dem OLED 'STARTE / Ubuntu laedt' anzeigen"
+echo "  → sollte auf dem OLED 'UBUNTU / startet...' anzeigen"
 echo ""
 echo "Shutdown-Test (macht tatsächlich einen Shutdown):"
 echo "  sudo shutdown -h +1   # in 1 Minute"

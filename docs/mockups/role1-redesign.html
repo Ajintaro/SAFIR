@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>SAFIR Role 1 — Quiet Redesign</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    :root {
+        --fs-h1: 32px;
+        --fs-h2: 24px;
+        --fs-body-lg: 18px;
+        --fs-body: 16px;
+        --fs-body-sm: 14px;
+
+        --space-1: 4px;
+        --space-2: 8px;
+        --space-3: 12px;
+        --space-4: 16px;
+        --space-6: 24px;
+        --space-8: 32px;
+
+        --bg: #0B0B17;
+        --surface: #141428;
+        --surface-2: #1C1C36;
+        --border: rgba(255,255,255,0.08);
+        --text: #F0F0F5;
+        --text-2: #9595B2;
+        --text-3: #6B6B8A;
+        --accent: #E11937;
+        --t1: #E84848;
+        --t2: #F39C12;
+        --t3: #2ECC71;
+        --t4: #5DADE2;
+
+        --font-ui: 'Inter', -apple-system, sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+        font-family: var(--font-ui);
+        font-size: var(--fs-body);
+        line-height: 1.5;
+        background: var(--bg);
+        color: var(--text);
+        height: 100vh;
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    /* ========== App Shell — Sidebar + Header + Main ========== */
+    .shell {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        grid-template-rows: 56px 1fr;
+        height: 100vh;
+    }
+
+    /* ========== Header (ganz minimal) ========== */
+    .header {
+        grid-column: 2;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        padding: 0 var(--space-6);
+    }
+    .header-title {
+        font-size: var(--fs-body-lg);
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    }
+    .header-sub {
+        margin-left: var(--space-3);
+        padding-left: var(--space-3);
+        border-left: 1px solid var(--border);
+        font-size: var(--fs-body-sm);
+        color: var(--text-2);
+    }
+    .header-spacer { flex: 1; }
+    .header-link-status {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--fs-body-sm);
+        color: var(--t3);
+    }
+    .header-link-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 8px currentColor;
+    }
+
+    /* ========== Sidebar ========== */
+    .sidebar {
+        grid-row: 1 / -1;
+        background: var(--surface);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: var(--space-3) 0;
+        gap: var(--space-2);
+    }
+    .sidebar-logo {
+        width: 48px; height: 48px;
+        border-radius: 8px;
+        background: #0F0F22;
+        display: grid; place-items: center;
+        color: var(--accent);
+        font-weight: 700;
+        letter-spacing: 1px;
+        font-size: 11px;
+        margin-bottom: var(--space-3);
+    }
+    .nav-icon {
+        width: 44px; height: 44px;
+        border-radius: 8px;
+        display: grid; place-items: center;
+        cursor: pointer;
+        color: var(--text-2);
+        font-size: 22px;
+        transition: all 0.15s;
+        position: relative;
+    }
+    .nav-icon:hover { background: var(--surface-2); color: var(--text); }
+    .nav-icon.active {
+        background: rgba(225,25,55,0.12);
+        color: var(--accent);
+    }
+    .nav-icon.active::before {
+        content: '';
+        position: absolute;
+        left: -14px; top: 10px;
+        width: 3px; height: 24px;
+        background: var(--accent);
+        border-radius: 0 2px 2px 0;
+    }
+    .sidebar-sep {
+        width: 32px; height: 1px;
+        background: var(--border);
+        margin: var(--space-3) 0;
+    }
+
+    /* ========== Main: Map + Panel ========== */
+    .main {
+        grid-column: 2;
+        grid-row: 2;
+        display: grid;
+        grid-template-columns: 1fr 440px;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .map {
+        position: relative;
+        min-height: 0;
+        min-width: 0;
+    }
+    #role1-map { width: 100%; height: 100%; }
+
+    /* ========== Panel — nur 3 Zonen ========== */
+    .panel {
+        background: var(--surface);
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    /* Zone 1: Triage — 4 grosse Zahlen, ruhige Farben */
+    .triage-bar {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        padding: var(--space-6) var(--space-6) var(--space-4);
+        gap: var(--space-2);
+    }
+    .triage-cell {
+        text-align: center;
+        padding: var(--space-3) 0;
+        border-radius: 6px;
+        position: relative;
+    }
+    .triage-cell-num {
+        font-family: var(--font-mono);
+        font-size: 36px;
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        display: block;
+        margin-bottom: var(--space-2);
+    }
+    .triage-cell-label {
+        font-size: var(--fs-body-sm);
+        font-weight: 600;
+        color: var(--text-2);
+        letter-spacing: 0.3px;
+    }
+    .triage-cell.t1 .triage-cell-num { color: var(--t1); }
+    .triage-cell.t2 .triage-cell-num { color: var(--t2); }
+    .triage-cell.t3 .triage-cell-num { color: var(--t3); }
+    .triage-cell.t4 .triage-cell-num { color: var(--t4); }
+
+    /* Zone 2: Header fuer Liste */
+    .list-header {
+        padding: var(--space-3) var(--space-6);
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        font-size: var(--fs-body-sm);
+        font-weight: 600;
+        color: var(--text-2);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .list-header-count {
+        font-family: var(--font-mono);
+        font-size: var(--fs-body);
+        color: var(--text);
+        text-transform: none;
+        letter-spacing: 0;
+    }
+
+    /* Zone 3: Transport-Liste */
+    .list {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--space-3) var(--space-4);
+    }
+    .list-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-3);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .list-row:hover { background: var(--surface-2); }
+    .list-row-dot {
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .list-row-dot.t1 { background: var(--t1); }
+    .list-row-dot.t2 { background: var(--t2); }
+    .list-row-dot.t3 { background: var(--t3); }
+    .list-row-dot.t4 { background: var(--t4); }
+    .list-row-name {
+        flex: 1;
+        font-size: var(--fs-body);
+        color: var(--text);
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .list-row-meta {
+        font-family: var(--font-mono);
+        font-size: var(--fs-body-sm);
+        color: var(--text-3);
+        flex-shrink: 0;
+    }
+
+    .list-group {
+        margin-bottom: var(--space-4);
+    }
+    .list-group-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        padding: var(--space-3) var(--space-3) var(--space-2);
+    }
+    .list-group-name {
+        font-size: var(--fs-body);
+        font-weight: 600;
+        color: var(--text);
+    }
+    .list-group-info {
+        font-family: var(--font-mono);
+        font-size: var(--fs-body-sm);
+        color: var(--text-3);
+    }
+
+    /* Map-Controls ruhig halten: nur Layer-Toggle unten links, Zoom unten rechts */
+    .map-layer-toggle {
+        position: absolute;
+        left: var(--space-4);
+        bottom: var(--space-4);
+        z-index: 400;
+        display: flex;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .map-layer-toggle button {
+        padding: var(--space-2) var(--space-4);
+        background: transparent;
+        border: none;
+        color: var(--text-2);
+        font-family: var(--font-ui);
+        font-size: var(--fs-body-sm);
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .map-layer-toggle button:hover { color: var(--text); background: var(--surface-2); }
+    .map-layer-toggle button.active {
+        color: var(--text);
+        background: var(--surface-2);
+    }
+    .leaflet-top.leaflet-right {
+        bottom: var(--space-4);
+        right: var(--space-4);
+        top: auto;
+    }
+    .leaflet-control-zoom {
+        border: 1px solid var(--border) !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+    }
+    .leaflet-control-zoom a {
+        background: var(--surface) !important;
+        color: var(--text) !important;
+        border-color: var(--border) !important;
+    }
+    .leaflet-control-zoom a:hover {
+        background: var(--surface-2) !important;
+    }
+
+</style>
+</head>
+<body>
+
+<div class="shell">
+    <aside class="sidebar">
+        <div class="sidebar-logo">SFR</div>
+        <div class="nav-icon" title="Start">&#9671;</div>
+        <div class="sidebar-sep"></div>
+        <div class="nav-icon" title="Phase 0">&#9873;</div>
+        <div class="nav-icon active" title="Role 1">&#9769;</div>
+        <div class="nav-icon" title="Role 2">&#9883;</div>
+        <div class="nav-icon" title="Role 3">&#9879;</div>
+        <div class="nav-icon" title="Role 4">&#127973;</div>
+        <div class="sidebar-sep"></div>
+        <div class="nav-icon" title="Patienten">&#9764;</div>
+        <div class="nav-icon" title="Dokumente">&#128196;</div>
+        <div class="nav-icon" title="Einstellungen">&#9881;</div>
+    </aside>
+
+    <header class="header">
+        <div class="header-title">Role 1 &middot; Lagekarte</div>
+        <div class="header-sub">Rettungsstation West</div>
+        <div class="header-spacer"></div>
+        <div class="header-link-status">
+            <span class="header-link-dot"></span>
+            2 BATs online
+        </div>
+    </header>
+
+    <main class="main">
+        <!-- Map — ruhig, kein Overlay-Chaos -->
+        <section class="map">
+            <div id="role1-map"></div>
+            <div class="map-layer-toggle">
+                <button class="active">Taktisch</button>
+                <button>Medizinisch</button>
+                <button>Gelände</button>
+            </div>
+        </section>
+
+        <!-- Panel: Triage + Header + Liste. Ende. -->
+        <aside class="panel">
+            <div class="triage-bar">
+                <div class="triage-cell t1">
+                    <span class="triage-cell-num">2</span>
+                    <span class="triage-cell-label">T1 Sofort</span>
+                </div>
+                <div class="triage-cell t2">
+                    <span class="triage-cell-num">4</span>
+                    <span class="triage-cell-label">T2 Dringend</span>
+                </div>
+                <div class="triage-cell t3">
+                    <span class="triage-cell-num">5</span>
+                    <span class="triage-cell-label">T3 Aufschub</span>
+                </div>
+                <div class="triage-cell t4">
+                    <span class="triage-cell-num">1</span>
+                    <span class="triage-cell-label">T4 Abwartend</span>
+                </div>
+            </div>
+
+            <div class="list-header">
+                <span>Eingehende Transporte</span>
+                <span class="list-header-count">2</span>
+            </div>
+
+            <div class="list">
+                <div class="list-group">
+                    <div class="list-group-title">
+                        <span class="list-group-name">BAT Alpha-42</span>
+                        <span class="list-group-info">ETA 04:12</span>
+                    </div>
+                    <div class="list-row">
+                        <span class="list-row-dot t1"></span>
+                        <span class="list-row-name">Schmidt, Erika</span>
+                        <span class="list-row-meta">T1</span>
+                    </div>
+                    <div class="list-row">
+                        <span class="list-row-dot t2"></span>
+                        <span class="list-row-name">Meyer, Erik</span>
+                        <span class="list-row-meta">T2</span>
+                    </div>
+                </div>
+
+                <div class="list-group">
+                    <div class="list-group-title">
+                        <span class="list-group-name">BAT Bravo-17</span>
+                        <span class="list-group-info">ETA 09:47</span>
+                    </div>
+                    <div class="list-row">
+                        <span class="list-row-dot t2"></span>
+                        <span class="list-row-name">Becker, Klaus</span>
+                        <span class="list-row-meta">T2</span>
+                    </div>
+                    <div class="list-row">
+                        <span class="list-row-dot t3"></span>
+                        <span class="list-row-name">Wagner, Thomas</span>
+                        <span class="list-row-meta">T3</span>
+                    </div>
+                    <div class="list-row">
+                        <span class="list-row-dot t3"></span>
+                        <span class="list-row-name">Lehmann, Sarah</span>
+                        <span class="list-row-meta">T3</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+</div>
+
+<script>
+var map = L.map('role1-map', { zoomControl: false }).setView([50.7374, 7.0982], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.control.zoom({ position: 'topright' }).addTo(map);
+
+function tMarker(t, label) {
+    var col = {t1:'#E84848', t2:'#F39C12', t3:'#2ECC71', t4:'#5DADE2'}[t] || '#888';
+    return L.divIcon({
+        className: 'safir-m',
+        html: '<div style="background:' + col + ';color:#fff;padding:4px 9px;border-radius:14px;font-weight:600;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.5)">' + label + '</div>',
+        iconSize: [null, null]
+    });
+}
+function batMarker(label) {
+    return L.divIcon({
+        className: 'safir-m',
+        html: '<div style="background:#1C1C36;color:#fff;padding:5px 10px;border-radius:6px;font-weight:600;font-size:13px;border:1px solid rgba(255,255,255,0.2);box-shadow:0 2px 6px rgba(0,0,0,0.5)">' + label + '</div>',
+        iconSize: [null, null]
+    });
+}
+function rsMarker() {
+    return L.divIcon({
+        className: 'safir-m',
+        html: '<div style="background:#0B0B17;color:#E11937;padding:6px 10px;border-radius:6px;font-weight:700;font-size:13px;border:2px solid #E11937;box-shadow:0 0 0 4px rgba(225,25,55,0.2)">Role 1 RettSta</div>',
+        iconSize: [null, null]
+    });
+}
+
+L.marker([50.7374, 7.0982], { icon: rsMarker() }).addTo(map);
+L.marker([50.745, 7.06], { icon: batMarker('BAT Alpha-42') }).addTo(map);
+L.marker([50.738, 7.11], { icon: tMarker('t1', 'T1 Schmidt') }).addTo(map);
+L.marker([50.725, 7.09], { icon: tMarker('t2', 'T2 Meyer') }).addTo(map);
+</script>
+
+</body>
+</html>

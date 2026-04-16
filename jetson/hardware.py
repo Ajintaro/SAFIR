@@ -76,6 +76,11 @@ class LedController:
         self._green_pin = green_pin
         self._red = LedPattern.OFF
         self._green = LedPattern.OFF
+        # Override-Flags fuer physisches Taster-Feedback (Phase 10 Taster-Fix):
+        # Wenn True, leuchtet die LED unabhaengig vom Pattern konstant.
+        # ButtonDriver setzt das bei Press-Flanke und loescht es bei Release.
+        self._override_red = False
+        self._override_green = False
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -92,6 +97,25 @@ class LedController:
 
     def get(self) -> tuple[LedPattern, LedPattern]:
         return self._red, self._green
+
+    def set_override(self, led: str, on: bool):
+        """Phase 10 Taster-Feedback: ON ueberschreibt das Pattern solange True.
+        led: 'red' oder 'green'. Vom ButtonDriver beim Press/Release gerufen.
+        Effekt: LED leuchtet SOFORT bei Taster-Druck, unabhaengig vom
+        aktuellen System-State-Pattern (IDLE-PULSE, BLINK, etc.).
+        Direkt-Output hier, damit das Feedback nicht erst beim naechsten
+        Tick-Loop-Lauf sichtbar wird (waere sonst bis 20 ms Latenz)."""
+        pin = self._red_pin if led == "red" else self._green_pin
+        if led == "red":
+            self._override_red = on
+        elif led == "green":
+            self._override_green = on
+        if on:
+            # Sofort HIGH setzen, nicht auf naechsten Tick warten
+            try:
+                self._gpio.output(pin, self._gpio.HIGH)
+            except Exception:
+                pass
 
     async def start(self):
         self._running = True
@@ -118,16 +142,23 @@ class LedController:
         try:
             while self._running:
                 now = time.monotonic() - t0
-                self._apply(self._red_pin, self._red, now)
-                self._apply(self._green_pin, self._green, now)
+                self._apply(self._red_pin, self._red, now, self._override_red)
+                self._apply(self._green_pin, self._green, now, self._override_green)
                 await asyncio.sleep(self.TICK_MS / 1000)
         except asyncio.CancelledError:
             raise
         except Exception as e:
             log.error(f"LedController loop crashed: {e}")
 
-    def _apply(self, pin: int, pattern: LedPattern, t: float):
-        """Berechnet den Pin-Zustand für Zeitpunkt t (Sekunden seit Start)."""
+    def _apply(self, pin: int, pattern: LedPattern, t: float, override: bool = False):
+        """Berechnet den Pin-Zustand fuer Zeitpunkt t (Sekunden seit Start).
+
+        override=True erzwingt HIGH — wird vom ButtonDriver als Taster-Feedback
+        gesetzt, solange der Taster physisch gedrueckt ist. So flackert die LED
+        nicht zwischen Pattern-Tick und Press-Feedback hin und her."""
+        if override:
+            self._gpio.output(pin, self._gpio.HIGH)
+            return
         if pattern == LedPattern.OFF:
             self._gpio.output(pin, self._gpio.LOW)
         elif pattern == LedPattern.ON:
@@ -161,17 +192,21 @@ class ButtonDriver:
     sind zwingend verdrahtet (siehe Memory hardware_buttons_pinout).
     """
 
-    POLL_MS = 20
+    # POLL_MS Fallback falls kein poll_ms im Konstruktor uebergeben wird.
+    # Phase 10 Taster-Fix: von 20 auf 8 ms runter (-60 % Poll-Latenz).
+    POLL_MS = 8
 
     def __init__(
         self,
         gpio,
         pin_a: int,
         pin_b: int,
-        debounce_ms: int = 30,
+        debounce_ms: int = 15,
         long_press_s: float = 2.0,
         combo_s: float = 3.0,
         on_event: Optional[Callable[[ButtonEvent], None]] = None,
+        on_physical_state: Optional[Callable[[str, bool], None]] = None,
+        poll_ms: Optional[int] = None,
     ):
         self._gpio = gpio
         self._pin_a = pin_a
@@ -180,6 +215,10 @@ class ButtonDriver:
         self._long_press = long_press_s
         self._combo = combo_s
         self._on_event = on_event
+        # Phase 10: Press/Release-Flanken-Callback fuer LED-Sofortfeedback.
+        # Wird aus _update_single() gerufen sobald debounce bestaetigt hat.
+        self._on_physical_state = on_physical_state
+        self._poll_ms = poll_ms if poll_ms is not None else self.POLL_MS
 
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -257,7 +296,7 @@ class ButtonDriver:
                     now,
                 )
 
-                await asyncio.sleep(self.POLL_MS / 1000)
+                await asyncio.sleep(self._poll_ms / 1000)
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -282,6 +321,13 @@ class ButtonDriver:
             state["pressed"] = True
             state["since"] = now
             state["consumed"] = False
+            # Phase 10: Sofortiges physisches Feedback (LED an) noch bevor
+            # irgend ein short/long-Event emittiert wird.
+            if self._on_physical_state:
+                try:
+                    self._on_physical_state(name, True)
+                except Exception as e:
+                    log.error(f"on_physical_state(press) crashed: {e}")
             return
 
         if pressed and state["pressed"] and not state["consumed"]:
@@ -304,6 +350,12 @@ class ButtonDriver:
             # sich zieht.
             state["pressed"] = False
             held = now - state["since"]
+            # Phase 10: LED-Override aus, auch wenn das Event unterdrueckt wird
+            if self._on_physical_state:
+                try:
+                    self._on_physical_state(name, False)
+                except Exception as e:
+                    log.error(f"on_physical_state(release) crashed: {e}")
             if state["consumed"] or self._combo_active:
                 return
             # Release vor Long-Press-Schwelle → short
@@ -511,7 +563,8 @@ class HardwareService:
         self._led_b_pin = hw.get("button_b", {}).get("led_pin", 13)  # Taster B = grün
         self._long_press_s = hw.get("long_press_seconds", 2.0)
         self._combo_s = hw.get("shutdown_combo_seconds", 3.0)
-        self._debounce_ms = hw.get("debounce_ms", 30)
+        self._debounce_ms = hw.get("debounce_ms", 15)  # Phase 10: 30 -> 15
+        self._poll_ms = hw.get("poll_interval_ms", 8)  # Phase 10: 20 -> 8
 
         # Bei uns: rot = LED an Taster A (Pin 15), grün = LED an Taster B (Pin 13)
         self._red_pin = self._led_a_pin
@@ -568,6 +621,8 @@ class HardwareService:
             long_press_s=self._long_press_s,
             combo_s=self._combo_s,
             on_event=self._handle_button_event,
+            on_physical_state=self._handle_button_physical,  # Phase 10 LED-Feedback
+            poll_ms=self._poll_ms,                           # Phase 10: 8 ms statt 20 ms
         )
 
         await self._leds.start()
@@ -679,6 +734,25 @@ class HardwareService:
     # -----------------------------------------------------------------------
     # Button-Handler
     # -----------------------------------------------------------------------
+    def _handle_button_physical(self, name: str, pressed: bool):
+        """Phase 10: Sofortiges LED-Feedback bei Taster-Press-/Release-Flanke.
+
+        Wird aus dem ButtonDriver-Loop gerufen sobald der Debounce bestaetigt
+        hat (ca. 15 ms nach dem physischen Druck). Schaltet den LED-Override
+        am LedController ein/aus, damit die LED unabhaengig vom System-State-
+        Pattern (IDLE-PULSE, etc.) sofort aufleuchtet.
+
+        Effekt: User sieht die LED-Reaktion nach ~25 ms (8 ms Poll + 15 ms
+        Debounce + 2 ms Ausfuehrung) — auch wenn die eigentliche Aktion
+        (z.B. Aufnahme-Start) erst beim Release emittiert wird."""
+        if not self._leds:
+            return
+        led = "red" if name == "A" else "green"
+        try:
+            self._leds.set_override(led, pressed)
+        except Exception as e:
+            log.error(f"LED override failed: {e}")
+
     def _handle_button_event(self, event: ButtonEvent):
         """Wird synchron aus dem ButtonDriver-Task gerufen. Muss schnell sein.
 
