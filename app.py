@@ -4785,40 +4785,93 @@ def _get_tailscale_state() -> str:
         return ""
 
 
-def _get_wifi_status() -> dict:
-    """Liest WLAN-SSID, State und IP via nmcli. Faellt auf iwgetid +
-    ip addr zurueck wenn nmcli nicht da ist. Gibt ein dict mit
-    wifi_state ('connected'/'disconnected'/'unknown'), wifi_ssid und
-    wifi_ip zurueck."""
-    info = {"wifi_state": "unknown", "wifi_ssid": "", "wifi_ip": ""}
-    # Versuch 1: nmcli
+def _list_interfaces() -> list[tuple[str, str]]:
+    """Gibt alle nicht-loopback-Netzwerk-Interfaces mit IPv4 zurueck.
+    Form: [(ifname, ipv4), ...]. Loopback, Docker, CAN, USB-Bridges werden
+    ausgefiltert. Jetson Orin Nano benutzt z.B. 'enP8p1s0' statt 'eth0' und
+    'wlP1p1s0' statt 'wlan0' (predictable network names).
+    """
+    results: list[tuple[str, str]] = []
     try:
         out = subprocess.run(
-            ["nmcli", "-t", "-f", "ACTIVE,SSID,DEVICE", "dev", "wifi"],
+            ["ip", "-4", "-o", "addr", "show"],
+            capture_output=True, text=True, timeout=1.0,
+        )
+        if out.returncode != 0:
+            return results
+        for line in out.stdout.splitlines():
+            # Format: "4: enP8p1s0    inet 192.168.x.y/24 brd ... scope global ..."
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            ifname = parts[1]
+            # Skip loopback, docker bridges, CAN, etc.
+            if ifname == "lo" or ifname.startswith(("docker", "br-", "veth", "can", "l4tbr", "usb")):
+                continue
+            ip_cidr = parts[3]
+            if "/" in ip_cidr and ip_cidr.count(".") == 3:
+                results.append((ifname, ip_cidr.split("/")[0]))
+    except Exception:
+        pass
+    return results
+
+
+def _is_wifi_interface(ifname: str) -> bool:
+    """True wenn das Interface ein Wireless-Interface ist.
+    Kernel-basiert: /sys/class/net/<ifname>/wireless existiert nur bei WLAN.
+    """
+    try:
+        import os
+        return os.path.isdir(f"/sys/class/net/{ifname}/wireless")
+    except Exception:
+        return False
+
+
+def _get_wifi_status() -> dict:
+    """Liest WLAN-SSID, State und IP. Findet das WLAN-Interface dynamisch
+    via /sys/class/net/*/wireless (funktioniert auch bei Jetson-Namen wie
+    wlP1p1s0). Gibt dict mit wifi_state ('connected'/'disconnected'/
+    'unknown'), wifi_ssid und wifi_ip zurueck."""
+    info = {"wifi_state": "unknown", "wifi_ssid": "", "wifi_ip": ""}
+    # Finde WLAN-Interface + IP
+    wifi_if = ""
+    for ifname, ip in _list_interfaces():
+        if _is_wifi_interface(ifname):
+            wifi_if = ifname
+            info["wifi_ip"] = ip
+            break
+    if not wifi_if:
+        # Kein WLAN-Interface gefunden — koennte auch heissen dass das WLAN
+        # aus ist. Versuche trotzdem nmcli fuer SSID-Info.
+        try:
+            out = subprocess.run(
+                ["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
+                capture_output=True, text=True, timeout=1.0,
+            )
+            if out.returncode == 0:
+                for line in out.stdout.splitlines():
+                    parts = line.split(":")
+                    if len(parts) >= 2 and parts[0] == "yes":
+                        info["wifi_state"] = "connected"
+                        info["wifi_ssid"] = parts[1]
+                        return info
+            info["wifi_state"] = "disconnected"
+        except Exception:
+            pass
+        return info
+
+    # WLAN-Interface da mit IP -> wir sind verbunden. SSID via nmcli holen.
+    info["wifi_state"] = "connected"
+    try:
+        out = subprocess.run(
+            ["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
             capture_output=True, text=True, timeout=1.0,
         )
         if out.returncode == 0:
             for line in out.stdout.splitlines():
                 parts = line.split(":")
                 if len(parts) >= 2 and parts[0] == "yes":
-                    info["wifi_state"] = "connected"
                     info["wifi_ssid"] = parts[1]
-                    break
-            if info["wifi_state"] != "connected":
-                info["wifi_state"] = "disconnected"
-    except Exception:
-        pass
-    # IP der wlan-Schnittstelle
-    try:
-        out = subprocess.run(
-            ["ip", "-4", "-o", "addr", "show", "dev", "wlan0"],
-            capture_output=True, text=True, timeout=1.0,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            # Format: "3: wlan0    inet 192.168.x.y/24 brd ... scope global ..."
-            for token in out.stdout.split():
-                if "/" in token and token.count(".") == 3:
-                    info["wifi_ip"] = token.split("/")[0]
                     break
     except Exception:
         pass
@@ -4826,18 +4879,16 @@ def _get_wifi_status() -> dict:
 
 
 def _get_eth_ip() -> str:
-    """Liefert die IPv4-Adresse von eth0 (oder leer)."""
-    try:
-        out = subprocess.run(
-            ["ip", "-4", "-o", "addr", "show", "dev", "eth0"],
-            capture_output=True, text=True, timeout=1.0,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            for token in out.stdout.split():
-                if "/" in token and token.count(".") == 3:
-                    return token.split("/")[0]
-    except Exception:
-        pass
+    """Liefert die IPv4-Adresse des primaeren Ethernet-Interfaces (oder leer).
+    Findet Ethernet dynamisch: alles was kein WLAN und kein Tailscale ist.
+    Jetson Orin Nano hat z.B. 'enP8p1s0' statt 'eth0'."""
+    for ifname, ip in _list_interfaces():
+        if _is_wifi_interface(ifname):
+            continue
+        if ifname == "tailscale0" or ifname.startswith("tailscale"):
+            continue
+        # Erstes verbleibendes Interface ist Ethernet
+        return ip
     return ""
 
 

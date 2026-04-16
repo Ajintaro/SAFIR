@@ -456,14 +456,18 @@ class OledMenu:
         # Zeile 2 (y=30): IP-Adresse der aktiven Verbindung
         draw.text((2, 30), f"IP {primary_ip[:14]}", font=FONT_MD, fill=1)
 
-        # Zeile 3 (y=44): Tailscale-Status (mit IP falls online)
-        if ts_state == "online":
-            ts_text = f"Tailnet ON {ts_ip[:10]}" if ts_ip else "Tailnet ON"
+        # Zeile 3 (y=44): Tailscale-IP kompakt (T:100.126.179.27).
+        # FONT_MD passt etwa 22 Zeichen in 128 px, volle Tailscale-IP sind
+        # 15 Zeichen + "T:" Praefix = 17. Passt bequem.
+        if ts_state == "online" and ts_ip:
+            ts_text = f"T:{ts_ip}"
+        elif ts_state == "online":
+            ts_text = "T: online"
         elif ts_state == "offline":
-            ts_text = "Tailnet OFF"
+            ts_text = "T: offline"
         else:
-            ts_text = "Tailnet --"
-        draw.text((2, 44), ts_text[:22], font=FONT_MD, fill=1)
+            ts_text = "T: --"
+        draw.text((2, 44), ts_text, font=FONT_MD, fill=1)
 
         # Bottom-Bar: Gesamtstatus invertiert — klare Worte, keine Abkuerzungen
         backend_ok = bool(n.get("backend_ok"))
