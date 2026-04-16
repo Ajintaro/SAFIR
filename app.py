@@ -2859,7 +2859,8 @@ async def wifi_disconnect_api():
 
 @app.post("/api/wifi/hotspot/start")
 async def wifi_hotspot_start():
-    require_unlocked()
+    # Kein require_unlocked(): Hotspot ist der Rescue-Modus fuer
+    # Ersteinrichtung, muss auch im Sperrzustand aktivierbar sein.
     success, msg = await asyncio.get_event_loop().run_in_executor(None, _hotspot_start)
     if success:
         info = _hotspot_status()
@@ -2876,7 +2877,7 @@ async def wifi_hotspot_start():
 
 @app.post("/api/wifi/hotspot/stop")
 async def wifi_hotspot_stop():
-    require_unlocked()
+    # Stop darf auch im Sperrzustand — ist reine Deaktivierung.
     success, msg = await asyncio.get_event_loop().run_in_executor(None, _hotspot_stop)
     if success:
         await broadcast({"type": "hotspot_stopped"})
@@ -5567,28 +5568,11 @@ def _hotspot_status() -> dict:
 
 
 def _hotspot_start() -> tuple[bool, str]:
-    """Startet den Setup-Hotspot. Nutzt 'nmcli device wifi hotspot', welches
-    eine Connection mit SSID+PW anlegt und aktiviert. Wir benennen die
-    Connection anschliessend zu HOTSPOT_CON_NAME um, damit Folgeaufrufe
-    deterministisch sind."""
+    """Startet den Setup-Hotspot. Legt eine dedizierte WLAN-Connection im
+    AP-Modus mit explizit WPA2-PSK an (kein WPS, damit Windows den normalen
+    Passwort-Dialog zeigt statt den 8-stelligen WPS-PIN-Dialog).
+    """
     pw = _hotspot_password()
-
-    # Falls die Verbindung schon existiert, einfach aktivieren
-    try:
-        out = subprocess.run(
-            ["nmcli", "-t", "-f", "NAME", "con", "show"],
-            capture_output=True, text=True, timeout=3.0,
-        )
-        if out.returncode == 0 and HOTSPOT_CON_NAME in out.stdout.splitlines():
-            up = subprocess.run(
-                ["nmcli", "con", "up", HOTSPOT_CON_NAME],
-                capture_output=True, text=True, timeout=15.0,
-            )
-            if up.returncode == 0:
-                return True, "Hotspot aktiv"
-            return False, (up.stderr or up.stdout or "Fehler").strip()
-    except Exception:
-        pass
 
     # Primaeres WLAN-Interface finden (Jetson: wlP1p1s0)
     wifi_if = ""
@@ -5596,7 +5580,6 @@ def _hotspot_start() -> tuple[bool, str]:
         if _is_wifi_interface(ifname):
             wifi_if = ifname
             break
-    # Falls kein Interface gerade eine IP hat, aus /sys/class/net direkt
     if not wifi_if:
         try:
             import os
@@ -5609,18 +5592,73 @@ def _hotspot_start() -> tuple[bool, str]:
     if not wifi_if:
         return False, "Kein WLAN-Interface"
 
+    # Falls die Connection schon existiert: loeschen und neu anlegen, damit
+    # wir sicher ohne WPS starten (eine alte 'nmcli wifi hotspot'-Connection
+    # hatte evtl. WPS aktiv).
     try:
-        # Neue Hotspot-Connection anlegen
-        create = subprocess.run(
-            ["nmcli", "device", "wifi", "hotspot",
+        out = subprocess.run(
+            ["nmcli", "-t", "-f", "NAME", "con", "show"],
+            capture_output=True, text=True, timeout=3.0,
+        )
+        if out.returncode == 0 and HOTSPOT_CON_NAME in out.stdout.splitlines():
+            subprocess.run(
+                ["nmcli", "con", "delete", HOTSPOT_CON_NAME],
+                capture_output=True, text=True, timeout=5.0,
+            )
+    except Exception:
+        pass
+
+    try:
+        # Manuelle AP-Connection ohne WPS:
+        # - 802-11-wireless.mode=ap
+        # - 802-11-wireless-security.key-mgmt=wpa-psk
+        # - 802-11-wireless-security.psk=<pw>
+        # - 802-11-wireless-security.pmf=disable (WPA2 pur, kein WPA3-Mix)
+        # - ipv4.method=shared (DHCP + NAT auf 10.42.0.1/24)
+        add = subprocess.run(
+            ["nmcli", "con", "add", "type", "wifi",
              "ifname", wifi_if,
              "con-name", HOTSPOT_CON_NAME,
-             "ssid", HOTSPOT_SSID,
-             "password", pw],
-            capture_output=True, text=True, timeout=30.0,
+             "autoconnect", "no",
+             "ssid", HOTSPOT_SSID],
+            capture_output=True, text=True, timeout=10.0,
         )
-        if create.returncode != 0:
-            err = (create.stderr or create.stdout or "Fehler").strip()
+        if add.returncode != 0:
+            err = (add.stderr or add.stdout or "Fehler").strip()
+            return False, f"add: {err.splitlines()[-1] if err else 'Fehler'}"
+
+        # Mode + Band + IPv4 auf shared
+        subprocess.run(
+            ["nmcli", "con", "modify", HOTSPOT_CON_NAME,
+             "802-11-wireless.mode", "ap",
+             "802-11-wireless.band", "bg",
+             "ipv4.method", "shared",
+             "ipv6.method", "ignore"],
+            capture_output=True, text=True, timeout=5.0,
+        )
+
+        # WPA2-PSK, kein WPS. pmf=disable damit reine WPA2-Clients rein kommen.
+        sec = subprocess.run(
+            ["nmcli", "con", "modify", HOTSPOT_CON_NAME,
+             "wifi-sec.key-mgmt", "wpa-psk",
+             "wifi-sec.proto", "rsn",
+             "wifi-sec.pairwise", "ccmp",
+             "wifi-sec.group", "ccmp",
+             "wifi-sec.pmf", "disable",
+             "wifi-sec.psk", pw],
+            capture_output=True, text=True, timeout=5.0,
+        )
+        if sec.returncode != 0:
+            err = (sec.stderr or sec.stdout or "Fehler").strip()
+            return False, f"sec: {err.splitlines()[-1] if err else 'Fehler'}"
+
+        # Jetzt up
+        up = subprocess.run(
+            ["nmcli", "con", "up", HOTSPOT_CON_NAME],
+            capture_output=True, text=True, timeout=20.0,
+        )
+        if up.returncode != 0:
+            err = (up.stderr or up.stdout or "Fehler").strip()
             err_lines = [l for l in err.splitlines() if l.strip()]
             return False, err_lines[-1] if err_lines else err
         return True, "Hotspot gestartet"
