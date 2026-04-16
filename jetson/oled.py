@@ -343,15 +343,14 @@ class OledMenu:
         img = Image.new("1", (WIDTH, HEIGHT), 0)  # Monochrom, schwarz
         draw = ImageDraw.Draw(img)
 
-        # Phase 11: Im Sperrzustand zeigen wir NUR die operator-Seite
-        # (LOGIN / VERWALTUNG), damit der Nutzer ins Untermenue kommen kann
-        # um einen Chip zu registrieren oder manuell zu sperren. Andere
-        # Seiten sind blockiert. Wenn jemand beim Sperren gerade woanders
-        # war, ziehen wir die Page-Position mit.
+        # Phase 11: Im Sperrzustand zeigt das OLED nur den Sperr-Screen
+        # (SAFIR / GESPERRT / Chip auflegen). Menue-Navigation ist in
+        # button_a_short() blockiert solange gesperrt, der Screensaver
+        # greift wie auf normalen Seiten (check_screensaver + _display_off).
         if self.locked:
-            op_idx = PAGES.index("operator") if "operator" in PAGES else 0
-            if self.current_page != op_idx:
-                self.current_page = op_idx
+            self._render_locked(draw)
+            self._display_image(img)
+            return img
 
         page = PAGES[self.current_page]
 
@@ -373,19 +372,27 @@ class OledMenu:
         return img
 
     def set_locked(self, locked: bool):
-        """Phase 11: Lock-Screen aktivieren/deaktivieren. Im Sperrzustand
-        wird render() die operator-Seite erzwingen; Page-Wechsel per Taster
-        wird in button_a_short() blockiert."""
+        """Phase 11: Lock-Screen aktivieren/deaktivieren.
+        Untermenue wird beim Sperren zugeklappt + Seite auf operator
+        gesetzt, damit nach dem Entsperren sofort das LOGIN-Menue
+        sichtbar ist (und nicht eine random Page von vorher)."""
         self.locked = bool(locked)
         if self.locked:
-            # Untermenue zuklappen damit User frisch startet
             self.submenu_open = False
             self.submenu_index = 0
-            # Auf LOGIN-Seite springen
             try:
                 self.current_page = PAGES.index("operator")
             except ValueError:
                 pass
+
+    # ---- Seite: GESPERRT (Security-Lock) ----
+    def _render_locked(self, draw: ImageDraw):
+        """Zeigt 'SAFIR / GESPERRT / Chip auflegen' als Vollbild-Sperr-Screen.
+        Wird bei state.locked = True von render() anstelle der normalen
+        Seiten angezeigt."""
+        draw.text((2, 2),  "SAFIR",         font=FONT_XL, fill=1)
+        draw.text((2, 26), "GESPERRT",      font=FONT_XL, fill=1)
+        draw.text((2, 50), "Chip auflegen", font=FONT_MD, fill=1)
 
     def render_base64(self) -> str:
         """Rendert und gibt Base64-encodiertes PNG zurück."""
@@ -504,31 +511,21 @@ class OledMenu:
             ts_text = "T: --"
         draw.text((2, 50), ts_text, font=FONT_MD, fill=1)
 
-    # ---- Seite: LOGIN / VERWALTUNG (nutzt volle 64 px) ----
+    # ---- Seite: LOGIN / VERWALTUNG ----
+    # Layout (User-Spec): zwei XL-Zeilen "LOGIN" + "VERWALTUNG",
+    # darunter optional eine Info-Zeile "[USER 1]" wenn eingeloggt.
+    # Kein Footer-Hinweis, keine Rollen-Zeile, keine Seit-Zeile —
+    # alles bewusst kurz gehalten.
     def _render_operator(self, draw: ImageDraw):
+        draw.text((2, 2),  "LOGIN",      font=FONT_XL, fill=1)
+        draw.text((2, 24), "VERWALTUNG", font=FONT_XL, fill=1)
+
         op = self.operator_info
-        if not op.get("logged_in", False):
-            # Nicht eingeloggt -> LOGIN / VERWALTUNG als grosser Screen-Name,
-            # darunter Hinweis auf A-Long (Untermenue: Chip registrieren,
-            # Jetzt Sperren).
-            draw.text((2, 2),  "LOGIN",      font=FONT_XL, fill=1)
-            draw.text((2, 24), "VERWALTUNG", font=FONT_XL, fill=1)
-            draw.text((2, 50), "A lang: Menue", font=FONT_SM, fill=1)
-            return
-
-        label = op.get("label", "?")
-        name = op.get("name", "")
-        role = op.get("role", "")
-        since = op.get("since", "")
-
-        # Oben: Label + Name gross (XL)
-        draw.text((2, 2), f"[{label}] {name[:10]}", font=FONT_XL, fill=1)
-        # Mitte: Rolle in MD
-        draw.text((2, 24), role[:20], font=FONT_MD, fill=1)
-        # Unten: Login-Zeit (klein) + Menue-Hinweis rechtsbuendig
-        if since:
-            draw.text((2, 40), f"seit {since}", font=FONT_MD, fill=1)
-        self._text_r(draw, 126, 54, "A lang: Menue", FONT_SM)
+        if op.get("logged_in", False):
+            # Label in eckigen Klammern (z.B. '[OP1]' oder '[OFA]'),
+            # FONT_MD damit es unter den XL-Zeilen lesbar Platz findet.
+            label = op.get("label", "?")
+            draw.text((2, 50), f"[{label}]", font=FONT_MD, fill=1)
 
     # ---- Seite: PATIENT (aktiver Patient) ----
     def _render_patient(self, draw: ImageDraw):

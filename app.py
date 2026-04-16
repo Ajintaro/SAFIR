@@ -317,12 +317,12 @@ class AppState:
         # Hardware-Integration (Phase 6+)
         self.current_operator: dict | None = None  # None oder {uid, label, name, role, since}
         self.last_rfid_uid: str = "---"
-        # Security-Lock: System startet gesperrt, blaue Chip-Karte entsperrt.
+        # Security-Lock: System startet gesperrt WENN operators-Liste
+        # nicht leer ist (siehe startup handler). Bei Ersteinrichtung ohne
+        # Chip startet es entsperrt — Henne-Ei-Aufloesung.
         # Sperre schnappt auto zu nach IDLE-Timer (default 30 min) und manuell
-        # durch Wieder-Auflegen derselben Chip. Im gesperrten Zustand sind
-        # Voice, Taster-Aktionen (ausser Shutdown-Combo) und sensible APIs
-        # deaktiviert.
-        self.locked: bool = True
+        # durch Wieder-Auflegen derselben Chip oder 'Jetzt Sperren'.
+        self.locked: bool = False  # wird im startup-Handler final gesetzt
         self.last_activity: float = 0.0  # monotonic timestamp letzter User-Interaktion
         # Chip-Registrierungs-Modus: wenn True, wird die naechste gescannte UID
         # als neuer Operator in config.json gespeichert. Wird durch das OLED-
@@ -897,6 +897,12 @@ async def _lock_watchdog_loop():
     while True:
         await asyncio.sleep(30)
         if state.locked:
+            continue
+        # Ohne registrierten Chip darf die Sperre nicht auto-greifen,
+        # sonst sperrt sich das System in einen unerreichbaren Zustand
+        # (Ersteinrichtung braucht ja gerade entsperrten Zugang).
+        ops = _config.get("rfid", {}).get("operators", [])
+        if not ops:
             continue
         idle = time.monotonic() - state.last_activity
         if idle >= idle_limit:
@@ -4888,17 +4894,30 @@ async def startup():
     # Starte OLED-Update-Loop für Menü-Seiten
     asyncio.create_task(_oled_update_loop())
 
-    # Phase 11: Security-Lock. System startet gesperrt, Watchdog-Task prueft
-    # Inaktivitaet und sperrt automatisch nach LOCK_IDLE_SECONDS.
-    state.locked = True
-    state.vosk_listening = False  # keine Voice im Sperrzustand
+    # Phase 11: Security-Lock. Startet nur gesperrt wenn bereits mindestens
+    # ein Operator-Chip registriert ist — ansonsten Henne-Ei-Problem:
+    # Ersteinrichtung braucht Zugang zum LOGIN-Menue, das im Sperrzustand
+    # unerreichbar ist. Sobald ein Chip registriert wurde, wird die Sperre
+    # beim naechsten Boot scharf + Auto-Lock nach Idle greift.
     state.last_activity = time.monotonic()
-    try:
-        oled_menu.set_locked(True)
-    except Exception:
-        pass
+    operators_cfg = _config.get("rfid", {}).get("operators", [])
+    if operators_cfg:
+        state.locked = True
+        state.vosk_listening = False
+        try:
+            oled_menu.set_locked(True)
+        except Exception:
+            pass
+        print(f"[LOCK] System startet gesperrt — {len(operators_cfg)} registrierte Chip(s).", flush=True)
+    else:
+        state.locked = False
+        try:
+            oled_menu.set_locked(False)
+        except Exception:
+            pass
+        print("[LOCK] Ersteinrichtung — keine Chips registriert, System entsperrt. "
+              "Auf LOGIN-Seite 'Chip Regis.' im Untermenue aufrufen.", flush=True)
     asyncio.create_task(_lock_watchdog_loop())
-    print("[LOCK] System startet im gesperrten Zustand — blauer Chip noetig.", flush=True)
 
 
 async def _oled_update_loop():
