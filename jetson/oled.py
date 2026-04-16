@@ -42,7 +42,11 @@ PAGE_TITLES = {
 # Ausloggen geht weiterhin ueber das erneute Auflegen des eingeloggten Chips.
 PAGE_SUBMENUS = {
     "models": [],
-    "network": [],
+    "network": [
+        ("hotspot_start", "Hotspot AN"),
+        ("hotspot_stop",  "Hotspot AUS"),
+        ("wifi_disconnect", "WLAN trennen"),
+    ],
     "operator": [
         ("register_chip", "Chip Regis."),
         ("lock_now", "Jetzt Sperren"),
@@ -98,6 +102,7 @@ class OledMenu:
         self.cardwrite_info = {}     # Aktiver Patient für Schreiben auf Karte
         self.active_patient_info = {}  # Aktiver Patient (Name, Triage, Flow-Status)
         self.models_status = {}      # KI-Modelle (Whisper/Ollama) geladen + auf GPU?
+        self.hotspot_info = {}       # Setup-Hotspot-Status (active, ssid, password, url)
         # Altlasten — werden nicht mehr gerendert aber von app.py noch befüllt:
         self.audio_info = {}
         self.model_info = {}
@@ -329,6 +334,9 @@ class OledMenu:
     def update_active_patient(self, info: dict):
         self.active_patient_info = info
 
+    def update_hotspot(self, info: dict):
+        self.hotspot_info = info
+
     def update_models_status(self, info: dict):
         self.models_status = info
 
@@ -457,12 +465,26 @@ class OledMenu:
 
     # ---- Seite: VERBINDUNG ----
     def _render_network(self, draw: ImageDraw):
-        """Vier Zeilen, nichts anderes. Keine Uhr, keine Page-Dots.
+        """Normaler Zustand (vier Zeilen):
           Z1: VERBINDUNG (Screen-Titel)
           Z2: Verbindungstyp (ETHERNET / WLAN-SSID / OHNE NETZ)
           Z3: Lokale IP (IP 192.168.x.y) oder 'IP --'
           Z4: Tailscale-IP (T:100.126.179.27) oder 'T: --'
+
+        Wenn Setup-Hotspot aktiv, wird stattdessen die Hotspot-Info gezeigt:
+          Z1: HOTSPOT
+          Z2: SSID (z.B. SAFIR-Setup)
+          Z3: PW (10 Zeichen)
+          Z4: http://10.42.0.1:8080
         """
+        hs = self.hotspot_info or {}
+        if hs.get("active"):
+            draw.text((2, 2),  "HOTSPOT",                        font=FONT_MD, fill=1)
+            draw.text((2, 18), hs.get("ssid", "SAFIR-Setup")[:16], font=FONT_LG, fill=1)
+            draw.text((2, 36), f"PW {hs.get('password', '')[:16]}", font=FONT_MD, fill=1)
+            draw.text((2, 50), "10.42.0.1:8080",                  font=FONT_MD, fill=1)
+            return
+
         n = self.network_info or {}
         wifi_state = n.get("wifi_state", "")
         wifi_ssid = n.get("wifi_ssid", "")

@@ -2552,6 +2552,25 @@
                             </div>
                         </div>
                         <div class="settings-card">
+                            <div class="settings-card-title">WLAN</div>
+                            <div id="wifi-status-line" style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:var(--space-3)">Status wird geladen…</div>
+                            <div id="wifi-hotspot-banner" style="display:none;padding:var(--space-3);background:var(--cgi-red-light);border:1px solid var(--cgi-red);border-radius:var(--radius);margin-bottom:var(--space-3)">
+                                <div style="font-weight:600;color:var(--cgi-red);margin-bottom:4px">SETUP-HOTSPOT aktiv</div>
+                                <div style="font-size:var(--fs-body-sm);line-height:1.6">
+                                    SSID: <strong id="wifi-hotspot-ssid">SAFIR-Setup</strong><br>
+                                    Passwort: <code id="wifi-hotspot-pw"></code>
+                                </div>
+                            </div>
+                            <div class="btn-group" style="margin-bottom:var(--space-3)">
+                                <button class="btn" onclick="wifiScan()">Neu scannen</button>
+                                <button class="btn" onclick="wifiHotspotStart()">Hotspot starten</button>
+                                <button class="btn" onclick="wifiHotspotStop()">Hotspot stoppen</button>
+                                <button class="btn" onclick="wifiDisconnect()">WLAN trennen</button>
+                            </div>
+                            <div id="wifi-list" style="display:flex;flex-direction:column;gap:var(--space-2)"></div>
+                        </div>
+
+                        <div class="settings-card">
                             <div class="settings-card-title">Audio-Eingang</div>
                             <div class="field">
                                 <label>Eingabegerät</label>
@@ -3334,9 +3353,127 @@
                 `<option value="${d.id}" ${d.default ? 'selected' : ''}>${d.name}</option>`
             ).join('');
 
+            // WLAN status + scan
+            wifiRefreshStatus();
+            wifiScan();
+
         } catch (e) {
             console.error('Settings laden fehlgeschlagen:', e);
         }
+    }
+
+    // ==================== WLAN ====================
+    async function wifiRefreshStatus() {
+        try {
+            const s = await api('/api/wifi/status');
+            const line = document.getElementById('wifi-status-line');
+            const banner = document.getElementById('wifi-hotspot-banner');
+            const pw = document.getElementById('wifi-hotspot-pw');
+            const ssidEl = document.getElementById('wifi-hotspot-ssid');
+            const hs = s.hotspot || {};
+            if (hs.active) {
+                banner.style.display = 'block';
+                if (ssidEl) ssidEl.textContent = hs.ssid || 'SAFIR-Setup';
+                if (pw) pw.textContent = hs.password || '';
+                line.textContent = 'Setup-Modus: Surface/Handy mit ' + (hs.ssid || 'SAFIR-Setup') + ' verbinden → ' + (hs.url || 'http://10.42.0.1:8080') + ' öffnen.';
+            } else {
+                banner.style.display = 'none';
+                const w = s.wifi || {};
+                if (w.wifi_state === 'connected' && w.wifi_ssid) {
+                    line.textContent = 'Verbunden mit ' + w.wifi_ssid + (w.wifi_ip ? ' (' + w.wifi_ip + ')' : '');
+                } else if (s.eth_ip) {
+                    line.textContent = 'Ethernet aktiv (' + s.eth_ip + '). WLAN nicht verbunden.';
+                } else {
+                    line.textContent = 'Kein Netzwerk verbunden.';
+                }
+            }
+        } catch (e) { /* noop */ }
+    }
+
+    async function wifiScan() {
+        const list = document.getElementById('wifi-list');
+        list.innerHTML = '<div style="color:var(--text-dim);font-size:var(--fs-body-sm);padding:var(--space-3)">Scanne WLANs…</div>';
+        try {
+            const r = await api('/api/wifi/scan');
+            const nets = r.networks || [];
+            if (!nets.length) {
+                list.innerHTML = '<div style="color:var(--text-dim);font-size:var(--fs-body-sm);padding:var(--space-3)">Keine WLANs gefunden.</div>';
+                return;
+            }
+            list.innerHTML = nets.map(n => {
+                const isSecure = (n.security && n.security !== '--' && n.security.toLowerCase() !== 'open');
+                const inUse = n.in_use ? ' · aktuell verbunden' : '';
+                const lock = isSecure ? '🔒' : '🔓';
+                const ssidEsc = (n.ssid || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                return `<div class="wifi-row" style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3);background:var(--bg-surface2);border-radius:var(--radius);cursor:pointer" onclick="wifiConnectPrompt('${ssidEsc}', ${isSecure})">
+                    <div style="flex:1">
+                        <div style="font-weight:600">${n.ssid}${inUse}</div>
+                        <div style="font-size:var(--fs-body-sm);color:var(--text-dim)">${lock} ${n.security} · Signal ${n.signal}%</div>
+                    </div>
+                    <button class="btn btn-sm btn-cgi">Verbinden</button>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            list.innerHTML = '<div style="color:var(--danger);font-size:var(--fs-body-sm);padding:var(--space-3)">Scan fehlgeschlagen: ' + e.message + '</div>';
+        }
+    }
+
+    async function wifiConnectPrompt(ssid, isSecure) {
+        let password = '';
+        if (isSecure) {
+            password = prompt('Passwort für "' + ssid + '" eingeben:');
+            if (password === null) return;
+        }
+        showToast('Verbinde mit ' + ssid + '…', '&#128246;');
+        try {
+            const res = await fetch('/api/wifi/connect', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ssid, password}),
+            });
+            const r = await res.json();
+            if (r.success) {
+                showToast('Verbunden mit ' + ssid, '&#9989;', 'voice');
+            } else {
+                showToast('Fehler: ' + (r.message || 'unbekannt'), '&#9888;');
+            }
+            wifiRefreshStatus();
+            wifiScan();
+        } catch (e) {
+            showToast('WLAN-Connect Fehler: ' + e.message, '&#9888;');
+        }
+    }
+
+    async function wifiDisconnect() {
+        if (!confirm('WLAN wirklich trennen?')) return;
+        try {
+            const res = await fetch('/api/wifi/disconnect', {method: 'POST'});
+            const r = await res.json();
+            showToast(r.success ? 'WLAN getrennt' : 'Fehler: ' + r.message, r.success ? '&#128683;' : '&#9888;');
+            wifiRefreshStatus();
+        } catch (e) { showToast('Fehler: ' + e.message, '&#9888;'); }
+    }
+
+    async function wifiHotspotStart() {
+        try {
+            const res = await fetch('/api/wifi/hotspot/start', {method: 'POST'});
+            const r = await res.json();
+            if (r.success) {
+                showToast('Hotspot gestartet', '&#128225;', 'voice');
+            } else {
+                showToast('Fehler: ' + (r.error || 'unbekannt'), '&#9888;');
+            }
+            wifiRefreshStatus();
+        } catch (e) { showToast('Fehler: ' + e.message, '&#9888;'); }
+    }
+
+    async function wifiHotspotStop() {
+        try {
+            const res = await fetch('/api/wifi/hotspot/stop', {method: 'POST'});
+            const r = await res.json();
+            showToast(r.success ? 'Hotspot gestoppt' : 'Fehler: ' + r.message, r.success ? '&#9989;' : '&#9888;');
+            wifiRefreshStatus();
+        } catch (e) { showToast('Fehler: ' + e.message, '&#9888;'); }
     }
 
     function showSettingsSection(sectionId) {

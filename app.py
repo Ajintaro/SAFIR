@@ -477,6 +477,17 @@ def _handle_oled_action(action: dict):
         if action_id == "logout":
             return _manual_logout()
 
+    # VERBINDUNG-Menue: Setup-Hotspot + WLAN trennen.
+    # Hotspot-Actions sind auch im Sperrzustand erlaubt, weil sonst die
+    # Offline-Einrichtung nicht mehr moeglich waere.
+    if page == "network":
+        if action_id == "hotspot_start":
+            return _oled_hotspot_start()
+        if action_id == "hotspot_stop":
+            return _oled_hotspot_stop()
+        if action_id == "wifi_disconnect":
+            return _oled_wifi_disconnect()
+
     # Alle anderen Page-Aktionen nur wenn System entsperrt ist
     if state.locked:
         print("[OLED-ACTION] verworfen — System gesperrt", flush=True)
@@ -646,6 +657,78 @@ async def _oled_lock_now():
     await asyncio.sleep(1.5)
     oled_menu.clear_status()
     await broadcast({"type": "operator_logout", "uid": None, "name": None})
+
+
+async def _oled_hotspot_start():
+    """OLED-Action: Setup-Hotspot starten. Zeigt danach die Setup-Seite
+    mit SSID/Passwort/URL direkt auf dem Display."""
+    oled_menu.submenu_open = False
+    oled_menu.show_status("HOTSPOT", "starte...")
+    loop = asyncio.get_event_loop()
+    success, msg = await loop.run_in_executor(None, _hotspot_start)
+    if success:
+        info = _hotspot_status()
+        # In update-Loop gehen, damit _render_network den Hotspot sieht
+        try:
+            oled_menu.update_hotspot(info)
+        except Exception:
+            pass
+        oled_menu.show_status("HOTSPOT", info.get("ssid", HOTSPOT_SSID))
+        try:
+            tts.speak("Setup Hotspot aktiv")
+        except Exception:
+            pass
+        await asyncio.sleep(2.0)
+        oled_menu.clear_status()
+        await broadcast({"type": "hotspot_started", **info})
+    else:
+        oled_menu.show_status("FEHLER", msg[:16])
+        try:
+            tts.speak("Hotspot Fehler")
+        except Exception:
+            pass
+        await asyncio.sleep(2.5)
+        oled_menu.clear_status()
+
+
+async def _oled_hotspot_stop():
+    """OLED-Action: Setup-Hotspot abschalten."""
+    oled_menu.submenu_open = False
+    loop = asyncio.get_event_loop()
+    success, msg = await loop.run_in_executor(None, _hotspot_stop)
+    try:
+        oled_menu.update_hotspot({"active": False, "ssid": "", "password": "", "url": ""})
+    except Exception:
+        pass
+    if success:
+        oled_menu.show_status("HOTSPOT", "AUS")
+        try:
+            tts.speak("Hotspot gestoppt")
+        except Exception:
+            pass
+        await broadcast({"type": "hotspot_stopped"})
+    else:
+        oled_menu.show_status("FEHLER", msg[:16])
+    await asyncio.sleep(1.5)
+    oled_menu.clear_status()
+
+
+async def _oled_wifi_disconnect():
+    """OLED-Action: Aktuelles WLAN trennen."""
+    oled_menu.submenu_open = False
+    loop = asyncio.get_event_loop()
+    success, msg = await loop.run_in_executor(None, _wifi_disconnect)
+    if success:
+        oled_menu.show_status("WLAN", "getrennt")
+        try:
+            tts.speak("WLAN getrennt")
+        except Exception:
+            pass
+        await broadcast({"type": "wifi_disconnected", "success": True})
+    else:
+        oled_menu.show_status("FEHLER", msg[:16])
+    await asyncio.sleep(1.5)
+    oled_menu.clear_status()
 
 
 async def _oled_register_chip():
@@ -2714,6 +2797,94 @@ async def get_status():
 async def get_templates():
     """Gibt alle verfuegbaren Templates zurück."""
     return {"templates": list(RECORD_TEMPLATES.values())}
+
+
+# ---------------------------------------------------------------------------
+# WLAN-Endpoints (Phase 11+): Scan, Connect, Disconnect + Setup-Hotspot
+# ---------------------------------------------------------------------------
+@app.get("/api/wifi/scan")
+async def wifi_scan():
+    """Listet verfuegbare WLANs (Signal-sortiert). nmcli rescan kann
+    bis zu 10 s dauern, daher async."""
+    results = await asyncio.get_event_loop().run_in_executor(None, _wifi_scan)
+    return {"networks": results, "count": len(results)}
+
+
+@app.get("/api/wifi/status")
+async def wifi_status():
+    """Aktueller WLAN-Status + Hotspot-Zustand."""
+    wifi = _get_wifi_status()
+    hs = _hotspot_status()
+    return {
+        "wifi": wifi,
+        "eth_ip": _get_eth_ip(),
+        "hotspot": hs,
+    }
+
+
+@app.post("/api/wifi/connect")
+async def wifi_connect(body: dict):
+    """Verbindet mit einem WLAN. Body: {ssid, password}. Wenn aktueller
+    Hotspot aktiv ist, wird er NACH erfolgreicher Verbindung gestoppt
+    (sonst kann sich das Surface waehrend des Handshakes trennen)."""
+    require_unlocked()
+    ssid = (body.get("ssid") or "").strip()
+    password = body.get("password") or ""
+    if not ssid:
+        return {"success": False, "error": "SSID fehlt"}
+
+    def _do():
+        return _wifi_connect(ssid, password)
+
+    success, msg = await asyncio.get_event_loop().run_in_executor(None, _do)
+    await broadcast({"type": "wifi_connect_result", "ssid": ssid, "success": success, "message": msg})
+
+    # Wenn Hotspot gerade lief und Verbindung erfolgreich war -> Hotspot aus
+    if success:
+        hs = _hotspot_status()
+        if hs.get("active"):
+            await asyncio.sleep(2.0)  # kurzer Puffer fuer Client-Switch
+            await asyncio.get_event_loop().run_in_executor(None, _hotspot_stop)
+
+    return {"success": success, "message": msg, "ssid": ssid}
+
+
+@app.post("/api/wifi/disconnect")
+async def wifi_disconnect_api():
+    require_unlocked()
+    success, msg = await asyncio.get_event_loop().run_in_executor(None, _wifi_disconnect)
+    await broadcast({"type": "wifi_disconnected", "success": success, "message": msg})
+    return {"success": success, "message": msg}
+
+
+@app.post("/api/wifi/hotspot/start")
+async def wifi_hotspot_start():
+    require_unlocked()
+    success, msg = await asyncio.get_event_loop().run_in_executor(None, _hotspot_start)
+    if success:
+        info = _hotspot_status()
+        # OLED-Status + TTS
+        oled_menu.show_status("HOTSPOT", HOTSPOT_SSID)
+        try:
+            tts.speak("Setup Hotspot gestartet")
+        except Exception:
+            pass
+        await broadcast({"type": "hotspot_started", **info})
+        return {"success": True, **info}
+    return {"success": False, "error": msg}
+
+
+@app.post("/api/wifi/hotspot/stop")
+async def wifi_hotspot_stop():
+    require_unlocked()
+    success, msg = await asyncio.get_event_loop().run_in_executor(None, _hotspot_stop)
+    if success:
+        await broadcast({"type": "hotspot_stopped"})
+        try:
+            tts.speak("Hotspot gestoppt")
+        except Exception:
+            pass
+    return {"success": success, "message": msg}
 
 
 @app.get("/api/models")
@@ -4986,6 +5157,13 @@ async def _oled_update_loop():
                         "backend_ok": bool(state.backend_reachable),
                         "peers": len(state.peers),
                     })
+                    # Setup-Hotspot-Status (falls aktiv, wird VERBINDUNG-Seite
+                    # umgeschaltet). _hotspot_status() ist billig (nur nmcli-
+                    # con-show).
+                    try:
+                        oled_menu.update_hotspot(_hotspot_status())
+                    except Exception:
+                        pass
                     # Operator-Info
                     op = getattr(state, "current_operator", None)
                     if op:
@@ -5237,6 +5415,245 @@ def _get_eth_ip() -> str:
         # Erstes verbleibendes Interface ist Ethernet
         return ip
     return ""
+
+
+# ---------------------------------------------------------------------------
+# WLAN-Scan + Connect (via nmcli)
+# ---------------------------------------------------------------------------
+def _wifi_scan() -> list[dict]:
+    """Sucht verfuegbare WLANs via nmcli. Gibt Liste zurueck:
+      [{'ssid': str, 'signal': int (0-100), 'security': str, 'in_use': bool}, ...]
+    Sortiert nach Signal-Staerke absteigend. Duplikate (mehrere APs gleicher
+    SSID) werden auf den staerksten Eintrag reduziert.
+    """
+    results: dict[str, dict] = {}
+    try:
+        # Fresh rescan auslosen, blockiert bis zu 10 s
+        subprocess.run(
+            ["nmcli", "dev", "wifi", "rescan"],
+            capture_output=True, text=True, timeout=10.0,
+        )
+    except Exception:
+        pass  # rescan-failure ist nicht fatal, list gibt dann den Cache
+
+    try:
+        out = subprocess.run(
+            ["nmcli", "-t", "-e", "no", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list"],
+            capture_output=True, text=True, timeout=5.0,
+        )
+        if out.returncode != 0:
+            return []
+        for line in out.stdout.splitlines():
+            parts = line.split(":")
+            if len(parts) < 4:
+                continue
+            in_use = parts[0].strip() == "*"
+            ssid = parts[1].strip()
+            if not ssid:
+                continue
+            try:
+                signal = int(parts[2].strip())
+            except ValueError:
+                signal = 0
+            security = parts[3].strip() or "--"
+            prev = results.get(ssid)
+            if prev is None or signal > prev["signal"]:
+                results[ssid] = {
+                    "ssid": ssid,
+                    "signal": signal,
+                    "security": security,
+                    "in_use": in_use,
+                }
+    except Exception as e:
+        print(f"[WIFI-SCAN] Fehler: {e}", flush=True)
+        return []
+
+    return sorted(results.values(), key=lambda r: r["signal"], reverse=True)
+
+
+def _wifi_connect(ssid: str, password: str = "") -> tuple[bool, str]:
+    """Verbindet mit einem WLAN via nmcli. Trennt bestehende Verbindung
+    implizit. Gibt (success, message) zurueck.
+    Bei offenen Netzen password leer lassen."""
+    if not ssid:
+        return False, "Keine SSID"
+    cmd = ["nmcli", "device", "wifi", "connect", ssid]
+    if password:
+        cmd += ["password", password]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30.0)
+        if out.returncode == 0:
+            msg = out.stdout.strip().splitlines()[-1] if out.stdout else "verbunden"
+            return True, msg
+        err = (out.stderr or out.stdout or "unbekannter Fehler").strip()
+        # nmcli-Fehler sind manchmal mehrzeilig — letzte nicht-leere Zeile
+        err_lines = [l for l in err.splitlines() if l.strip()]
+        err = err_lines[-1] if err_lines else err
+        return False, err
+    except subprocess.TimeoutExpired:
+        return False, "Zeitueberschreitung"
+    except Exception as e:
+        return False, str(e)
+
+
+def _wifi_disconnect() -> tuple[bool, str]:
+    """Trennt die aktuelle WLAN-Verbindung."""
+    try:
+        # Das primaere WLAN-Interface finden
+        wifi_if = ""
+        for ifname, _ in _list_interfaces():
+            if _is_wifi_interface(ifname):
+                wifi_if = ifname
+                break
+        if not wifi_if:
+            return False, "Kein WLAN-Interface"
+        out = subprocess.run(
+            ["nmcli", "device", "disconnect", wifi_if],
+            capture_output=True, text=True, timeout=10.0,
+        )
+        if out.returncode == 0:
+            return True, "getrennt"
+        return False, (out.stderr or out.stdout or "Fehler").strip()
+    except Exception as e:
+        return False, str(e)
+
+
+# ---------------------------------------------------------------------------
+# Setup-Hotspot (Rescue-Mode wenn Jetson offline ist)
+# ---------------------------------------------------------------------------
+# Der Hotspot laeuft als eigene NetworkManager-Connection 'safir-setup'.
+# Beim Start wird er erstellt/aktiviert, SSID 'SAFIR-Setup', PW wird zufaellig
+# einmalig beim ersten Call generiert und dann persistent im NM gespeichert.
+# Geraete die sich verbinden bekommen DHCP aus 10.42.0.x (nmcli-Default).
+# Jetson selbst bindet an 10.42.0.1.
+HOTSPOT_CON_NAME = "safir-setup"
+HOTSPOT_SSID = "SAFIR-Setup"
+# Der Password wird nur einmal generiert — speichern als Laufzeit-State
+# oder als Datei. Wir nutzen eine Datei damit es auch nach Service-Restart
+# stabil bleibt.
+HOTSPOT_PW_FILE = Path(__file__).parent / ".safir_hotspot_pw"
+
+
+def _hotspot_password() -> str:
+    """Liefert das Hotspot-Passwort. Generiert es beim ersten Aufruf und
+    persistiert es in einer Datei (nicht in config.json, damit es nicht
+    versehentlich ins Repo gerät)."""
+    if HOTSPOT_PW_FILE.exists():
+        pw = HOTSPOT_PW_FILE.read_text(encoding="utf-8").strip()
+        if len(pw) >= 8:
+            return pw
+    import secrets
+    # 10 Zeichen Base32-ish, gut am Handy tippbar
+    pw = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(10))
+    try:
+        HOTSPOT_PW_FILE.write_text(pw, encoding="utf-8")
+        HOTSPOT_PW_FILE.chmod(0o600)
+    except Exception:
+        pass
+    return pw
+
+
+def _hotspot_status() -> dict:
+    """Prueft ob die safir-setup Verbindung gerade aktiv ist."""
+    try:
+        out = subprocess.run(
+            ["nmcli", "-t", "-f", "NAME,DEVICE,STATE", "con", "show", "--active"],
+            capture_output=True, text=True, timeout=3.0,
+        )
+        active = False
+        if out.returncode == 0:
+            for line in out.stdout.splitlines():
+                parts = line.split(":")
+                if parts and parts[0] == HOTSPOT_CON_NAME:
+                    active = True
+                    break
+        return {
+            "active": active,
+            "ssid": HOTSPOT_SSID,
+            "password": _hotspot_password() if active else "",
+            "url": "http://10.42.0.1:8080" if active else "",
+        }
+    except Exception:
+        return {"active": False, "ssid": HOTSPOT_SSID, "password": "", "url": ""}
+
+
+def _hotspot_start() -> tuple[bool, str]:
+    """Startet den Setup-Hotspot. Nutzt 'nmcli device wifi hotspot', welches
+    eine Connection mit SSID+PW anlegt und aktiviert. Wir benennen die
+    Connection anschliessend zu HOTSPOT_CON_NAME um, damit Folgeaufrufe
+    deterministisch sind."""
+    pw = _hotspot_password()
+
+    # Falls die Verbindung schon existiert, einfach aktivieren
+    try:
+        out = subprocess.run(
+            ["nmcli", "-t", "-f", "NAME", "con", "show"],
+            capture_output=True, text=True, timeout=3.0,
+        )
+        if out.returncode == 0 and HOTSPOT_CON_NAME in out.stdout.splitlines():
+            up = subprocess.run(
+                ["nmcli", "con", "up", HOTSPOT_CON_NAME],
+                capture_output=True, text=True, timeout=15.0,
+            )
+            if up.returncode == 0:
+                return True, "Hotspot aktiv"
+            return False, (up.stderr or up.stdout or "Fehler").strip()
+    except Exception:
+        pass
+
+    # Primaeres WLAN-Interface finden (Jetson: wlP1p1s0)
+    wifi_if = ""
+    for ifname, _ in _list_interfaces():
+        if _is_wifi_interface(ifname):
+            wifi_if = ifname
+            break
+    # Falls kein Interface gerade eine IP hat, aus /sys/class/net direkt
+    if not wifi_if:
+        try:
+            import os
+            for name in os.listdir("/sys/class/net"):
+                if os.path.isdir(f"/sys/class/net/{name}/wireless"):
+                    wifi_if = name
+                    break
+        except Exception:
+            pass
+    if not wifi_if:
+        return False, "Kein WLAN-Interface"
+
+    try:
+        # Neue Hotspot-Connection anlegen
+        create = subprocess.run(
+            ["nmcli", "device", "wifi", "hotspot",
+             "ifname", wifi_if,
+             "con-name", HOTSPOT_CON_NAME,
+             "ssid", HOTSPOT_SSID,
+             "password", pw],
+            capture_output=True, text=True, timeout=30.0,
+        )
+        if create.returncode != 0:
+            err = (create.stderr or create.stdout or "Fehler").strip()
+            err_lines = [l for l in err.splitlines() if l.strip()]
+            return False, err_lines[-1] if err_lines else err
+        return True, "Hotspot gestartet"
+    except Exception as e:
+        return False, str(e)
+
+
+def _hotspot_stop() -> tuple[bool, str]:
+    """Schaltet den Hotspot ab (Verbindung deaktivieren, Config bleibt)."""
+    try:
+        out = subprocess.run(
+            ["nmcli", "con", "down", HOTSPOT_CON_NAME],
+            capture_output=True, text=True, timeout=10.0,
+        )
+        if out.returncode == 0:
+            return True, "Hotspot gestoppt"
+        # Wenn die Connection nicht aktiv war, ist das kein Fehler
+        if "not an active connection" in (out.stderr or "").lower():
+            return True, "Hotspot war bereits aus"
+        return False, (out.stderr or out.stdout or "Fehler").strip()
+    except Exception as e:
+        return False, str(e)
 
 
 # ---------------------------------------------------------------------------
