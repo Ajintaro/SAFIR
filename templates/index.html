@@ -202,19 +202,26 @@
         [data-theme="bundeswehr"] .toast {
             font-family: 'Share Tech Mono', monospace;
         }
-        [data-theme="bundeswehr"] .btn,
-        [data-theme="bundeswehr"] .nav-label,
-        [data-theme="bundeswehr"] .settings-nav-item,
+        /* Bundeswehr-Theme Phase 10: UPPERCASE nur noch fuer Kurz-Labels,
+           Letter-Spacing von 0.14em auf 0.08em (Worterkennung). Buttons
+           und Settings-Nav bleiben Mixed Case (Best-Practice 2026). */
+        [data-theme="bundeswehr"] .panel-header,
         [data-theme="bundeswehr"] .settings-card-title,
         [data-theme="bundeswehr"] .settings-title,
-        [data-theme="bundeswehr"] summary,
-        [data-theme="bundeswehr"] .panel-header,
-        [data-theme="bundeswehr"] .unit-name,
         [data-theme="bundeswehr"] .app-title .name {
             font-family: 'Rajdhani', sans-serif;
             font-weight: 700;
-            letter-spacing: 0.14em;
+            letter-spacing: var(--ls-uppercase);
             text-transform: uppercase;
+        }
+        [data-theme="bundeswehr"] .btn,
+        [data-theme="bundeswehr"] .nav-label,
+        [data-theme="bundeswehr"] .settings-nav-item,
+        [data-theme="bundeswehr"] summary,
+        [data-theme="bundeswehr"] .unit-name {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+            letter-spacing: 0.02em;
         }
         [data-theme="bundeswehr"] .header {
             border-bottom: 1px solid #3a4a2e;
@@ -234,7 +241,7 @@
         }
         [data-theme="bundeswehr"] .badge {
             border-radius: 0;
-            font-size: 9px;
+            font-size: var(--fs-body-sm);
             letter-spacing: 0.1em;
             text-transform: uppercase;
         }
@@ -475,8 +482,8 @@
             cursor: grab; user-select: none;
         }
         .hw-overlay-header:active { cursor: grabbing; }
-        .hw-overlay-header h3 { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 0; }
-        .hw-overlay-header span { font-size: 10px; color: var(--text-dim); }
+        .hw-overlay-header h3 { font-size: var(--fs-body); font-weight: 600; color: var(--text-primary); margin: 0; }
+        .hw-overlay-header span { font-size: var(--fs-body-sm); color: var(--text-dim); }
         .hw-overlay-close {
             background: none; border: none; color: var(--text-dim); cursor: pointer;
             font-size: 18px; padding: 0 4px; line-height: 1;
@@ -620,38 +627,94 @@
             border-radius: var(--radius-lg);
             overflow: hidden;
         }
+        /* Card-Header — Phase 10: H3 Titel 20 px */
         .card-header {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 10px 16px;
+            padding: var(--space-4);
             border-bottom: 1px solid var(--border);
         }
-        .card-header h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
-        .card-accent { width: 3px; height: 14px; background: var(--cgi-red); border-radius: 2px; display: inline-block; }
-        .card-body { padding: 12px 16px; }
-
-        /* Metrics */
-        .metric { margin-bottom: 12px; }
-        .metric-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-        .metric-label { font-size: 11px; font-weight: 500; color: var(--text-secondary); }
-        .metric-value { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-        .unit { font-size: 10px; color: var(--text-dim); }
-        .bar { height: 4px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden; }
-        .bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
-        .temp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 6px; }
-        .temp-chip { background: var(--bg-surface2); padding: 4px 6px; border-radius: 4px; font-size: 10px; display: flex; justify-content: space-between; }
-        .temp-chip .val { font-weight: 600; }
-
-        /* Config */
-        .config-section { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
-        .field { margin-bottom: 10px; }
-        .field label { display: block; font-size: 10px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .field input, .field select, .field textarea {
-            width: 100%; padding: 6px 10px; border: 1px solid var(--border);
-            border-radius: var(--radius); background: var(--bg-surface2);
-            color: var(--text-primary); font-size: 12px; font-family: inherit;
+        .card-header h3 {
+            font-size: var(--fs-label);
+            font-weight: var(--fw-bold);
+            text-transform: uppercase;
+            letter-spacing: var(--ls-uppercase);
+            color: var(--text-secondary);
+            display: flex; align-items: center; gap: var(--space-2);
+            line-height: var(--lh-label);
+            margin: 0;
         }
-        .field textarea { resize: vertical; min-height: 50px; }
-        .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--cgi-red); }
+        .card-accent { width: 3px; height: 16px; background: var(--cgi-red); border-radius: 2px; display: inline-block; }
+        .card-body { padding: var(--space-4); }
+
+        /* Metrics — Phase 10: Label 14 px, Value 16 px, Value monospace */
+        .metric { margin-bottom: var(--space-4); }
+        .metric-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); }
+        .metric-label {
+            font-size: var(--fs-body-sm);
+            font-weight: var(--fw-medium);
+            color: var(--text-secondary);
+            line-height: var(--lh-body-sm);
+        }
+        .metric-value {
+            font-size: var(--fs-body);
+            font-weight: var(--fw-semibold);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
+            line-height: var(--lh-body);
+        }
+        .unit {
+            font-size: var(--fs-body-sm);
+            color: var(--text-dim);
+            font-family: var(--font-mono);
+        }
+        .bar { height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+        .temp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); margin-top: var(--space-3); }
+        .temp-chip {
+            background: var(--bg-surface2);
+            padding: var(--space-2) var(--space-3);
+            border-radius: 4px;
+            font-size: var(--fs-body-sm);
+            display: flex; justify-content: space-between;
+            line-height: var(--lh-body-sm);
+        }
+        .temp-chip .val {
+            font-weight: var(--fw-semibold);
+            font-family: var(--font-mono);
+        }
+
+        /* Config — Phase 10: Form-Labels 14 px, Inputs 16 px, 40 px Touch */
+        .config-section { border-top: 1px solid var(--border); padding-top: var(--space-4); margin-top: var(--space-4); }
+        .field { margin-bottom: var(--space-4); }
+        .field label {
+            display: block;
+            font-size: var(--fs-body-sm);
+            font-weight: var(--fw-semibold);
+            color: var(--text-secondary);
+            margin-bottom: var(--space-2);
+            text-transform: uppercase;
+            letter-spacing: var(--ls-uppercase);
+            line-height: var(--lh-body-sm);
+        }
+        .field input, .field select, .field textarea {
+            width: 100%;
+            padding: var(--space-3) var(--space-4);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg-surface2);
+            color: var(--text-primary);
+            font-size: var(--fs-body);
+            font-family: inherit;
+            line-height: var(--lh-body);
+            min-height: 44px;
+        }
+        .field textarea { resize: vertical; min-height: 64px; }
+        .field input:focus, .field select:focus, .field textarea:focus {
+            outline: none;
+            border-color: var(--cgi-red);
+            box-shadow: 0 0 0 2px var(--cgi-red-light);
+        }
 
         /* Buttons */
         /* Buttons — Phase 10: 16 px Body-Size, 44 px Touch-Target */
@@ -719,7 +782,7 @@
         .audio-meter-text {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
             display: flex; align-items: center; justify-content: center;
-            font-size: 10px; font-weight: 600; color: var(--text-secondary);
+            font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
         }
 
         /* Transcript */
@@ -729,20 +792,20 @@
             background: var(--bg-surface2); border-radius: 0 var(--radius) var(--radius) 0;
             position: relative;
         }
-        .transcript-time { font-size: 10px; font-weight: 600; color: var(--cgi-red); margin-bottom: 4px; }
-        .transcript-text { font-size: 13px; line-height: 1.5; color: var(--text-primary); }
-        .transcript-meta { font-size: 9px; color: var(--text-dim); margin-top: 4px; display: flex; gap: 10px; }
+        .transcript-time { font-size: var(--fs-body-sm); font-weight: 600; color: var(--cgi-red); margin-bottom: 4px; }
+        .transcript-text { font-size: var(--fs-body); line-height: 1.5; color: var(--text-primary); }
+        .transcript-meta { font-size: var(--fs-body-sm); color: var(--text-dim); margin-top: 4px; display: flex; gap: 10px; }
         .transcript-delete {
             position: absolute; top: 4px; right: 6px; background: none; border: none;
             color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 2px 4px;
         }
         .transcript-delete:hover { color: var(--danger); }
 
-        .empty { text-align: center; padding: 30px 16px; color: var(--text-dim); font-size: 12px; }
+        .empty { text-align: center; padding: 30px 16px; color: var(--text-dim); font-size: var(--fs-body); }
         .empty .icon { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
 
         /* Session */
-        .session-active-info .stat-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+        .session-active-info .stat-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-body); }
         .stat-label { color: var(--text-secondary); font-weight: 500; }
         .stat-val { color: var(--text-primary); font-weight: 600; }
         .session-item {
@@ -754,8 +817,8 @@
         .session-item.active { background: var(--cgi-red-light); }
         .session-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
         .session-item.active .dot { background: var(--cgi-red); }
-        .session-item .name { font-size: 12px; font-weight: 500; }
-        .session-item .meta { font-size: 10px; color: var(--text-dim); }
+        .session-item .name { font-size: var(--fs-body); font-weight: 500; }
+        .session-item .meta { font-size: var(--fs-body-sm); color: var(--text-dim); }
 
         /* Template Selector */
         .template-grid {
@@ -768,22 +831,22 @@
         .template-card:hover { border-color: var(--cgi-red); background: var(--cgi-red-light); }
         .template-card.selected { border-color: var(--cgi-red); background: var(--cgi-red-light); }
         .template-card .tpl-icon { font-size: 20px; margin-bottom: 2px; }
-        .template-card .tpl-name { font-size: 11px; font-weight: 600; color: var(--text-primary); }
-        .template-card .tpl-desc { font-size: 9px; color: var(--text-dim); }
+        .template-card .tpl-name { font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-primary); }
+        .template-card .tpl-desc { font-size: var(--fs-body-sm); color: var(--text-dim); }
 
         /* Template Fields */
         .template-fields { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
         .template-section-title {
-            font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+            font-size: var(--fs-body-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
             color: var(--cgi-red); margin: 8px 0 6px; display: flex; align-items: center; gap: 4px;
         }
         .template-section-title::before { content: ''; width: 3px; height: 10px; background: var(--cgi-red); border-radius: 1px; }
         .tpl-field { margin-bottom: 6px; }
-        .tpl-field label { display: block; font-size: 9px; font-weight: 600; color: var(--text-secondary); margin-bottom: 2px; }
+        .tpl-field label { display: block; font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary); margin-bottom: 2px; }
         .tpl-field input, .tpl-field select, .tpl-field textarea {
             width: 100%; padding: 5px 8px; border: 1px solid var(--border);
             border-radius: var(--radius); background: var(--bg-surface2);
-            color: var(--text-primary); font-size: 11px; font-family: inherit;
+            color: var(--text-primary); font-size: var(--fs-body-sm); font-family: inherit;
         }
         .tpl-field textarea { resize: vertical; min-height: 40px; }
         .tpl-field input:focus, .tpl-field select:focus, .tpl-field textarea:focus { outline: none; border-color: var(--cgi-red); }
@@ -792,7 +855,7 @@
         .multiselect-group { display: flex; flex-wrap: wrap; gap: 3px; }
         .multiselect-chip {
             padding: 2px 8px; border: 1px solid var(--border); border-radius: 12px;
-            font-size: 10px; cursor: pointer; transition: all 0.15s;
+            font-size: var(--fs-body-sm); cursor: pointer; transition: all 0.15s;
             color: var(--text-secondary); background: var(--bg-surface2);
         }
         .multiselect-chip.selected {
@@ -803,25 +866,25 @@
         .file-list { max-height: 200px; overflow-y: auto; }
         .file-item {
             display: flex; align-items: center; gap: 8px; padding: 5px 8px;
-            border-bottom: 1px solid var(--border); font-size: 11px;
+            border-bottom: 1px solid var(--border); font-size: var(--fs-body-sm);
         }
         .file-icon {
             background: var(--cgi-red-light); color: var(--cgi-red); padding: 2px 6px;
-            border-radius: 3px; font-size: 8px; font-weight: 700;
+            border-radius: 3px; font-size: var(--fs-body-sm); font-weight: 700;
         }
         .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .file-size { color: var(--text-dim); font-size: 10px; }
+        .file-size { color: var(--text-dim); font-size: var(--fs-body-sm); }
         .file-actions { display: flex; gap: 4px; }
         .file-btn {
             background: none; border: 1px solid var(--border); color: var(--text-secondary);
-            border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 11px;
+            border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: var(--fs-body-sm);
         }
         .file-btn:hover { border-color: var(--cgi-red); color: var(--cgi-red); }
 
         /* Toast */
         .toast-container { position: fixed; top: 60px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 6px; }
         .toast {
-            padding: 10px 16px; border-radius: var(--radius); font-size: 12px; font-weight: 500;
+            padding: 10px 16px; border-radius: var(--radius); font-size: var(--fs-body); font-weight: 500;
             background: var(--bg-surface); border: 1px solid var(--border);
             box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: toast-in 0.3s ease;
             display: flex; align-items: center; gap: 8px;
@@ -1011,12 +1074,19 @@
         }
         .welcome-logo {
             font-size: 56px; font-weight: 800; letter-spacing: 12px;
-            color: var(--cgi-red); margin-bottom: 4px;
+            color: var(--cgi-red); margin-bottom: var(--space-3);
             text-shadow: 0 0 40px var(--cgi-red-glow);
+            line-height: 1;
         }
         .welcome-full-name {
-            font-size: var(--fs-body-lg); font-weight: var(--fw-regular); color: var(--text-secondary);
-            letter-spacing: 1px; margin-bottom: 28px; line-height: var(--lh-body-lg); max-width: 760px;
+            font-size: var(--fs-body-lg);
+            font-weight: var(--fw-regular);
+            color: var(--text-secondary);
+            letter-spacing: 1px;
+            margin-bottom: var(--space-8);
+            line-height: var(--lh-body-lg);
+            max-width: 760px;
+            margin-top: var(--space-2);
         }
 
         /* Sidebar separator */
@@ -1046,7 +1116,7 @@
         /* Nav-Subtitle — Phase 10: 13 px fuer Lesbarkeit */
         .nav-item .nav-subtitle {
             display: none;
-            font-size: 13px;
+            font-size: var(--fs-body);
             font-weight: var(--fw-regular);
             color: var(--text-dim);
             margin-top: 2px;
@@ -1063,12 +1133,29 @@
             padding: 40px; text-align: center;
         }
         .placeholder-page .ph-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; }
-        .placeholder-page .ph-title { font-size: 18px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
-        .placeholder-page .ph-desc { font-size: 12px; max-width: 400px; line-height: 1.6; }
+        .placeholder-page .ph-title {
+            font-size: var(--fs-h2);
+            font-weight: var(--fw-semibold);
+            color: var(--text-secondary);
+            margin-bottom: var(--space-3);
+            line-height: var(--lh-h2);
+        }
+        .placeholder-page .ph-desc {
+            font-size: var(--fs-body-lg);
+            max-width: 520px;
+            line-height: var(--lh-body-lg);
+            color: var(--text-secondary);
+        }
         .placeholder-page .ph-badge {
-            margin-top: 12px; padding: 4px 12px; border-radius: 12px;
-            font-size: 10px; font-weight: 600; background: var(--bg-surface);
-            border: 1px solid var(--border); color: var(--text-dim);
+            margin-top: var(--space-4);
+            padding: var(--space-2) var(--space-4);
+            border-radius: 20px;
+            font-size: var(--fs-body-sm);
+            font-weight: var(--fw-semibold);
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            line-height: var(--lh-body-sm);
         }
 
         /* ============================================================
@@ -1153,10 +1240,10 @@
             color: var(--text-dim);
             line-height: var(--lh-body-sm);
         }
-        .role1-transport-header .unit-dist { font-size: 10px; font-weight: 600; color: var(--info, #5DADE2); margin-right: 4px; }
-        .role1-transport-header .eta { font-size: 11px; font-weight: 700; color: var(--warning); }
+        .role1-transport-header .unit-dist { font-size: var(--fs-body-sm); font-weight: 600; color: var(--info, #5DADE2); margin-right: 4px; }
+        .role1-transport-header .eta { font-size: var(--fs-body-sm); font-weight: 700; color: var(--warning); }
         .role1-transport-header .toggle-arrow {
-            font-size: 10px; color: var(--text-dim); transition: transform 0.2s;
+            font-size: var(--fs-body-sm); color: var(--text-dim); transition: transform 0.2s;
             flex-shrink: 0; margin-left: 4px;
         }
         .role1-transport-card.collapsed .toggle-arrow { transform: rotate(-90deg); }
@@ -1171,10 +1258,10 @@
         .role1-tp-patient:last-child { border-bottom: none; }
         .role1-tp-triage {
             width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center;
-            justify-content: center; font-size: 9px; font-weight: 800; color: #fff; flex-shrink: 0;
+            justify-content: center; font-size: var(--fs-body-sm); font-weight: 800; color: #fff; flex-shrink: 0;
         }
-        .role1-tp-name { font-size: 11px; font-weight: 600; flex: 1; }
-        .role1-tp-injury { font-size: 10px; color: var(--text-dim); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .role1-tp-name { font-size: var(--fs-body-sm); font-weight: 600; flex: 1; }
+        .role1-tp-injury { font-size: var(--fs-body-sm); color: var(--text-dim); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .role1-tp-patient.t1 { animation: r1-pulse-t1 2s ease-in-out infinite; }
         @keyframes r1-pulse-t1 { 0%,100% { background: transparent; } 50% { background: rgba(255,0,0,0.06); } }
 
@@ -1224,7 +1311,7 @@
             margin-bottom: 16px;
         }
         .r1-detail-section-title {
-            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            font-size: var(--fs-body-sm); font-weight: 700; text-transform: uppercase;
             letter-spacing: 0.5px; color: var(--accent); margin-bottom: 8px;
         }
         .r1-detail-grid {
@@ -1234,19 +1321,19 @@
             background: var(--bg-surface2); border-radius: 6px; padding: 8px 12px;
         }
         .r1-detail-field .field-label {
-            font-size: 9px; text-transform: uppercase; color: var(--text-dim);
+            font-size: var(--fs-body-sm); text-transform: uppercase; color: var(--text-dim);
             letter-spacing: 0.3px; margin-bottom: 2px;
         }
-        .r1-detail-field .field-value { font-size: 12px; font-weight: 600; }
+        .r1-detail-field .field-value { font-size: var(--fs-body); font-weight: 600; }
         .r1-detail-injuries {
             display: flex; flex-wrap: wrap; gap: 6px;
         }
         .r1-detail-injuries .injury-tag {
             background: rgba(231,76,60,0.15); color: #E74C3C; border-radius: 4px;
-            padding: 3px 8px; font-size: 10px; font-weight: 600;
+            padding: 3px 8px; font-size: var(--fs-body-sm); font-weight: 600;
         }
         .r1-detail-treatments .treatment-item {
-            padding: 4px 0; font-size: 11px; color: var(--text-secondary);
+            padding: 4px 0; font-size: var(--fs-body-sm); color: var(--text-secondary);
             border-bottom: 1px solid var(--border);
         }
         .r1-detail-treatments .treatment-item:last-child { border-bottom: none; }
@@ -1255,12 +1342,12 @@
             border-radius: 8px; padding: 12px 16px; margin-top: 12px;
         }
         .r1-llm-hints .hints-title {
-            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            font-size: var(--fs-body-sm); font-weight: 700; text-transform: uppercase;
             color: var(--info, #5DADE2); margin-bottom: 6px;
             display: flex; align-items: center; gap: 6px;
         }
         .r1-llm-hints .hints-content {
-            font-size: 11px; line-height: 1.6; color: var(--text-secondary);
+            font-size: var(--fs-body-sm); line-height: 1.6; color: var(--text-secondary);
         }
         .r1-llm-hints .hints-content ul { margin: 4px 0; padding-left: 16px; }
         .r1-llm-hints .hints-content li { margin: 2px 0; }
@@ -1275,20 +1362,20 @@
             background: rgba(46,204,113,0.08);
         }
         .role1-arrived-badge {
-            font-size: 9px; font-weight: 700; color: var(--success, #2ECC71);
+            font-size: var(--fs-body-sm); font-weight: 700; color: var(--success, #2ECC71);
             background: rgba(46,204,113,0.12); border-radius: 4px; padding: 2px 6px;
         }
         /* Map markers */
         .bat-marker {
             background: var(--bg-elevated, #1A2848); border: 2px solid var(--accent, #E11937);
-            border-radius: 8px; padding: 4px 8px; font-size: 10px; font-weight: 700;
+            border-radius: 8px; padding: 4px 8px; font-size: var(--fs-body-sm); font-weight: 700;
             color: var(--text-primary, #E0E8F5); white-space: nowrap;
             display: flex; align-items: center; gap: 4px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.5);
         }
         .bat-marker .bat-count {
             background: var(--accent, #E11937); color: #fff; border-radius: 10px;
-            padding: 0 6px; font-size: 9px; min-width: 18px; text-align: center;
+            padding: 0 6px; font-size: var(--fs-body-sm); min-width: 18px; text-align: center;
         }
         .station-marker {
             background: var(--accent, #E11937); color: #fff; border-radius: 50%;
@@ -1311,7 +1398,7 @@
             display: flex; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
         }
         .map-layer-btn {
-            padding: 5px 10px; font-size: 10px; font-weight: 600;
+            padding: 5px 10px; font-size: var(--fs-body-sm); font-weight: 600;
             color: var(--text-dim, #6B6B8A); background: none; border: none;
             cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;
             border-right: 1px solid var(--border, rgba(255,255,255,0.08));
@@ -1327,7 +1414,7 @@
         .milsym-marker img { display: block; }
         .milsym-label {
             position: absolute; bottom: -14px; left: 50%; transform: translateX(-50%);
-            font-size: 9px; font-weight: 700; color: var(--text-primary, #E0E8F5);
+            font-size: var(--fs-body-sm); font-weight: 700; color: var(--text-primary, #E0E8F5);
             white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
             background: rgba(0,0,0,0.5); padding: 1px 4px; border-radius: 3px;
         }
@@ -1359,34 +1446,82 @@
         }
         .patient-card-details[open] { border-color: var(--border-light); }
         .patient-card-details.active-patient { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-light); }
+        /* Patient-Card — Phase 10: 16 px Name, 44 px Summary-Hoehe, atmendes Padding */
         .patient-card-details summary {
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 12px; cursor: pointer; user-select: none;
-            font-size: 12px; list-style: none;
+            display: flex; align-items: center; gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+            cursor: pointer; user-select: none;
+            font-size: var(--fs-body);
+            line-height: var(--lh-body);
+            list-style: none;
+            min-height: var(--touch-min);
         }
         .patient-card-details summary::-webkit-details-marker { display: none; }
         .patient-card-details summary .triage-dot {
-            width: 26px; height: 26px; border-radius: 6px;
+            width: 32px; height: 32px; border-radius: 6px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 10px; font-weight: 800; color: #fff; flex-shrink: 0;
+            font-size: var(--fs-body-sm);
+            font-weight: var(--fw-bold);
+            color: #fff; flex-shrink: 0;
+            line-height: 1;
         }
-        .patient-card-details summary .p-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .patient-card-details summary .p-badges { display: flex; gap: 3px; flex-shrink: 0; }
-        .badge-sm { font-size: 8px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+        .patient-card-details summary .p-name {
+            font-weight: var(--fw-semibold);
+            font-size: var(--fs-body);
+            flex: 1; min-width: 0;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .patient-card-details summary .p-badges {
+            display: flex; gap: var(--space-1); flex-shrink: 0;
+        }
+        .badge-sm {
+            font-size: var(--fs-body-sm);
+            padding: 2px var(--space-2);
+            border-radius: 8px;
+            font-weight: var(--fw-semibold);
+            line-height: var(--lh-body-sm);
+        }
         .patient-card-body {
-            padding: 6px 12px 10px; border-top: 1px solid var(--border);
-            font-size: 11px; line-height: 1.5;
+            padding: var(--space-3) var(--space-4) var(--space-4);
+            border-top: 1px solid var(--border);
+            font-size: var(--fs-body);
+            line-height: var(--lh-body);
         }
         .patient-card-body .pt-entry {
-            padding: 4px 8px; margin-bottom: 3px;
+            padding: var(--space-2) var(--space-3);
+            margin-bottom: var(--space-2);
             border-left: 2px solid var(--accent); border-radius: 0 4px 4px 0;
             background: var(--bg-surface2);
         }
-        .patient-card-body .pt-entry .pt-time { font-size: 9px; color: var(--accent); font-weight: 600; }
-        .patient-card-body .pt-entry .pt-text { font-size: 11px; color: var(--text-primary); }
-        .patient-card-body .pt-meta { font-size: 10px; color: var(--text-dim); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
-        .patient-card-body .pt-meta span { background: var(--bg-elevated); padding: 1px 6px; border-radius: 6px; }
-        .patient-card-chevron { font-size: 10px; color: var(--text-dim); transition: transform 0.15s; }
+        .patient-card-body .pt-entry .pt-time {
+            font-size: var(--fs-body-sm);
+            color: var(--accent);
+            font-weight: var(--fw-semibold);
+            font-family: var(--font-mono);
+            line-height: var(--lh-body-sm);
+        }
+        .patient-card-body .pt-entry .pt-text {
+            font-size: var(--fs-body);
+            color: var(--text-primary);
+            line-height: var(--lh-body);
+        }
+        .patient-card-body .pt-meta {
+            font-size: var(--fs-body-sm);
+            color: var(--text-dim);
+            margin-top: var(--space-2);
+            display: flex; flex-wrap: wrap; gap: var(--space-2);
+            line-height: var(--lh-body-sm);
+        }
+        .patient-card-body .pt-meta span {
+            background: var(--bg-elevated);
+            padding: 2px var(--space-2);
+            border-radius: 6px;
+        }
+        .patient-card-chevron {
+            font-size: var(--fs-body);
+            color: var(--text-dim);
+            transition: transform 0.15s;
+        }
         .patient-card-details[open] .patient-card-chevron { transform: rotate(90deg); }
 
         /* Dashboard Grid */
@@ -1425,22 +1560,23 @@
         .activity-bar {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: var(--space-3);
             padding: 0;
             max-height: 0;
             background: var(--bg-elevated);
             border-bottom: none;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: var(--fs-body-sm);
+            font-weight: var(--fw-semibold);
             color: var(--text-primary);
             position: relative;
             overflow: hidden;
             z-index: 50;
             transition: max-height 0.2s, padding 0.2s;
+            line-height: var(--lh-body-sm);
         }
         .activity-bar.active {
-            max-height: 40px;
-            padding: 8px 16px;
+            max-height: 52px;
+            padding: var(--space-3) var(--space-4);
             border-bottom: 1px solid var(--border);
         }
         .activity-bar .activity-progress {
@@ -1457,7 +1593,7 @@
         }
         .activity-bar .activity-text { flex: 1; }
         .activity-bar .activity-detail {
-            font-size: 10px; color: var(--text-dim); font-weight: 400;
+            font-size: var(--fs-body-sm); color: var(--text-dim); font-weight: 400;
         }
 
         /* ============================================================
@@ -1474,7 +1610,7 @@
             margin-bottom: 32px;
         }
         .vision-hero-eyebrow {
-            font-size: 11px; color: var(--accent, #c8b878);
+            font-size: var(--fs-body-sm); color: var(--accent, #c8b878);
             letter-spacing: 0.25em; text-transform: uppercase; font-weight: 700;
             margin-bottom: 12px;
         }
@@ -1500,11 +1636,11 @@
             font-size: 20px; color: var(--accent, #c8b878); margin-bottom: 8px;
         }
         .vision-principle .vp-title {
-            font-size: 13px; font-weight: 700; color: var(--text-primary);
+            font-size: var(--fs-body); font-weight: 700; color: var(--text-primary);
             margin-bottom: 6px; letter-spacing: 0.05em; text-transform: uppercase;
         }
         .vision-principle .vp-text {
-            font-size: 11px; line-height: 1.5; color: var(--text-secondary);
+            font-size: var(--fs-body-sm); line-height: 1.5; color: var(--text-secondary);
         }
 
         .vision-section-title {
@@ -1538,11 +1674,11 @@
             letter-spacing: 0.02em;
         }
         .vision-usecase .vuc-subtitle {
-            font-size: 11px; color: var(--text-dim); margin-top: 2px;
+            font-size: var(--fs-body-sm); color: var(--text-dim); margin-top: 2px;
         }
         .vision-usecase .vuc-body { padding: 18px; flex: 1; }
         .vision-usecase .vuc-body p {
-            font-size: 12px; line-height: 1.7; color: var(--text-secondary);
+            font-size: var(--fs-body); line-height: 1.7; color: var(--text-secondary);
             margin: 0 0 16px;
         }
         .vision-usecase .vuc-body strong { color: var(--text-primary); }
@@ -1552,7 +1688,7 @@
         }
         .vision-usecase .vuc-detail-row {
             display: grid; grid-template-columns: 130px 1fr; gap: 10px;
-            font-size: 10px; align-items: start;
+            font-size: var(--fs-body-sm); align-items: start;
         }
         .vision-usecase .vuc-label {
             color: var(--accent, #c8b878); font-weight: 600;
@@ -1569,12 +1705,12 @@
         .vts-row {
             display: grid; grid-template-columns: 180px 1fr; gap: 14px;
             padding: 8px 0; border-bottom: 1px dashed var(--border);
-            font-size: 12px;
+            font-size: var(--fs-body);
         }
         .vts-row:last-child { border-bottom: none; }
         .vts-label {
             color: var(--accent, #c8b878); font-weight: 700;
-            letter-spacing: 0.1em; text-transform: uppercase; font-size: 10px;
+            letter-spacing: 0.1em; text-transform: uppercase; font-size: var(--fs-body-sm);
         }
         .vts-value { color: var(--text-secondary); line-height: 1.6; }
 
@@ -1584,11 +1720,11 @@
             border-top: 1px solid var(--border);
         }
         .vf-title {
-            font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+            font-size: var(--fs-body); font-weight: 600; letter-spacing: 0.1em;
             text-transform: uppercase; color: var(--text-secondary);
             margin-bottom: 6px;
         }
-        .vf-subtitle { font-size: 11px; font-style: italic; }
+        .vf-subtitle { font-size: var(--fs-body-sm); font-style: italic; }
     </style>
 </head>
 <body data-theme="dark">
@@ -1704,13 +1840,13 @@
             <!-- Modus-Umschalter -->
             <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg-surface);border-bottom:1px solid var(--border)">
                 <div style="display:flex;align-items:center;gap:12px">
-                    <span style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">Modus</span>
-                    <button class="btn btn-cgi" id="btn-mode-feld" onclick="setMode('feld')" style="padding:5px 16px;font-size:12px">Feld</button>
-                    <button class="btn" id="btn-mode-fahrzeug" onclick="setMode('fahrzeug')" style="padding:5px 16px;font-size:12px">Fahrzeug</button>
+                    <span style="font-size:var(--fs-body-sm);font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">Modus</span>
+                    <button class="btn btn-cgi" id="btn-mode-feld" onclick="setMode('feld')" style="padding:5px 16px;font-size:var(--fs-body)">Feld</button>
+                    <button class="btn" id="btn-mode-fahrzeug" onclick="setMode('fahrzeug')" style="padding:5px 16px;font-size:var(--fs-body)">Fahrzeug</button>
                 </div>
                 <div style="display:flex;align-items:center;gap:12px">
-                    <span id="patient-count-badge" style="font-size:11px;color:var(--text-dim)">0 Patienten</span>
-                    <span id="tts-indicator" style="font-size:10px;color:var(--text-dim);cursor:pointer" onclick="toggleTTS()" title="Sprachausgabe ein/aus">&#128264; TTS an</span>
+                    <span id="patient-count-badge" style="font-size:var(--fs-body-sm);color:var(--text-dim)">0 Patienten</span>
+                    <span id="tts-indicator" style="font-size:var(--fs-body-sm);color:var(--text-dim);cursor:pointer" onclick="toggleTTS()" title="Sprachausgabe ein/aus">&#128264; TTS an</span>
                 </div>
             </div>
 
@@ -1744,10 +1880,10 @@
                      User sie analysiert oder verwirft. -->
                 <div id="pending-transcripts-wrapper" style="display:none;flex:0 0 auto">
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:0 4px">
-                        <div style="font-size:13px;font-weight:700;color:var(--mil-tan, #c8b878);letter-spacing:0.08em">AUFNAHMEN — WARTEN AUF ANALYSE</div>
-                        <span id="pending-count-badge" style="font-size:10px;color:var(--text-dim);font-family:monospace"></span>
+                        <div style="font-size:var(--fs-body);font-weight:700;color:var(--mil-tan, #c8b878);letter-spacing:0.08em">AUFNAHMEN — WARTEN AUF ANALYSE</div>
+                        <span id="pending-count-badge" style="font-size:var(--fs-body-sm);color:var(--text-dim);font-family:monospace"></span>
                         <div style="flex:1"></div>
-                        <button class="btn btn-cgi" onclick="analyzeAllPending()" style="padding:6px 12px;font-size:10px;font-weight:700" title="Alle unanalysierten Aufnahmen nacheinander analysieren">&#129504; Alle analysieren</button>
+                        <button class="btn btn-cgi" onclick="analyzeAllPending()" style="padding:6px 12px;font-size:var(--fs-body-sm);font-weight:700" title="Alle unanalysierten Aufnahmen nacheinander analysieren">&#129504; Alle analysieren</button>
                     </div>
                     <div id="pending-transcripts-list" style="display:flex;flex-direction:column;gap:6px;max-height:380px;overflow-y:auto"></div>
                 </div>
@@ -1755,38 +1891,38 @@
                 <!-- Sprachbefehle-Referenz (Feld) -->
                 <!-- Einsatzablauf (aufklappbar) -->
                 <details id="flow-guide" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
-                    <summary style="padding:10px 16px;cursor:pointer;font-size:12px;font-weight:700;color:var(--cgi-red);display:flex;align-items:center;gap:8px;user-select:none">
+                    <summary style="padding:10px 16px;cursor:pointer;font-size:var(--fs-body);font-weight:700;color:var(--cgi-red);display:flex;align-items:center;gap:8px;user-select:none">
                         Einsatzablauf — Sprachbefehle
-                        <span style="margin-left:auto;font-size:9px;color:var(--text-dim);font-weight:400">aufklappen</span>
+                        <span style="margin-left:auto;font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">aufklappen</span>
                     </summary>
                     <div style="padding:8px 12px 12px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border)">
-                        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:2px 0">Phase A — Patienten aufnehmen</div>
+                        <div style="font-size:var(--fs-body-sm);font-weight:700;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:2px 0">Phase A — Patienten aufnehmen</div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">1</span>
-                            <div><span style="font-size:11px;font-weight:600">Neuer Patient + Aufnahme</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Neuer Patient"</strong> — Akte anlegen, Aufnahme startet automatisch</span></div>
+                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">Neuer Patient + Aufnahme</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Neuer Patient"</strong> — Akte anlegen, Aufnahme startet automatisch</span></div>
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">2</span>
-                            <div><span style="font-size:11px;font-weight:600">Befund frei sprechen</span><br><span style="font-size:10px;color:var(--text-dim)">Aufnahme läuft — Verletzungen, Vitalwerte, Maßnahmen diktieren</span></div>
+                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">Befund frei sprechen</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Aufnahme läuft — Verletzungen, Vitalwerte, Maßnahmen diktieren</span></div>
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">3</span>
-                            <div><span style="font-size:11px;font-weight:600">Aufnahme abschließen</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Patient fertig"</strong> stoppt die Aufnahme. Triage erfolgt erst in der Rettungsstation (Role 1).</span></div>
+                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">Aufnahme abschließen</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Patient fertig"</strong> stoppt die Aufnahme. Triage erfolgt erst in der Rettungsstation (Role 1).</span></div>
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">&#8634;</span>
-                            <div><span style="font-size:11px;font-weight:600">Nächster Patient</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Neuer Patient"</strong> — stoppt laufende Aufnahme, legt neuen an</span></div>
+                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">Nächster Patient</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Neuer Patient"</strong> — stoppt laufende Aufnahme, legt neuen an</span></div>
                         </div>
-                        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">Phase B — Alle Patienten verarbeiten</div>
+                        <div style="font-size:var(--fs-body-sm);font-weight:700;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">Phase B — Alle Patienten verarbeiten</div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid #5DADE2;background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:#5DADE2;min-width:20px;text-align:center">4</span>
-                            <div><span style="font-size:11px;font-weight:600">KI-Analyse</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Alle Patienten analysieren"</strong> — KI extrahiert Felder aus Transkripten</span></div>
+                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">KI-Analyse</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Alle Patienten analysieren"</strong> — KI extrahiert Felder aus Transkripten</span></div>
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid #2ECC71;background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:#2ECC71;min-width:20px;text-align:center">5</span>
-                            <div><span style="font-size:11px;font-weight:600">An Leitstelle melden</span><br><span style="font-size:10px;color:var(--text-dim)"><strong>"Patienten melden"</strong> — analysierte Daten übertragen</span></div>
+                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">An Leitstelle melden</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Patienten melden"</strong> — analysierte Daten übertragen</span></div>
                         </div>
-                        <div style="margin-top:4px;padding:6px 10px;background:var(--bg-elevated);border-radius:var(--radius);font-size:9px;color:var(--text-dim)">
+                        <div style="margin-top:4px;padding:6px 10px;background:var(--bg-elevated);border-radius:var(--radius);font-size:var(--fs-body-sm);color:var(--text-dim)">
                             Weitere: <strong>"Eintrag löschen"</strong> · <strong>"Wie viele Patienten"</strong> · <strong>"Export"</strong>
                         </div>
                     </div>
@@ -1796,7 +1932,7 @@
                 <div id="patient-cards-feld" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
                     <div class="empty" style="padding:30px;text-align:center">
                         <div class="icon" style="font-size:28px;opacity:0.4">&#127908;</div>
-                        <div style="font-size:12px;color:var(--text-dim)">Sprachbefehl: <strong>"Neuer Patient"</strong> → <strong>"Aufnahme starten"</strong></div>
+                        <div style="font-size:var(--fs-body);color:var(--text-dim)">Sprachbefehl: <strong>"Neuer Patient"</strong> → <strong>"Aufnahme starten"</strong></div>
                     </div>
                 </div>
             </div>
@@ -1806,26 +1942,26 @@
 
                 <!-- Aktions-Leiste oben -->
                 <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap">
-                    <button class="btn" onclick="voiceNewPatient()" style="padding:8px 14px;font-size:12px;font-weight:700;background:var(--cgi-red);border-color:var(--cgi-red);color:#fff">+ Neuer Patient</button>
-                    <button class="btn" onclick="analyzeSession()" style="padding:8px 14px;font-size:12px" id="btn-analyze">&#129504; Analyse</button>
-                    <button class="btn" onclick="sendToBackend()" style="padding:8px 14px;font-size:12px;background:#2ECC71;border-color:#2ECC71;color:#fff" id="btn-send-backend">&#9889; Alle melden</button>
-                    <button class="btn" onclick="rfidBatchWrite()" style="padding:8px 14px;font-size:12px;background:var(--mil-tan,#c8b878);border-color:var(--mil-tan,#c8b878);color:#000" id="btn-rfid-batch" title="Alle Patienten ohne RFID-Karte nacheinander auf Karten schreiben">&#128179; RFID-Batch</button>
-                    <button class="btn" onclick="exportDocx()" style="padding:8px 14px;font-size:12px">&#128196; Export</button>
+                    <button class="btn" onclick="voiceNewPatient()" style="padding:8px 14px;font-size:var(--fs-body);font-weight:700;background:var(--cgi-red);border-color:var(--cgi-red);color:#fff">+ Neuer Patient</button>
+                    <button class="btn" onclick="analyzeSession()" style="padding:8px 14px;font-size:var(--fs-body)" id="btn-analyze">&#129504; Analyse</button>
+                    <button class="btn" onclick="sendToBackend()" style="padding:8px 14px;font-size:var(--fs-body);background:#2ECC71;border-color:#2ECC71;color:#fff" id="btn-send-backend">&#9889; Alle melden</button>
+                    <button class="btn" onclick="rfidBatchWrite()" style="padding:8px 14px;font-size:var(--fs-body);background:var(--mil-tan,#c8b878);border-color:var(--mil-tan,#c8b878);color:#000" id="btn-rfid-batch" title="Alle Patienten ohne RFID-Karte nacheinander auf Karten schreiben">&#128179; RFID-Batch</button>
+                    <button class="btn" onclick="exportDocx()" style="padding:8px 14px;font-size:var(--fs-body)">&#128196; Export</button>
                 </div>
 
                 <!-- BAT-Standort + Rueckfahrt zur Rettungsstation (Demo-Story) -->
-                <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;padding:8px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);font-size:11px">
-                    <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">&#127757; Standort</span>
-                    <select id="bat-position-preset" onchange="setBatPositionFromPreset(this.value)" style="padding:5px 8px;border:1px solid var(--border);background:var(--bg-surface2);color:var(--text-primary);font-size:11px;min-width:160px">
+                <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;padding:8px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);font-size:var(--fs-body-sm)">
+                    <span style="font-size:var(--fs-body-sm);font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">&#127757; Standort</span>
+                    <select id="bat-position-preset" onchange="setBatPositionFromPreset(this.value)" style="padding:5px 8px;border:1px solid var(--border);background:var(--bg-surface2);color:var(--text-primary);font-size:var(--fs-body-sm);min-width:160px">
                         <option value="">— Standort wählen —</option>
                     </select>
-                    <span id="bat-position-status" style="font-size:10px;color:var(--text-dim);flex:1"></span>
-                    <button class="btn" onclick="batReturnToStation()" id="btn-bat-return" style="padding:6px 12px;font-size:11px;font-weight:700;background:var(--info,#5DADE2);border-color:var(--info,#5DADE2);color:#fff" title="BAT bewegt sich animiert vom gewählten Standort zur Rettungsstation">&#9881; Rückfahrt zur Rettungsstation</button>
+                    <span id="bat-position-status" style="font-size:var(--fs-body-sm);color:var(--text-dim);flex:1"></span>
+                    <button class="btn" onclick="batReturnToStation()" id="btn-bat-return" style="padding:6px 12px;font-size:var(--fs-body-sm);font-weight:700;background:var(--info,#5DADE2);border-color:var(--info,#5DADE2);color:#fff" title="BAT bewegt sich animiert vom gewählten Standort zur Rettungsstation">&#9881; Rückfahrt zur Rettungsstation</button>
                 </div>
 
                 <!-- Patientenliste (Hauptbereich) -->
                 <div id="patient-cards-fz" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
-                    <div class="empty" style="padding:30px;text-align:center"><div class="icon" style="font-size:24px;opacity:0.4">&#9764;</div><div style="font-size:12px;color:var(--text-dim)">Keine Patienten — "Neuer Patient" klicken oder per Sprache anlegen</div></div>
+                    <div class="empty" style="padding:30px;text-align:center"><div class="icon" style="font-size:24px;opacity:0.4">&#9764;</div><div style="font-size:var(--fs-body);color:var(--text-dim)">Keine Patienten — "Neuer Patient" klicken oder per Sprache anlegen</div></div>
                 </div>
             </div>
 
@@ -1856,18 +1992,18 @@
                 <!-- Kopfzeile mit Titel, Zähler und Filter-Toggle -->
                 <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
                     <div style="font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:0.05em">PATIENTEN-DATENBANK</div>
-                    <span id="admin-patients-count" style="font-size:11px;color:var(--text-dim);font-family:monospace">0 Patienten</span>
+                    <span id="admin-patients-count" style="font-size:var(--fs-body-sm);color:var(--text-dim);font-family:monospace">0 Patienten</span>
                     <div style="flex:1"></div>
-                    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-body-sm);color:var(--text-dim);cursor:pointer;user-select:none">
                         <input type="checkbox" id="admin-patients-show-drafts" onchange="renderAdminPatients()" style="cursor:pointer">
                         Entwürfe anzeigen
                     </label>
-                    <button class="btn" onclick="renderAdminPatients()" style="padding:4px 10px;font-size:10px">&#8635; Aktualisieren</button>
+                    <button class="btn" onclick="renderAdminPatients()" style="padding:4px 10px;font-size:var(--fs-body-sm)">&#8635; Aktualisieren</button>
                 </div>
 
                 <!-- Tabelle -->
                 <div style="flex:1;min-height:0;overflow-y:auto;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
-                    <table id="admin-patients-table" style="width:100%;border-collapse:collapse;font-size:11px">
+                    <table id="admin-patients-table" style="width:100%;border-collapse:collapse;font-size:var(--fs-body-sm)">
                         <thead style="position:sticky;top:0;background:var(--bg-surface2);z-index:1">
                             <tr style="text-align:left;border-bottom:1px solid var(--border)">
                                 <th style="padding:8px 10px;font-weight:600;color:var(--text-dim);letter-spacing:0.06em">ZEIT</th>
@@ -1885,7 +2021,7 @@
                     </table>
                 </div>
 
-                <div style="font-size:10px;color:var(--text-dim);padding:0 6px">
+                <div style="font-size:var(--fs-body-sm);color:var(--text-dim);padding:0 6px">
                     Standard-Ansicht zeigt nur gemeldete Patienten (&laquo;übermittelt&raquo; an die Leitstelle).
                     Mit &laquo;Entwürfe anzeigen&raquo; siehst du auch nicht-gemeldete Patienten (Feld-Entwürfe).
                 </div>
@@ -1950,7 +2086,7 @@
                         <div class="empty">
                             <div class="icon">&#9877;</div>
                             <div>Warte auf Meldungen von Feldgeräten...</div>
-                            <div style="margin-top:8px;font-size:11px">BATs senden Verwundete über SAFIR Phase 0</div>
+                            <div style="margin-top:8px;font-size:var(--fs-body-sm)">BATs senden Verwundete über SAFIR Phase 0</div>
                         </div>
                     </div>
 
@@ -2275,7 +2411,7 @@
                         </div>
                         <div style="margin-top:12px">
                             <button class="btn btn-cgi" onclick="saveVoiceCommands()">Sprachbefehle speichern</button>
-                            <span id="voice-save-status" style="font-size:11px;color:var(--success);margin-left:8px"></span>
+                            <span id="voice-save-status" style="font-size:var(--fs-body-sm);color:var(--success);margin-left:8px"></span>
                         </div>
                     </div>
 
@@ -2300,7 +2436,7 @@
                         </div>
                         <div class="settings-card">
                             <div class="settings-card-title">Vosk Sprachsteuerung</div>
-                            <div style="font-size:12px;color:var(--text-secondary)">
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary)">
                                 Status: <span id="settings-vosk-status" style="font-weight:600">-</span>
                             </div>
                             <div class="btn-group">
@@ -2325,7 +2461,7 @@
                             </div>
                             <div class="btn-group">
                                 <button class="btn btn-cgi" onclick="saveLLMSettings()">Speichern</button>
-                                <span id="llm-save-status" style="font-size:11px;color:var(--success);margin-left:8px"></span>
+                                <span id="llm-save-status" style="font-size:var(--fs-body-sm);color:var(--success);margin-left:8px"></span>
                             </div>
                         </div>
                     </div>
@@ -2350,7 +2486,7 @@
                             </div>
                             <div class="btn-group">
                                 <button class="btn btn-cgi" onclick="saveUnitSettings()">Speichern</button>
-                                <span id="unit-save-status" style="font-size:11px;color:var(--success);margin-left:8px"></span>
+                                <span id="unit-save-status" style="font-size:var(--fs-body-sm);color:var(--success);margin-left:8px"></span>
                             </div>
                         </div>
                         <div class="settings-card">
@@ -2369,7 +2505,7 @@
                             <div class="btn-group">
                                 <button class="btn btn-cgi" onclick="saveBackendSettings()">Speichern</button>
                                 <button class="btn" onclick="testBackendConnection()">Verbindung testen</button>
-                                <span id="backend-save-status" style="font-size:11px;margin-left:8px"></span>
+                                <span id="backend-save-status" style="font-size:var(--fs-body-sm);margin-left:8px"></span>
                             </div>
                         </div>
                         <div class="settings-card">
@@ -2387,24 +2523,24 @@
                         <div class="settings-desc">Schnittstellen zu externen Führungsinformationssystemen.</div>
                         <div class="settings-card">
                             <div class="settings-card-title">SitaWare (D-LBO)</div>
-                            <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">
+                            <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:8px">
                                 Schnittstelle zu SitaWare Edge / Frontline / Headquarters.<br>
                                 Protokolle: Cursor-on-Target 2.0, NATO Vector Graphics 2.0.2<br>
                                 Standards: APP-6D, MIL-STD-2525D, MIP 4.3+, STANAG 4609
                             </div>
                             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Edge 2.0</span>
-                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Frontline</span>
-                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Headquarters</span>
-                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">ATAK / WinTAK</span>
-                                <span style="font-size:9px;padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">NATO JCOP</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Edge 2.0</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Frontline</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Headquarters</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">ATAK / WinTAK</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">NATO JCOP</span>
                             </div>
-                            <div style="font-size:10px;font-weight:600;margin-bottom:6px;color:var(--text-primary)">Datenexport</div>
+                            <div style="font-size:var(--fs-body-sm);font-weight:600;margin-bottom:6px;color:var(--text-primary)">Datenexport</div>
                             <div class="btn-group">
-                                <button class="btn" onclick="exportSitawareCot()" style="padding:6px 12px;font-size:11px">&#9878; CoT XML (MEDEVAC)</button>
-                                <button class="btn" onclick="exportSitawareNvg()" style="padding:6px 12px;font-size:11px">&#9873; NVG Overlay (APP-6D)</button>
+                                <button class="btn" onclick="exportSitawareCot()" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#9878; CoT XML (MEDEVAC)</button>
+                                <button class="btn" onclick="exportSitawareNvg()" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#9873; NVG Overlay (APP-6D)</button>
                             </div>
-                            <div style="font-size:9px;color:var(--text-dim);margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-radius:var(--radius)">
+                            <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-radius:var(--radius)">
                                 CoT-Events werden als XML exportiert und können direkt in SitaWare, ATAK oder WinTAK importiert werden.
                                 NVG-Overlays enthalten APP-6D SIDC-Symbole für die taktische Lagekarte.
                             </div>
@@ -2418,7 +2554,7 @@
 
                         <div class="settings-card">
                             <div class="settings-card-title">Architektur-Überblick</div>
-                            <pre style="margin:0;padding:14px;background:var(--bg-elevated);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:10px;line-height:1.5;color:var(--text-secondary);white-space:pre;overflow-x:auto">
+                            <pre style="margin:0;padding:14px;background:var(--bg-elevated);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm);line-height:1.5;color:var(--text-secondary);white-space:pre;overflow-x:auto">
 [Jetson BAT] ──┐                                    ┌── [Surface R1]
   SAFIR-App    │                                    │    SAFIR-App
                │   ╔════════════════════════════╗   │
@@ -2437,7 +2573,7 @@
 
                         <div class="settings-card">
                             <div class="settings-card-title">Fünf Dinge die Sie wissen sollten</div>
-                            <div style="display:flex;flex-direction:column;gap:10px;font-size:12px;line-height:1.6">
+                            <div style="display:flex;flex-direction:column;gap:10px;font-size:var(--fs-body);line-height:1.6">
                                 <div style="display:flex;gap:10px;padding:8px;border-left:3px solid var(--accent, #c8b878);background:var(--bg-elevated)">
                                     <span style="color:var(--accent, #c8b878);font-weight:700;min-width:20px">1</span>
                                     <span>WireGuard ist seit Linux 5.6 Teil des Mainline-Kernels und gilt als Goldstandard der Transport-Verschlüsselung. Deutlich kleinerer Angriffsflächen-Footprint als IPsec/OpenVPN (~4.000 vs. 500.000 Zeilen Code).</span>
@@ -2463,11 +2599,11 @@
 
                         <div class="settings-card">
                             <div class="settings-card-title">Eingesetzte Kryptographie-Primitive</div>
-                            <table style="width:100%;border-collapse:collapse;font-size:11px">
+                            <table style="width:100%;border-collapse:collapse;font-size:var(--fs-body-sm)">
                                 <thead><tr style="background:var(--bg-elevated)">
-                                    <th style="text-align:left;padding:6px 10px;color:var(--accent, #c8b878);letter-spacing:0.08em;text-transform:uppercase;font-size:10px">Aufgabe</th>
-                                    <th style="text-align:left;padding:6px 10px;color:var(--accent, #c8b878);letter-spacing:0.08em;text-transform:uppercase;font-size:10px">Algorithmus</th>
-                                    <th style="text-align:left;padding:6px 10px;color:var(--accent, #c8b878);letter-spacing:0.08em;text-transform:uppercase;font-size:10px">Referenz</th>
+                                    <th style="text-align:left;padding:6px 10px;color:var(--accent, #c8b878);letter-spacing:0.08em;text-transform:uppercase;font-size:var(--fs-body-sm)">Aufgabe</th>
+                                    <th style="text-align:left;padding:6px 10px;color:var(--accent, #c8b878);letter-spacing:0.08em;text-transform:uppercase;font-size:var(--fs-body-sm)">Algorithmus</th>
+                                    <th style="text-align:left;padding:6px 10px;color:var(--accent, #c8b878);letter-spacing:0.08em;text-transform:uppercase;font-size:var(--fs-body-sm)">Referenz</th>
                                 </tr></thead>
                                 <tbody>
                                     <tr><td style="padding:6px 10px">Schlüsselaustausch</td><td style="padding:6px 10px;font-family:'Share Tech Mono',monospace">Curve25519 (ECDH)</td><td style="padding:6px 10px;color:var(--text-dim)">RFC 7748</td></tr>
@@ -2480,7 +2616,7 @@
 
                         <div class="settings-card" style="border:1px solid var(--warning)">
                             <div class="settings-card-title" style="color:var(--warning)">Transparente Limits</div>
-                            <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);line-height:1.6">
                                 Die aktuelle Demo-Konfiguration hat bewusst einige Härtungen <em>nicht</em> aktiv:
                                 <ul style="margin:8px 0 0;padding-left:20px">
                                     <li>Keine App-Layer-Verschlüsselung <em>zusätzlich</em> zu WireGuard (könnte für Defense-in-Depth ergänzt werden)</li>
@@ -2492,7 +2628,7 @@
                             </div>
                         </div>
 
-                        <div style="margin-top:8px;font-size:11px;color:var(--text-dim);text-align:right">
+                        <div style="margin-top:8px;font-size:var(--fs-body-sm);color:var(--text-dim);text-align:right">
                             Ausführliches Dokument: <code>docs/security-architecture.md</code>
                         </div>
                     </div>
@@ -2521,7 +2657,7 @@
                         <div class="settings-desc">System-Informationen und Verwaltung.</div>
                         <div class="settings-card">
                             <div class="settings-card-title">SAFIR Informationen</div>
-                            <div style="font-size:12px;color:var(--text-secondary);line-height:1.8">
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);line-height:1.8">
                                 <div><strong>Version:</strong> 2.1</div>
                                 <div><strong>Gerät:</strong> NVIDIA Jetson Orin Nano</div>
                                 <div><strong>Projekt:</strong> CGI Deutschland / AFCEA 2026</div>
@@ -2536,7 +2672,7 @@
                         </div>
                         <div class="settings-card" style="border:1px solid var(--info,#5DADE2)">
                             <div class="settings-card-title" style="color:var(--info,#5DADE2)">Testdaten generieren</div>
-                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
                                 Erzeugt einen Mix aus Test-Patienten in verschiedenen Zuständen (Entwurf, analysiert, gemeldet) und einen Test-BAT auf der Karte. So lässt sich der ganze Patient-Flow ohne vorheriges Diktieren demonstrieren. Patient-IDs haben das Prefix <code>TEST-</code>.
                             </div>
                             <div class="btn-group">
@@ -2546,22 +2682,22 @@
 
                         <div class="settings-card" style="border:1px solid var(--accent,#c8b878)">
                             <div class="settings-card-title" style="color:var(--accent,#c8b878)">&#128196; Patientendatenbank exportieren</div>
-                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
                                 Alle Patienten auf diesem Gerät als strukturierte Datei herunterladen. DOCX + PDF für Berichte an die Rettungsstation, JSON + XML für Interoperabilität mit Drittsystemen (SitaWare, NVG, Lagebildsysteme).
                             </div>
                             <div class="btn-group" style="gap:6px;flex-wrap:wrap">
-                                <button class="btn" onclick="exportPatientsFormat('docx')" style="padding:6px 12px;font-size:11px">&#128196; DOCX (Word)</button>
-                                <button class="btn" onclick="exportPatientsFormat('pdf')" style="padding:6px 12px;font-size:11px">&#128196; PDF</button>
-                                <button class="btn" onclick="exportPatientsFormat('json')" style="padding:6px 12px;font-size:11px;background:var(--bg-elevated);color:var(--text-primary)">&#123;&#125; JSON</button>
-                                <button class="btn" onclick="exportPatientsFormat('xml')" style="padding:6px 12px;font-size:11px;background:var(--bg-elevated);color:var(--text-primary)">&lt;/&gt; XML</button>
+                                <button class="btn" onclick="exportPatientsFormat('docx')" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#128196; DOCX (Word)</button>
+                                <button class="btn" onclick="exportPatientsFormat('pdf')" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#128196; PDF</button>
+                                <button class="btn" onclick="exportPatientsFormat('json')" style="padding:6px 12px;font-size:var(--fs-body-sm);background:var(--bg-elevated);color:var(--text-primary)">&#123;&#125; JSON</button>
+                                <button class="btn" onclick="exportPatientsFormat('xml')" style="padding:6px 12px;font-size:var(--fs-body-sm);background:var(--bg-elevated);color:var(--text-primary)">&lt;/&gt; XML</button>
                             </div>
-                            <div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-style:italic">
+                            <div style="margin-top:8px;font-size:var(--fs-body-sm);color:var(--text-dim);font-style:italic">
                                 JSON + XML enthalten die kompletten Rohdaten (auch leere/unausgefüllte Felder). DOCX + PDF sind für Menschen formatiert, mit Übersichts-Tabelle und Detail-Sektion pro Patient inkl. 9-Liner, Vitals und Timeline.
                             </div>
                         </div>
                         <div class="settings-card" style="border:1px solid var(--warning)">
                             <div class="settings-card-title" style="color:var(--warning)">Daten zurücksetzen</div>
-                            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
                                 Löscht alle Patientendaten, Transporte, Positionen und Events auf diesem Gerät. Für einen sauberen Demo-Neustart.
                             </div>
                             <div class="btn-group">
@@ -2590,10 +2726,10 @@
     </div>
     <!-- Tabs -->
     <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:10px">
-        <button class="hw-tab active" data-tab="hw-system" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer">System</button>
-        <button class="hw-tab" data-tab="hw-temps" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Temperatur</button>
-        <button class="hw-tab" data-tab="hw-audio" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Audio</button>
-        <button class="hw-tab" data-tab="hw-oled" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">OLED</button>
+        <button class="hw-tab active" data-tab="hw-system" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer">System</button>
+        <button class="hw-tab" data-tab="hw-temps" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Temperatur</button>
+        <button class="hw-tab" data-tab="hw-audio" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Audio</button>
+        <button class="hw-tab" data-tab="hw-oled" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">OLED</button>
     </div>
 
     <!-- Tab: System -->
@@ -2611,12 +2747,12 @@
                 <span class="metric-value"><span id="ram-used">0</span> / <span id="ram-total">0</span> <span class="unit">MB</span></span>
             </div>
             <div class="bar"><div class="bar-fill" id="ram-bar" style="width:0%;background:var(--success)"></div></div>
-            <div style="text-align:right;margin-top:3px"><span style="font-size:10px;color:var(--text-dim)" id="ram-percent">0</span><span style="font-size:10px;color:var(--text-dim)">%</span></div>
+            <div style="text-align:right;margin-top:3px"><span style="font-size:var(--fs-body-sm);color:var(--text-dim)" id="ram-percent">0</span><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">%</span></div>
         </div>
         <!-- Modelle im RAM -->
         <details style="margin:6px 0">
-            <summary style="font-size:10px;font-weight:600;color:var(--text-dim);cursor:pointer;user-select:none">Modelle &amp; Prozesse</summary>
-            <div id="hw-ram-details" style="margin-top:6px;font-size:10px;display:flex;flex-direction:column;gap:3px">
+            <summary style="font-size:var(--fs-body-sm);font-weight:600;color:var(--text-dim);cursor:pointer;user-select:none">Modelle &amp; Prozesse</summary>
+            <div id="hw-ram-details" style="margin-top:6px;font-size:var(--fs-body-sm);display:flex;flex-direction:column;gap:3px">
                 <span style="color:var(--text-dim)">Lade...</span>
             </div>
         </details>
@@ -2633,13 +2769,13 @@
                 <span class="metric-value"><span id="disk-used">0</span> / <span id="disk-total">0</span> <span class="unit">GB</span></span>
             </div>
             <div class="bar"><div class="bar-fill" id="disk-bar" style="width:0%;background:var(--info)"></div></div>
-            <div style="text-align:right;margin-top:3px"><span style="font-size:10px;color:var(--text-dim)" id="disk-percent">0</span><span style="font-size:10px;color:var(--text-dim)">%</span></div>
+            <div style="text-align:right;margin-top:3px"><span style="font-size:var(--fs-body-sm);color:var(--text-dim)" id="disk-percent">0</span><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">%</span></div>
         </div>
         <div class="field" style="margin-top:8px">
             <label>Whisper Modell</label>
             <select id="model-select" onchange="loadModel(this.value)"></select>
-            <div id="model-status" style="margin-top:4px;font-size:10px"><span style="color:var(--text-dim)">Nicht geladen</span></div>
-            <button class="btn" onclick="unloadModel()" style="margin-top:4px;padding:3px 8px;font-size:9px;width:100%">Modell entladen</button>
+            <div id="model-status" style="margin-top:4px;font-size:var(--fs-body-sm)"><span style="color:var(--text-dim)">Nicht geladen</span></div>
+            <button class="btn" onclick="unloadModel()" style="margin-top:4px;padding:3px 8px;font-size:var(--fs-body-sm);width:100%">Modell entladen</button>
         </div>
     </div>
 
@@ -2657,17 +2793,17 @@
         <div class="field">
             <label>Mikrofon-Test</label>
             <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-                <button class="btn" id="mic-test-btn" onclick="toggleMicTest()" style="padding:5px 10px;font-size:10px;flex-shrink:0">&#127908; Test</button>
-                <span id="mic-test-status" style="font-size:10px;color:var(--text-dim)">Inaktiv</span>
+                <button class="btn" id="mic-test-btn" onclick="toggleMicTest()" style="padding:5px 10px;font-size:var(--fs-body-sm);flex-shrink:0">&#127908; Test</button>
+                <span id="mic-test-status" style="font-size:var(--fs-body-sm);color:var(--text-dim)">Inaktiv</span>
             </div>
             <div style="height:14px;background:var(--bg-elevated);border-radius:4px;overflow:hidden;position:relative">
                 <div id="mic-test-bar" style="height:100%;width:0%;background:var(--success);transition:width 0.1s;border-radius:4px"></div>
-                <div id="mic-test-db" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--text-secondary)">-- dB</div>
+                <div id="mic-test-db" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:var(--fs-body-sm);font-weight:600;color:var(--text-secondary)">-- dB</div>
             </div>
             <div style="display:flex;justify-content:space-between;margin-top:2px">
-                <span style="font-size:8px;color:var(--text-dim)">Leise</span>
-                <span style="font-size:8px;color:var(--text-dim)">Peak: <span id="mic-test-peak">0</span>%</span>
-                <span style="font-size:8px;color:var(--text-dim)">Laut</span>
+                <span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Leise</span>
+                <span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Peak: <span id="mic-test-peak">0</span>%</span>
+                <span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Laut</span>
             </div>
         </div>
         <div class="field">
@@ -2687,7 +2823,7 @@
                 <img id="oled-preview" alt="OLED" width="256" height="128"
                      style="image-rendering:pixelated;display:block;background:#000" />
             </div>
-            <div id="oled-meta" style="font-size:9px;color:var(--text-dim);margin-top:4px">offline</div>
+            <div id="oled-meta" style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:4px">offline</div>
         </div>
         <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
             <button class="btn vbtn"
@@ -2698,7 +2834,7 @@
                     ontouchstart="vbtnDown('A', event)"
                     ontouchend="vbtnUp('A', event)">
                 <div>TASTER A</div>
-                <div id="vbtn-a-label" style="font-size:9px;font-weight:400;opacity:0.85;margin-top:2px">kurz: Screen · lang: Untermenu</div>
+                <div id="vbtn-a-label" style="font-size:var(--fs-body-sm);font-weight:400;opacity:0.85;margin-top:2px">kurz: Screen · lang: Untermenu</div>
             </button>
             <button class="btn vbtn"
                     style="flex:1;padding:18px 0;font-size:14px;font-weight:700;background:var(--success);color:#fff;border:2px solid var(--success);border-radius:6px;user-select:none;cursor:pointer"
@@ -2708,10 +2844,10 @@
                     ontouchstart="vbtnDown('B', event)"
                     ontouchend="vbtnUp('B', event)">
                 <div>TASTER B</div>
-                <div id="vbtn-b-label" style="font-size:9px;font-weight:400;opacity:0.85;margin-top:2px">kurz: naechster · lang: ausfuehren</div>
+                <div id="vbtn-b-label" style="font-size:var(--fs-body-sm);font-weight:400;opacity:0.85;margin-top:2px">kurz: naechster · lang: ausfuehren</div>
             </button>
         </div>
-        <div style="font-size:9px;color:var(--text-dim);margin-top:6px;text-align:center;line-height:1.5">
+        <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:6px;text-align:center;line-height:1.5">
             Halten &ge; <span id="vbtn-long-seconds">2.0</span>&thinsp;s = long press<br>
             Verhalten identisch zur Hardware (gleiches Event-Routing)
         </div>
@@ -2727,7 +2863,7 @@
         </div>
         <button class="hw-overlay-close" onclick="togglePeersDialog()">&times;</button>
     </div>
-    <div id="peers-list" style="display:flex;flex-direction:column;gap:6px;font-size:11px">
+    <div id="peers-list" style="display:flex;flex-direction:column;gap:6px;font-size:var(--fs-body-sm)">
         <span style="color:var(--text-dim)">Lade...</span>
     </div>
 </dialog>
@@ -3675,14 +3811,14 @@
             const chars = (e.full_text || '').length;
             let statusBadge, borderColor;
             if (e.analyzing) {
-                statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(93,173,226,0.18);color:#5DADE2;border-radius:4px;font-size:9px;font-weight:700">WIRD ANALYSIERT…</span>';
+                statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(93,173,226,0.18);color:#5DADE2;border-radius:4px;font-size:var(--fs-body-sm);font-weight:700">WIRD ANALYSIERT…</span>';
                 borderColor = '#5DADE2';
             } else if (e.analyzed) {
                 const n = (e.created_patient_ids || []).length;
-                statusBadge = `<span style="display:inline-block;padding:2px 8px;background:rgba(46,204,113,0.18);color:#2ECC71;border-radius:4px;font-size:9px;font-weight:700">ANALYSIERT · ${n} PATIENT${n === 1 ? '' : 'EN'}</span>`;
+                statusBadge = `<span style="display:inline-block;padding:2px 8px;background:rgba(46,204,113,0.18);color:#2ECC71;border-radius:4px;font-size:var(--fs-body-sm);font-weight:700">ANALYSIERT · ${n} PATIENT${n === 1 ? '' : 'EN'}</span>`;
                 borderColor = '#2ECC71';
             } else {
-                statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(200,184,120,0.15);color:var(--mil-tan,#c8b878);border-radius:4px;font-size:9px;font-weight:700">UNANALYSIERT</span>';
+                statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(200,184,120,0.15);color:var(--mil-tan,#c8b878);border-radius:4px;font-size:var(--fs-body-sm);font-weight:700">UNANALYSIERT</span>';
                 borderColor = 'var(--mil-tan,#c8b878)';
             }
             const safeText = (e.full_text || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -3692,15 +3828,15 @@
             <details class="pending-entry" style="background:var(--bg-surface);border:1px solid ${borderColor};border-radius:var(--radius);overflow:hidden" data-pid="${e.id}">
                 <summary style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
                     ${statusBadge}
-                    <span style="font-family:monospace;font-size:10px;color:var(--text-dim)">${ts}</span>
-                    <span style="font-size:11px;color:var(--text-primary);font-weight:600">${chars} Zeichen · ${dur}</span>
-                    <span style="margin-left:auto;font-size:9px;color:var(--text-dim)">▼</span>
+                    <span style="font-family:monospace;font-size:var(--fs-body-sm);color:var(--text-dim)">${ts}</span>
+                    <span style="font-size:var(--fs-body-sm);color:var(--text-primary);font-weight:600">${chars} Zeichen · ${dur}</span>
+                    <span style="margin-left:auto;font-size:var(--fs-body-sm);color:var(--text-dim)">▼</span>
                 </summary>
                 <div style="padding:10px 12px;border-top:1px solid var(--border);background:var(--bg-surface2)">
-                    <div style="max-height:220px;overflow-y:auto;font-size:12px;line-height:1.5;white-space:pre-wrap;color:var(--text-primary);padding:6px;background:var(--bg-elevated);border-radius:var(--radius)">${safeText}</div>
+                    <div style="max-height:220px;overflow-y:auto;font-size:var(--fs-body);line-height:1.5;white-space:pre-wrap;color:var(--text-primary);padding:6px;background:var(--bg-elevated);border-radius:var(--radius)">${safeText}</div>
                     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-                        <button class="btn btn-cgi" onclick="analyzePendingById('${e.id}')" ${analyzeDisabled} style="padding:6px 12px;font-size:10px;font-weight:700">${analyzeLabel}</button>
-                        <button class="btn" onclick="discardPendingById('${e.id}')" style="padding:6px 12px;font-size:10px;color:var(--cgi-red);border-color:var(--cgi-red)">Verwerfen</button>
+                        <button class="btn btn-cgi" onclick="analyzePendingById('${e.id}')" ${analyzeDisabled} style="padding:6px 12px;font-size:var(--fs-body-sm);font-weight:700">${analyzeLabel}</button>
+                        <button class="btn" onclick="discardPendingById('${e.id}')" style="padding:6px 12px;font-size:var(--fs-body-sm);color:var(--cgi-red);border-color:var(--cgi-red)">Verwerfen</button>
                     </div>
                 </div>
             </details>`;
@@ -3759,12 +3895,12 @@
         // Transkripte (inkl. denen aus patientTranscripts store)
         const tx = (p.transcripts && p.transcripts.length ? p.transcripts : (patientTranscripts[pid] || []));
         const txHtml = tx.length
-            ? tx.map(t => `<div style="margin:6px 0;padding:8px;background:var(--bg-elevated);border-left:2px solid var(--cgi-red);border-radius:var(--radius)"><div style="font-size:9px;color:var(--text-dim)">${esc(t.time || '')}</div><div style="font-size:11px;white-space:pre-wrap">${esc(t.text || '')}</div></div>`).join('')
-            : '<div style="color:var(--text-dim);font-size:11px">Keine Aufnahmen</div>';
+            ? tx.map(t => `<div style="margin:6px 0;padding:8px;background:var(--bg-elevated);border-left:2px solid var(--cgi-red);border-radius:var(--radius)"><div style="font-size:var(--fs-body-sm);color:var(--text-dim)">${esc(t.time || '')}</div><div style="font-size:var(--fs-body-sm);white-space:pre-wrap">${esc(t.text || '')}</div></div>`).join('')
+            : '<div style="color:var(--text-dim);font-size:var(--fs-body-sm)">Keine Aufnahmen</div>';
 
         // Timeline
         const tlHtml = (p.timeline || []).length
-            ? '<ul style="margin:4px 0;padding-left:18px;font-size:11px">' + p.timeline.map(e =>
+            ? '<ul style="margin:4px 0;padding-left:18px;font-size:var(--fs-body-sm)">' + p.timeline.map(e =>
                 `<li><span style="color:var(--text-dim)">${esc(e.time ? (e.time.split('T')[1] || e.time).slice(0,8) : '')}</span> — <strong>${esc(e.event)}</strong> ${esc(e.details || '')}</li>`
               ).join('') + '</ul>'
             : '<span style="color:var(--text-dim)">—</span>';
@@ -3778,31 +3914,31 @@
         modal.innerHTML = `
             <div style="background:var(--bg-surface);border:2px solid var(--mil-tan,#c8b878);border-radius:var(--radius-lg);max-width:640px;width:100%;max-height:90vh;overflow-y:auto;padding:16px">
                 <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-                    <span style="display:inline-block;min-width:36px;padding:4px 8px;background:${triageColor};color:#fff;font-weight:800;text-align:center;border-radius:4px;font-size:12px">${esc(p.triage || '--')}</span>
-                    <h3 style="margin:0;font-size:17px;color:var(--text-primary)">${esc(p.name || 'Unbekannt')}${p.rank ? ' <span style="font-size:12px;color:var(--text-dim)">('+esc(p.rank)+')</span>' : ''}</h3>
+                    <span style="display:inline-block;min-width:36px;padding:4px 8px;background:${triageColor};color:#fff;font-weight:800;text-align:center;border-radius:4px;font-size:var(--fs-body)">${esc(p.triage || '--')}</span>
+                    <h3 style="margin:0;font-size:17px;color:var(--text-primary)">${esc(p.name || 'Unbekannt')}${p.rank ? ' <span style="font-size:var(--fs-body);color:var(--text-dim)">('+esc(p.rank)+')</span>' : ''}</h3>
                     <button onclick="document.getElementById('patient-detail-modal').remove()" style="margin-left:auto;background:none;border:none;color:var(--text-dim);font-size:24px;cursor:pointer;padding:0 8px">×</button>
                 </div>
-                <div style="font-size:11px;color:var(--text-dim);font-family:monospace;margin-bottom:12px">
+                <div style="font-size:var(--fs-body-sm);color:var(--text-dim);font-family:monospace;margin-bottom:12px">
                     ${esc(p.patient_id)} · erstellt ${fmtDate(p.timestamp_created)} ·
                     ${p.analyzed ? '<span style="color:#5DADE2">analysiert</span>' : '<span style="color:var(--text-dim)">nicht analysiert</span>'} ·
                     ${p.synced ? '<span style="color:#2ECC71">gemeldet</span>' : '<span style="color:var(--mil-tan,#c8b878)">Entwurf</span>'}
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px">
                     <div>
-                        <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">VITALS</div>
-                        ${vitalsRows ? '<table style="font-size:11px">' + vitalsRows + '</table>' : '<span style="color:var(--text-dim);font-size:11px">—</span>'}
+                        <div style="font-size:var(--fs-body-sm);font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">VITALS</div>
+                        ${vitalsRows ? '<table style="font-size:var(--fs-body-sm)">' + vitalsRows + '</table>' : '<span style="color:var(--text-dim);font-size:var(--fs-body-sm)">—</span>'}
                     </div>
                     <div>
-                        <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">VERLETZUNGEN</div>
-                        <div style="font-size:11px">${injuriesHtml}</div>
+                        <div style="font-size:var(--fs-body-sm);font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">VERLETZUNGEN</div>
+                        <div style="font-size:var(--fs-body-sm)">${injuriesHtml}</div>
                     </div>
                 </div>
                 <div style="margin-bottom:12px">
-                    <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">TRANSKRIPTE</div>
+                    <div style="font-size:var(--fs-body-sm);font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">TRANSKRIPTE</div>
                     ${txHtml}
                 </div>
                 <div>
-                    <div style="font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">TIMELINE</div>
+                    <div style="font-size:var(--fs-body-sm);font-weight:700;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:4px">TIMELINE</div>
                     ${tlHtml}
                 </div>
             </div>`;
@@ -4002,7 +4138,7 @@
             <div class="session-item ${s.id === activeSession ? 'active' : ''}" onclick="switchSession('${s.id}')">
                 <div class="dot"></div>
                 <div class="info">
-                    <div class="name">${s.patient_name} <span style="font-size:9px;color:var(--text-dim)">${tpl.name || ''}</span></div>
+                    <div class="name">${s.patient_name} <span style="font-size:var(--fs-body-sm);color:var(--text-dim)">${tpl.name || ''}</span></div>
                     <div class="meta">${s.date} &middot; ${s.records.length} Eintraege</div>
                 </div>
             </div>`;
@@ -4243,11 +4379,11 @@
                 <div style="flex:1;min-width:0">
                     <div style="display:flex;align-items:center;gap:6px">
                         <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.unit_name || p.device_id}</span>
-                        ${role ? `<span style="font-size:8px;padding:1px 4px;border:1px solid var(--border-light);color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;flex-shrink:0">${role}</span>` : ''}
+                        ${role ? `<span style="font-size:var(--fs-body-sm);padding:1px 4px;border:1px solid var(--border-light);color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;flex-shrink:0">${role}</span>` : ''}
                     </div>
-                    <div style="font-size:9px;color:var(--text-dim)">${sys} ${patients ? '· ' + patients : ''}</div>
+                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim)">${sys} ${patients ? '· ' + patients : ''}</div>
                 </div>
-                <span style="font-size:9px;font-weight:600;color:${dotColor};flex-shrink:0">${statusText}</span>
+                <span style="font-size:var(--fs-body-sm);font-weight:600;color:${dotColor};flex-shrink:0">${statusText}</span>
             </div>`;
         }).join('');
         // Badge aktualisieren
@@ -4356,10 +4492,10 @@
         }
         // Prozesse
         if (stats.ram_processes && stats.ram_processes.length) {
-            html += '<div style="margin-top:4px;font-size:9px;color:var(--text-dim);font-weight:600">TOP PROZESSE</div>';
+            html += '<div style="margin-top:4px;font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:600">TOP PROZESSE</div>';
             stats.ram_processes.forEach(p => {
                 const barW = Math.min(100, (p.rss_mb / stats.ram_total_mb) * 100);
-                html += `<div style="display:flex;justify-content:space-between;padding:1px 4px;font-size:9px"><span>${p.name}</span><span>${p.rss_mb} MB</span></div>`;
+                html += `<div style="display:flex;justify-content:space-between;padding:1px 4px;font-size:var(--fs-body-sm)"><span>${p.name}</span><span>${p.rss_mb} MB</span></div>`;
             });
         }
         if (!html) html = '<span style="color:var(--text-dim)">Keine Modelle geladen</span>';
@@ -4443,7 +4579,7 @@
             if (show && !spinner) {
                 spinner = document.createElement('div');
                 spinner.id = 'analysis-spinner';
-                spinner.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 12px;margin-top:8px;background:var(--accent-light);border-radius:var(--radius);font-size:11px;color:var(--accent);font-weight:600';
+                spinner.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 12px;margin-top:8px;background:var(--accent-light);border-radius:var(--radius);font-size:var(--fs-body-sm);color:var(--accent);font-weight:600';
                 spinner.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31 31"/></svg> KI-Analyse läuft...';
                 card.querySelector('.card-body') ? card.querySelector('div').appendChild(spinner) : card.appendChild(spinner);
             } else if (!show && spinner) {
@@ -4872,20 +5008,20 @@
         tbody.innerHTML = entries.map(p => {
             const triageColor = (window.TRIAGE_COLORS && window.TRIAGE_COLORS[p.triage]) || '#555';
             const statusBadges = [];
-            if (p.analyzed) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:9px;background:rgba(93,173,226,0.15);color:#5DADE2;border-radius:3px;margin-right:3px">analysiert</span>');
-            if (p.synced) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:9px;background:rgba(46,204,113,0.15);color:#2ECC71;border-radius:3px;margin-right:3px">gemeldet</span>');
-            if (!p.analyzed && !p.synced) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:9px;background:rgba(200,184,120,0.15);color:var(--mil-tan,#c8b878);border-radius:3px;margin-right:3px">Entwurf</span>');
+            if (p.analyzed) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(93,173,226,0.15);color:#5DADE2;border-radius:3px;margin-right:3px">analysiert</span>');
+            if (p.synced) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(46,204,113,0.15);color:#2ECC71;border-radius:3px;margin-right:3px">gemeldet</span>');
+            if (!p.analyzed && !p.synced) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(200,184,120,0.15);color:var(--mil-tan,#c8b878);border-radius:3px;margin-right:3px">Entwurf</span>');
 
             const rfidShort = (p.rfid_tag_id || '').slice(0, 10) || '—';
             return `
                 <tr id="admin-row-${p.patient_id}" data-pid="${p.patient_id}" style="border-bottom:1px solid var(--border);transition:background-color 0.3s">
                     <td style="padding:7px 10px;font-family:monospace;color:var(--text-dim)">${fmtTime(p.timestamp_created)}</td>
-                    <td style="padding:7px 10px;font-family:monospace;font-size:10px">${p.patient_id || ''}</td>
-                    <td style="padding:7px 10px">${p.name || 'Unbekannt'}${p.rank ? ' <span style="color:var(--text-dim);font-size:10px">('+p.rank+')</span>' : ''}</td>
-                    <td style="padding:7px 10px"><span style="display:inline-block;min-width:26px;padding:2px 6px;background:${triageColor};color:#fff;font-weight:700;text-align:center;border-radius:3px;font-size:10px">${p.triage || '--'}</span></td>
+                    <td style="padding:7px 10px;font-family:monospace;font-size:var(--fs-body-sm)">${p.patient_id || ''}</td>
+                    <td style="padding:7px 10px">${p.name || 'Unbekannt'}${p.rank ? ' <span style="color:var(--text-dim);font-size:var(--fs-body-sm)">('+p.rank+')</span>' : ''}</td>
+                    <td style="padding:7px 10px"><span style="display:inline-block;min-width:26px;padding:2px 6px;background:${triageColor};color:#fff;font-weight:700;text-align:center;border-radius:3px;font-size:var(--fs-body-sm)">${p.triage || '--'}</span></td>
                     <td style="padding:7px 10px">${statusBadges.join('')}</td>
-                    <td style="padding:7px 10px;font-family:monospace;color:var(--text-dim);font-size:10px">${rfidShort}</td>
-                    <td style="padding:7px 10px;text-align:right"><button onclick="openPatientFromAdmin('${p.patient_id}')" class="btn" style="padding:3px 8px;font-size:10px">Öffnen</button></td>
+                    <td style="padding:7px 10px;font-family:monospace;color:var(--text-dim);font-size:var(--fs-body-sm)">${rfidShort}</td>
+                    <td style="padding:7px 10px;text-align:right"><button onclick="openPatientFromAdmin('${p.patient_id}')" class="btn" style="padding:3px 8px;font-size:var(--fs-body-sm)">Öffnen</button></td>
                 </tr>`;
         }).join('');
     }
@@ -4898,7 +5034,7 @@
         // Admin-Tabelle mitaktualisieren
         try { renderAdminPatients(); } catch (e) { /* noop */ }
 
-        const emptyHtml = '<div class="empty" style="padding:20px;text-align:center"><div class="icon" style="font-size:20px;opacity:0.4">&#9764;</div><div style="font-size:11px;color:var(--text-dim)">Keine Patienten</div></div>';
+        const emptyHtml = '<div class="empty" style="padding:20px;text-align:center"><div class="icon" style="font-size:20px;opacity:0.4">&#9764;</div><div style="font-size:var(--fs-body-sm);color:var(--text-dim)">Keine Patienten</div></div>';
 
         ['patient-cards-feld', 'patient-cards-fz'].forEach(containerId => {
             const container = document.getElementById(containerId);
@@ -4925,7 +5061,7 @@
 
                 const transcriptsHtml = transcripts.length
                     ? transcripts.map(t => `<div class="pt-entry"><div class="pt-time">${t.time}</div><div class="pt-text">${t.text}</div></div>`).join('')
-                    : '<div style="font-size:10px;color:var(--text-dim);padding:4px 0">Keine Aufnahmen</div>';
+                    : '<div style="font-size:var(--fs-body-sm);color:var(--text-dim);padding:4px 0">Keine Aufnahmen</div>';
 
                 const injuriesHtml = (p.injuries || []).length
                     ? '<div class="pt-meta">' + p.injuries.map(i => `<span>${i}</span>`).join('') + '</div>'
@@ -4945,8 +5081,8 @@
                 const nlFilled = ['line1','line2','line3','line4','line5','line6','line7','line8','line9'].filter(k => nl[k]).length;
                 const isNlPatient = p.template_type === '9liner' || nlFilled > 0;
                 const nineLinerHtml = isNlPatient
-                    ? `<div style="margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-left:3px solid var(--info,#5DADE2);font-family:'Share Tech Mono',monospace;font-size:10px">
-                        <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;letter-spacing:0.1em;text-transform:uppercase">&#9992; 9-Liner MEDEVAC (${nlFilled}/9)</div>
+                    ? `<div style="margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-left:3px solid var(--info,#5DADE2);font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm)">
+                        <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:4px;letter-spacing:0.1em;text-transform:uppercase">&#9992; 9-Liner MEDEVAC (${nlFilled}/9)</div>
                         ${[1,2,3,4,5,6,7,8,9].map(i => {
                             const v = nl[`line${i}`] || '';
                             return `<div style="display:flex;gap:6px;${v?'':'opacity:0.35'}"><span style="color:var(--info,#5DADE2);min-width:22px">L${i}</span><span>${v || '—'}</span></div>`;
@@ -4961,18 +5097,18 @@
                 const isPhase0 = (p.current_role || 'phase0') === 'phase0';
                 const triageButtonsHtml = isPhase0 ? '' : `
                         <div style="display:flex;gap:2px">
-                            ${['T1','T2','T3','T4'].map(t => `<button onclick="event.stopPropagation();setTriageFor('${p.patient_id}','${t}')" style="width:28px;height:28px;border:2px solid ${p.triage===t?'#fff':'transparent'};border-radius:4px;background:${TRIAGE_COLORS[t]};color:#fff;font-size:9px;font-weight:800;cursor:pointer">${t}</button>`).join('')}
+                            ${['T1','T2','T3','T4'].map(t => `<button onclick="event.stopPropagation();setTriageFor('${p.patient_id}','${t}')" style="width:28px;height:28px;border:2px solid ${p.triage===t?'#fff':'transparent'};border-radius:4px;background:${TRIAGE_COLORS[t]};color:#fff;font-size:var(--fs-body-sm);font-weight:800;cursor:pointer">${t}</button>`).join('')}
                         </div>`;
                 const fzEditHtml = isFz ? `
                     <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-                        <input type="text" value="${p.name || ''}" placeholder="Name" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:11px" onblur="savePatientFieldFor('${p.patient_id}','name',this.value)">
-                        <input type="text" value="${p.rank || ''}" placeholder="Dienstgrad" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:11px" onblur="savePatientFieldFor('${p.patient_id}','rank',this.value)">
+                        <input type="text" value="${p.name || ''}" placeholder="Name" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:var(--fs-body-sm)" onblur="savePatientFieldFor('${p.patient_id}','name',this.value)">
+                        <input type="text" value="${p.rank || ''}" placeholder="Dienstgrad" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:var(--fs-body-sm)" onblur="savePatientFieldFor('${p.patient_id}','rank',this.value)">
                         ${triageButtonsHtml}
                     </div>
                     <div style="display:flex;gap:4px;margin-top:6px">
-                        <input type="text" value="${p.vitals?.pulse||''}" placeholder="Puls" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:10px" onblur="saveVitalFor('${p.patient_id}','pulse',this.value)">
-                        <input type="text" value="${p.vitals?.bp||''}" placeholder="RR" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:10px" onblur="saveVitalFor('${p.patient_id}','bp',this.value)">
-                        <input type="text" value="${p.vitals?.spo2||''}" placeholder="SpO2" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:10px" onblur="saveVitalFor('${p.patient_id}','spo2',this.value)">
+                        <input type="text" value="${p.vitals?.pulse||''}" placeholder="Puls" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:var(--fs-body-sm)" onblur="saveVitalFor('${p.patient_id}','pulse',this.value)">
+                        <input type="text" value="${p.vitals?.bp||''}" placeholder="RR" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:var(--fs-body-sm)" onblur="saveVitalFor('${p.patient_id}','bp',this.value)">
+                        <input type="text" value="${p.vitals?.spo2||''}" placeholder="SpO2" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:var(--fs-body-sm)" onblur="saveVitalFor('${p.patient_id}','spo2',this.value)">
                     </div>` : '';
 
                 // Fahrzeug-Modus: Löschen-Icon
@@ -5606,7 +5742,7 @@
                 <div class="r1-detail-section-title">Letzte Transkripte</div>
                 <div class="r1-detail-treatments">${last3.map(t => {
                     const text = typeof t === 'string' ? t : t.text || t.transcript || JSON.stringify(t);
-                    return `<div class="treatment-item" style="font-size:10px">${text}</div>`;
+                    return `<div class="treatment-item" style="font-size:var(--fs-body-sm)">${text}</div>`;
                 }).join('')}</div>
             </div>`;
         }
@@ -5633,12 +5769,12 @@
                 const val = nineLiner[k] || '—';
                 const filled = !!nineLiner[k];
                 return `<div class="r1-detail-field" style="${filled ? '' : 'opacity:0.4'}">
-                    <div class="field-label" style="font-size:9px">${nineLinerLabels[k]}</div>
-                    <div class="field-value" style="font-family:'Share Tech Mono',monospace;font-size:12px">${val}</div>
+                    <div class="field-label" style="font-size:var(--fs-body-sm)">${nineLinerLabels[k]}</div>
+                    <div class="field-value" style="font-family:'Share Tech Mono',monospace;font-size:var(--fs-body)">${val}</div>
                 </div>`;
             }).join('');
             nineLinerHtml = `<div class="r1-detail-section" style="border-left:3px solid var(--info,#5DADE2);padding-left:10px">
-                <div class="r1-detail-section-title">&#9992; 9-Liner MEDEVAC <span style="font-size:10px;color:var(--text-dim);font-weight:400">(${filledLines.length}/9 Felder)</span></div>
+                <div class="r1-detail-section-title">&#9992; 9-Liner MEDEVAC <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(${filledLines.length}/9 Felder)</span></div>
                 <div class="r1-detail-grid">${rows}</div>
             </div>`;
         }
