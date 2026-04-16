@@ -7,10 +7,18 @@
 > `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md` (lokal,
 > nicht im Repo).
 
-**Letzte Session:** 16.04.2026 (Phase 7 abgeschlossen, Phase 8 deferred, Phase 9 gestartet)
+**Letzte Session:** 16.04.2026 (Phase 7 + 9 abgeschlossen, Phase 8 deferred)
 **Demo-Ziel:** AFCEA-Messe in 3–4 Wochen
-**Nächste Aktion:** Phase 9 — Final Polish + E2E Demo-Runs + RAM-Stress-Test
+**Nächste Aktion:** 🎉 **Alle Phasen abgeschlossen!** System demo-ready.
 **Phase 8 Entscheidung:** User hat "Überspringen für jetzt" gewählt — Remote-Audio wird als "konzeptionell vorhanden, V2-Roadmap" in der Messe-Präsentation erwähnt, aber nicht implementiert. Priorität auf Demo-Robustheit.
+
+## 🎯 Demo-Readiness
+
+- **E2E-Test**: 11/11 PASS in 17s
+- **Stress-Test (10x)**: 10/10 PASS, RAM-Drift nur 55.3% → 56.3% (keine Memory-Leaks)
+- **Latenz-Targets**: Segment 2.6-3.5s (<5s), 9-Liner 11.8-12.6s (<15s), Surface-Sync 0.01s (<2s)
+- **Git-Tags für Rollback**: `pre-demo` (Surface) + `pre-demo-jetson` (Jetson)
+- **Disaster-Recovery-Doc**: `docs/demo-disaster-recovery.md` mit 7 Notfall-Rezepten
 
 ---
 
@@ -53,9 +61,10 @@
 | **Phase 6** | Export & Interoperabilität (DOCX/PDF/JSON/XML) + Refactor | ✅ DONE | `1a397dd` + `7e987ea` |
 | **Phase 7** | Encryption-Story + Use-Case-Vision-Page | ✅ DONE | `4a804ca` |
 | **Phase 8** | Remote Audio MVP (Browser → WebSocket → Jetson) | 🟡 DEFERRED | — |
-| **Phase 9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | ⏳ IN PROGRESS | — |
+| **Phase 9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | ✅ DONE | `e3f18f2` + `124ceef` |
 
-**Git-Stand zuletzt:** `85afefc` (origin/main). Jetson ist auf demselben Commit, Service läuft.
+**Git-Stand zuletzt:** `124ceef` (origin/main). Jetson ist auf demselben Commit, Service läuft.
+**Git-Tags für Rollback:** `pre-demo` (Surface) + `pre-demo-jetson` (Jetson).
 
 **Phase 8 ist absichtlich deferred** — User hat beim Phase-Übergang entschieden dass Demo-Robustheit wichtiger ist als ein nice-to-have Feature. Phase 8 wird auf der Messe als "V2-Roadmap" erwähnt.
 
@@ -233,7 +242,40 @@
 
 ---
 
-## Nächste Aktion: Phase 8 — Remote Audio MVP (~16 h, riskant)
+### Phase 9 — Final Polish + E2E Demo-Runs (`e3f18f2` + `124ceef`)
+
+- **`scripts/e2e_demo_run.py`** (NEU, 384 Zeilen): End-to-End Pipeline-Test
+  - Phase 0: Liveness-Check Jetson + Surface
+  - Phase 1: Segmenter (2-Patienten-Split mit qwen2.5:1.5b)
+  - Phase 2: 9-Liner MEDEVAC-Extraktion
+  - Phase 3: Testdaten-Generator + State-Count
+  - Phase 4: Export in alle 4 Formate (DOCX/PDF/JSON/XML)
+  - Phase 5: Cleanup (Daten-Reset)
+  - **Ergebnis**: 11/11 PASS in 17s
+- **`scripts/stress_test.py`** (NEU, 188 Zeilen): 10x Multi-Patient + 9-Liner Loop
+  - Misst RAM/GPU nach jeder Iteration
+  - Verifiziert dass Whisper + Ollama geladen bleiben
+  - **Ergebnis**: 10/10 PASS, RAM-Drift 55.3% → 56.3% (keine Memory-Leaks)
+  - Latenzen konsistent: Segment 3.1-3.5s, 9-Liner 11.8-12.6s
+- **`docs/demo-disaster-recovery.md`** (NEU, 332 Zeilen): Messe-Tag-Rezepte
+  - Pre-Messe Backup (Git-Tag + USB-Stick + Jetson-tar)
+  - 7 Notfall-Rezepte (Service-Ausfall, Audio weg, RFID-Bug, Sync-Stopp, OLED-Freeze, Komplett-Ausfall)
+  - Quick-Check (30s) + E2E-Check (30s) + Stress-Check (3 min)
+  - Fallback-Strategien bei Jetson- oder Gesamt-Ausfall
+  - 7-Schritt-Demo-Skript (5-10 min)
+- **Git-Tags gesetzt**: `pre-demo` (Surface, commit 124ceef) + `pre-demo-jetson` (Jetson, commit 124ceef)
+
+## 🎉 Messe-Readiness-Status
+
+Alle ursprünglich geplanten Phasen (1-7, 9) sind abgeschlossen. Phase 8 wurde bewusst deferred zugunsten von Demo-Robustheit.
+
+**Was jetzt zu tun ist (User-Seite, kein Claude-Code mehr nötig)**:
+1. Laminiertes 9-Liner-Template ausdrucken (A5, `docs/nine-liner-template.md`)
+2. USB-Stick mit Repo-Backup anfertigen (siehe `docs/demo-disaster-recovery.md` §1.2)
+3. Demo-Skript durchgehen und Timing üben (siehe `docs/demo-disaster-recovery.md` §5)
+4. Optional: Hardware-Check mit `scripts/e2e_demo_run.py` vor dem Demo-Tag
+
+## Phase 8 (V2-Roadmap, nicht in AFCEA 2026)
 
 - Browser MediaRecorder (`audio/webm;codecs=opus`) → WebSocket Audio-Chunks → Jetson decode (`pyav`/`ffmpeg-python`) → Whisper. Fallback auf lokales Mikro.
 - Ziel: Messebesucher kann auf seinem Handy/Tablet sprechen, Jetson transkribiert (statt lokales Mikro).
@@ -278,16 +320,19 @@
 
 ## Wenn der User sagt „weiter mit dem Plan"
 
-1. Diese Datei (`docs/PROGRESS.md`) lesen
-2. TodoWrite-Liste neu anlegen mit Phase 1–7 als `completed`, Phase 8 als `in_progress`, Phase 9 als `pending`.
-3. **Phase 8** starten — drei Teilschritte:
-   - **8.1 Browser MediaRecorder**: `templates/index.html` um "Mikrofon-Modus"-Toggle erweitern (lokal vs. Browser). Bei Browser-Modus: `navigator.mediaDevices.getUserMedia({audio: true})` → `MediaRecorder` mit `audio/webm;codecs=opus`, 250-ms-Chunks via `ondataavailable`.
-   - **8.2 WebSocket-Streaming**: Chunks als `{type: "audio_chunk", seq, data: base64}` an WebSocket `/ws` senden. Serverseitig in `_broadcast_task` neuen Handler `_handle_audio_chunk()`.
-   - **8.3 Jetson Decode + Whisper**: pyav/ffmpeg-python für opus→PCM, Buffer bis N Sekunden, dann an Whisper-Pipeline. Fallback: Wenn keine aktive Browser-Session, nutze `arecord`/lokales Mikro wie bisher.
-   - Voice-Command zum Umschalten: "Browser Mikrofon" / "Lokales Mikrofon".
-4. Commit + Push + Jetson pull.
-5. PROGRESS.md updaten mit Phase 8 als `completed` oder `nice-to-have` (wenn's zu riskant wird), Phase 9 als `in_progress`.
+Der Plan ist zum **16.04.2026 vollständig abgeschlossen**. Alle Phasen 1-7 + 9 sind DONE, Phase 8 ist deferred.
+
+Wenn der User **neue** Anforderungen bringt:
+1. Diese Datei lesen, um Kontext zu bekommen
+2. `docs/demo-disaster-recovery.md` lesen falls es um Messe-Vorbereitung geht
+3. `docs/security-architecture.md` lesen falls Security-Fragen kommen
+4. Bei Code-Änderungen: nur bestehende Patterns nachziehen (kein Refactor auf breiter Front)
+5. **Git-Tag `pre-demo` ist das Safety-Net** — jede neue Änderung sollte man jederzeit revertieren können
+
+**Wenn der User „Phase 8 doch noch machen"** sagt:
+- Den alten Plan-Abschnitt in `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md` lesen
+- Beachten dass Whisper + Ollama bereits 2.8 GB RAM belegen — zusätzliche pyav/ffmpeg-Libraries könnten kritisch werden
+- MVP-Variante: MediaRecorder + WebSocket-Chunks, fallback auf lokales Mikro
+- Bei Konflikten: abbrechen und als "V2-Feature" verkaufen
 
 **Bei Unsicherheit** über Code-Stellen oder Architektur: **erst grep/read im Repo**, nicht annehmen. Im Zweifel den User fragen.
-
-**Wichtig für Phase 8**: Das ist der riskanteste Phase-Block. Wenn die Latenz/Qualität nicht reicht, rolle zurück und verkaufe es als "konzeptionell vorhanden, wird in V2 vollständig implementiert". Nicht die ganze Messe gefährden für ein nice-to-have.
