@@ -2,15 +2,17 @@
 
 > ## 🟢 AKTUELLER STAND — IMMER ZUERST `docs/PROGRESS.md` LESEN
 >
-> Wir arbeiten gerade an einem mehrphasigen Implementierungsplan für die
-> AFCEA-Messe (in 3–4 Wochen). **Phasen 1–4 sind komplett, Phase 5 ist
-> als nächstes dran.** Wenn der User sagt „weiter mit dem Plan" oder
-> „mach weiter wo wir gestern aufgehört haben", lies SOFORT
-> `docs/PROGRESS.md` — dort steht der vollständige Status (Commits,
-> Befunde, Limitations, nächste Schritte) und eine Schritt-für-Schritt-
-> Anleitung wie ich die Arbeit fortsetzen soll.
+> Wir arbeiten gerade am **Messe-Hardening** (Phasen 1–9 der urspruenglichen
+> Roadmap sind komplett, zusaetzlich LLM-Upgrade auf Gemma 3 4B + viele
+> Bugfixes). Naechste Arbeit: `docs/messe-hardening-plan.md` — ein 16-Stunden-
+> Plan in 4 Phasen (A Hardening / B UX / C Narrative / D Messe-Prep) um SAFIR
+> gegen BWI-Adversarial-Tests auf der AFCEA-Messe zu haerten.
 >
-> **Plan-Datei lokal:** `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md`
+> Wenn der User sagt „weiter mit dem Plan" oder „mach weiter wo wir gestern
+> aufgehört haben", lies SOFORT `docs/PROGRESS.md` (fuer den Gesamtstand)
+> und `docs/messe-hardening-plan.md` (fuer die naechsten Schritte).
+>
+> **Urspruengliche Roadmap-Plan-Datei lokal:** `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md`
 > (lokal, nicht im Repo, aber im Jetson-/Surface-Repo gespiegelt durch
 > `docs/PROGRESS.md`).
 

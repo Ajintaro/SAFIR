@@ -7,10 +7,33 @@
 > `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md` (lokal,
 > nicht im Repo).
 
-**Letzte Session:** 17.04.2026 (GPU-Swap-Architektur + Gemma 3 4B LLM-Upgrade)
+**Letzte Session:** 17.04.2026 (Gemma 3 4B + RFID-Fixes + Dienstgrad-Abzeichen + Segmenter-Off-by-One + **Messe-Hardening-Plan**)
 **Demo-Ziel:** AFCEA-Messe in 3–4 Wochen
-**Nächste Aktion:** 🎉 **Alle Phasen abgeschlossen!** System demo-ready.
+**Nächste Aktion:** 🛡 **Messe-Hardening starten** — siehe `docs/messe-hardening-plan.md` (Phase A1 zuerst: Prompt-Injection-Defense).
 **Phase 8 Entscheidung:** User hat "Überspringen für jetzt" gewählt — Remote-Audio wird als "konzeptionell vorhanden, V2-Roadmap" in der Messe-Präsentation erwähnt, aber nicht implementiert. Priorität auf Demo-Robustheit.
+
+## 🛡 Messe-Hardening-Plan (17.04.2026)
+
+Nach Entdeckung der Segmenter-Off-by-One-Regression ("3 Patienten eingesprochen,
+nur 2 erkannt", Fix in Commit `fa809df`) hat der User zum grundsaetzlichen
+Robustness-Thema umgeschaltet: **BWI GmbH hat angekuendigt SAFIR auf der Messe
+kaputt testen zu wollen**. Wir brauchen technische Hardening + strategisches
+Framing.
+
+Der vollstaendige 16-Stunden-Plan liegt unter **`docs/messe-hardening-plan.md`**
+und deckt 4 Phasen ab:
+
+- **Phase A** (Technical Hardening, ~5h): Prompt-Injection-Defense,
+  Vitals-Plausibility, Content-Guardrails, Rate-Limits, Transcript-Length-Limits
+- **Phase B** (Graceful Degradation UX, ~4.5h): Confidence-Badges, Coaching-
+  Hinweise, Auto-Recovery-Widget, Preset-Demo-Buttons
+- **Phase C** (Narrative & Talking Points, ~3h): Philosophie-Page,
+  Limitations-Liste, Robustheits-Demo (live-Angriffe vorfuehren)
+- **Phase D** (Messe-Prep, ~3h): Backup-Jetson, USB-Stick-Notfallset,
+  Saboteur-Rehearsal, Demo-Day-Playbook
+
+**Empfohlene Reihenfolge:** A1 → A2 → A4 → A5 → A3 → B3 → B1 → B4 → B2 → C1 → C2 → C3 → D1 → D2 → D3 → D4
+**Gesamtaufwand:** ~16h = 2–3 Arbeitstage, mit 3–4 Tage Puffer vor der Messe.
 
 ## 🚀 Post-Demo-Upgrades (17.04.2026, nach regulaerem Phase-Plan)
 
