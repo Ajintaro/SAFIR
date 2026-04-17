@@ -1481,6 +1481,10 @@
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
             overflow: hidden;
+            /* BUG-FIX: Ohne flex-shrink:0 quetscht Flexbox die Cards bei
+               vielen Patienten in den verfuegbaren Platz — Inhalt wird
+               abgeschnitten statt den Parent zu scrollen. */
+            flex-shrink: 0;
         }
         .patient-card-details[open] { border-color: var(--border-light); }
         .patient-card-details.active-patient { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-light); }
@@ -1951,13 +1955,15 @@
                 </div>
 
                 <!-- Sprachbefehle-Referenz (Feld) -->
-                <!-- Einsatzablauf (aufklappbar) -->
-                <details id="flow-guide" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
+                <!-- Einsatzablauf (aufklappbar). flex-shrink:0 damit es nicht
+                     zerquetscht wird; max-height:40vh damit es nicht die
+                     Patientenliste darunter erdrueckt wenn aufgeklappt. -->
+                <details id="flow-guide" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;flex-shrink:0">
                     <summary style="padding:10px 16px;cursor:pointer;font-size:var(--fs-body);font-weight:700;color:var(--cgi-red);display:flex;align-items:center;gap:8px;user-select:none">
                         Einsatzablauf — Sprachbefehle
                         <span style="margin-left:auto;font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">aufklappen</span>
                     </summary>
-                    <div style="padding:8px 12px 12px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border)">
+                    <div style="padding:8px 12px 12px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border);max-height:45vh;overflow-y:auto">
                         <div style="font-size:var(--fs-body-sm);font-weight:700;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:2px 0">Phase A — Patienten aufnehmen</div>
                         <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
                             <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">1</span>
