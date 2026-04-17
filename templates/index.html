@@ -1507,21 +1507,27 @@
             color: #fff; flex-shrink: 0;
             line-height: 1;
         }
-        /* Dienstgradabzeichen in Phase 0 — gleiche Dimensionen wie Triage-Dot
-           damit das Summary-Layout konsistent bleibt. Das innere SVG bringt
-           sein eigenes Styling mit, hier nur das Flex-Frame. */
+        /* Dienstgradabzeichen in Phase 0 — echtes 1:2 Schulterstueck-Format.
+           Hoehe entspricht dem triage-dot (32 px), Breite dadurch ca. 16 px.
+           Die Flex-Box ist 22x36 damit das SVG zentriert darin Platz hat und
+           ein dezenter Schlagschatten die Silhouette vom Hintergrund absetzt. */
         .patient-card-details summary .rank-badge {
-            width: 32px; height: 32px;
+            width: 22px; height: 36px;
             flex-shrink: 0;
             display: flex; align-items: center; justify-content: center;
-            border-radius: 6px;
-            overflow: hidden;
             background: transparent;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.35);
         }
-        .patient-card-details summary .rank-badge svg {
-            width: 32px; height: 32px;
-            border-radius: 5px;
+        .patient-card-details summary .rank-badge .rank-img {
+            width: 20px; height: 36px;
+            object-fit: contain;
+            display: block;
+            filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.5));
+        }
+        /* Fallback fuer "Rang unbekannt": graue Platzhalter-Silhouette in
+           gleicher Dimension, damit das Card-Layout nicht springt. */
+        .patient-card-details summary .rank-badge-empty {
+            background: repeating-linear-gradient(135deg, #3a3a3a, #3a3a3a 3px, #2e2e2e 3px, #2e2e2e 6px);
+            border-radius: 3px;
         }
         .patient-card-details summary .p-name {
             font-weight: var(--fw-semibold);
@@ -5434,16 +5440,21 @@
     }
 
     // ==================== BUNDESWEHR-DIENSTGRAD-ABZEICHEN ====================
-    // Erzeugt ein 32x32 SVG-Schulterstueck fuer den uebergebenen Dienstgrad.
-    // Folgt der echten BW-Insignie-Farbsystematik:
-    //   - Olive-Gruen (#4a5e2e) als Heer/Luft/San-Schulterbasis
-    //   - Rot (#8b2f1f) fuer Generalsraenge
-    //   - Silber (#c0c0c0) fuer Unteroffiziere ohne Portepee
-    //   - Silber-Braid (Flechten) fuer Feldwebel und Leutnante
-    //   - Gold-Braid (#d4af37) fuer Stabsoffiziere und Generale
-    //   - Gold-Sterne (#e8c547) als Rang-Pips
-    // Die weibliche Form wird durch Endungen ("in", "frau") erkannt und
-    // mappt auf dasselbe Abzeichen wie die maennliche.
+    // Zeigt das OFFIZIELLE Schulterstueck-Abzeichen der Bundeswehr (Heer)
+    // fuer den uebergebenen Dienstgrad. Die SVGs stammen von Wikimedia
+    // Commons ("Dienstgrad Bundeswehr Heer NNN <Name>.svg", CC-BY-SA) und
+    // liegen lokal unter /static/images/ranks/<NNN>.svg.
+    // Die NNN-Nummerierung ist die der BW-Zentralvorschrift A-1420/52
+    // (001 Soldat .. 341 General), gleich strukturiert wie die Wikimedia-
+    // Originaldateinamen.
+    //
+    // Weibliche Formen (Feldwebelin, Oberleutnantin, ...) mappen auf
+    // dieselbe Datei wie die maennliche Variante, da die Abzeichen selbst
+    // geschlechtsneutral sind. Sanitaetsdienst-Offiziere ohne eigenes
+    // Heer-Abzeichen (Stabsarzt = OF-2 Hauptmann, Oberstabsarzt = OF-3
+    // Major, Oberfeldarzt = OF-4 Oberstleutnant, Oberstarzt = OF-5 Oberst)
+    // werden auf ihr dienstgradaequivalentes Heer-Abzeichen gemappt — die
+    // "Aeskulap"-Kennung fehlt dann visuell, aber der Rang ist eindeutig.
     function _normRankKey(s) {
         return (s || '').toLowerCase()
             .replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/ß/g,'ss')
@@ -5451,134 +5462,73 @@
             .replace(/[.\s-]/g,'').trim();
     }
 
-    // Rang -> {group, pipCount, extra}
-    // group: 'mann'|'uffz'|'fw'|'lt'|'staboff'|'general'
-    // pipCount: Anzahl kleiner Sterne
-    function _classifyRank(rank) {
+    // Rang-String -> NNN-Dateinummer aus Dienstgrad-Bundeswehr-Heer-SVGs,
+    // oder null wenn Dienstgrad unbekannt / nicht klassifizierbar.
+    function _rankToFileNumber(rank) {
         const k = _normRankKey(rank);
         if (!k) return null;
 
-        // Generale (roter Hintergrund + Gold)
-        if (/^general(in)?$/.test(k) || k === 'admiral' || k === 'admiralin') return {group:'general', pipCount:4};
-        if (k.startsWith('generalleutnant') || k.startsWith('vizeadmiral')) return {group:'general', pipCount:3};
-        if (k.startsWith('generalmajor') || k.startsWith('konteradmiral')) return {group:'general', pipCount:2};
-        if (k.startsWith('brigadegeneral') || k.startsWith('flottillenadmiral')) return {group:'general', pipCount:1};
-        if (k.startsWith('generalarzt') || k.startsWith('admiralarzt')) return {group:'general', pipCount:1, medic:true};
-        if (k.startsWith('generalstabsarzt') || k.startsWith('generaloberstabsarzt')) return {group:'general', pipCount:2, medic:true};
+        // Generale
+        if (/^general(in)?$/.test(k) || k === 'admiral' || k === 'admiralin') return '341';
+        if (k.startsWith('generalleutnant') || k.startsWith('vizeadmiral')) return '331';
+        if (k.startsWith('generalmajor') || k.startsWith('konteradmiral')) return '321';
+        if (k.startsWith('brigadegeneral') || k.startsWith('flottillenadmiral')) return '311';
+        // San-Generale -> Heer-Entsprechung
+        if (k.startsWith('generalstabsarzt') || k.startsWith('generaloberstabsarzt')) return '341';
+        if (k.startsWith('generalarzt') || k.startsWith('admiralarzt')) return '321';
 
-        // Stabsoffiziere (Gold-Braid)
-        if (k.startsWith('oberst') && !k.startsWith('oberstleutnant') && !k.startsWith('oberstabs')) return {group:'staboff', pipCount:3};
-        if (k.startsWith('kapitanzur')) return {group:'staboff', pipCount:3};
-        if (k.startsWith('oberstleutnant') || k.startsWith('fregattenkapitan')) return {group:'staboff', pipCount:2};
-        if (k.startsWith('major') || k.startsWith('korvettenkapitan')) return {group:'staboff', pipCount:1};
-        // San-Stabsoffiziere
-        if (k.startsWith('oberstarzt') || k.startsWith('oberstaerzt') || k.startsWith('oberstveterinar') || k.startsWith('oberstapotheker')) return {group:'staboff', pipCount:3, medic:true};
-        if (k.startsWith('oberfeldarzt') || k.startsWith('oberfeldaerzt') || k.startsWith('oberfeldveterinar') || k.startsWith('oberfeldapotheker')) return {group:'staboff', pipCount:2, medic:true};
-        if (k.startsWith('oberstabsarzt') || k.startsWith('oberstabsaerzt') || k.startsWith('oberstabsveterinar') || k.startsWith('oberstabsapotheker')) return {group:'staboff', pipCount:1, medic:true};
+        // Stabsoffiziere
+        if (k.startsWith('oberst') && !k.startsWith('oberstleutnant') && !k.startsWith('oberstabs')
+            && !k.startsWith('oberstarzt') && !k.startsWith('oberstaerzt')
+            && !k.startsWith('oberstveterinar') && !k.startsWith('oberstapotheker')) return '271';
+        if (k.startsWith('kapitanzur')) return '271';
+        if (k.startsWith('oberstleutnant') || k.startsWith('fregattenkapitan')) return '261';
+        if (k.startsWith('major') || k.startsWith('korvettenkapitan')) return '251';
+        // San-Stabsoffiziere -> Heer-Entsprechung
+        if (k.startsWith('oberstarzt') || k.startsWith('oberstaerzt')
+            || k.startsWith('oberstveterinar') || k.startsWith('oberstapotheker')) return '271';
+        if (k.startsWith('oberfeldarzt') || k.startsWith('oberfeldaerzt')
+            || k.startsWith('oberfeldveterinar') || k.startsWith('oberfeldapotheker')) return '261';
+        if (k.startsWith('oberstabsarzt') || k.startsWith('oberstabsaerzt')
+            || k.startsWith('oberstabsveterinar') || k.startsWith('oberstabsapotheker')) return '251';
 
-        // Leutnante (Silber-Braid)
-        if (k.startsWith('hauptmann') || k.startsWith('hauptfrau') || k.startsWith('kapitanleutnant')) return {group:'lt', pipCount:3};
-        if (k.startsWith('oberleutnant')) return {group:'lt', pipCount:2};
-        if (k.startsWith('leutnant')) return {group:'lt', pipCount:1};
-        // San-Leutnante
-        if (k.startsWith('stabsarzt') || k.startsWith('stabsaerzt') || k.startsWith('stabsveterinar') || k.startsWith('stabsapotheker')) return {group:'lt', pipCount:3, medic:true};
+        // Hauptleute / Leutnante
+        if (k.startsWith('stabshauptmann') || k.startsWith('stabshauptfrau')) return '241';
+        if (k.startsWith('hauptmann') || k.startsWith('hauptfrau') || k.startsWith('kapitanleutnant')) return '231';
+        if (k.startsWith('oberleutnant')) return '221';
+        if (k.startsWith('leutnant')) return '211';
+        // Stabsarzt = OF-2 Hauptmann-Aequivalent
+        if (k.startsWith('stabsarzt') || k.startsWith('stabsaerzt')
+            || k.startsWith('stabsveterinar') || k.startsWith('stabsapotheker')) return '231';
 
-        // Feldwebel (Silber-Rand + Gold-Pips)
-        if (k.startsWith('oberstabsfeldwebel') || k.startsWith('oberstabsbootsmann')) return {group:'fw', pipCount:4};
-        if (k.startsWith('stabsfeldwebel') || k.startsWith('stabsbootsmann')) return {group:'fw', pipCount:3};
-        if (k.startsWith('hauptfeldwebel') || k.startsWith('hauptbootsmann')) return {group:'fw', pipCount:2};
-        if (k.startsWith('oberfeldwebel') || k.startsWith('oberbootsmann')) return {group:'fw', pipCount:1};
-        if (k.startsWith('feldwebel') || k.startsWith('bootsmann') || k.startsWith('bootsfrau')) return {group:'fw', pipCount:0};
+        // Feldwebel
+        if (k.startsWith('oberstabsfeldwebel') || k.startsWith('oberstabsbootsmann')) return '171';
+        if (k.startsWith('stabsfeldwebel') || k.startsWith('stabsbootsmann')) return '161';
+        if (k.startsWith('hauptfeldwebel') || k.startsWith('hauptbootsmann')) return '151';
+        if (k.startsWith('oberfeldwebel') || k.startsWith('oberbootsmann')) return '141';
+        if (k.startsWith('feldwebel') || k.startsWith('bootsmann') || k.startsWith('bootsfrau')) return '131';
 
-        // Unteroffiziere ohne Portepee (Silber-Streifen)
-        if (k.startsWith('stabsunteroffizier') || k.startsWith('obermaat')) return {group:'uffz', pipCount:1};
-        if (k.startsWith('unteroffizier') || k === 'maat' || k === 'maatin') return {group:'uffz', pipCount:0};
+        // Unteroffiziere ohne Portepee
+        if (k.startsWith('stabsunteroffizier') || k.startsWith('obermaat')) return '121';
+        if (k.startsWith('unteroffizier') || k === 'maat' || k === 'maatin') return '111';
 
-        // Mannschaften (Olive + gelbe Pips, aufsteigend)
-        if (k.startsWith('oberstabsgefreite')) return {group:'mann', pipCount:5};
-        if (k.startsWith('stabsgefreite')) return {group:'mann', pipCount:4};
-        if (k.startsWith('hauptgefreite')) return {group:'mann', pipCount:3};
-        if (k.startsWith('obergefreite')) return {group:'mann', pipCount:2};
-        if (k.startsWith('gefreite')) return {group:'mann', pipCount:1};
-        // Basis-Mannschaft (Soldat, Schütze, Matrose, Flieger, ...)
-        return {group:'mann', pipCount:0};
+        // Mannschaften (Gefreiter-Kette)
+        if (k.startsWith('oberstabsgefreite')) return '051';
+        if (k.startsWith('stabsgefreite')) return '041';
+        if (k.startsWith('hauptgefreite')) return '031';
+        if (k.startsWith('obergefreite')) return '021';
+        if (k.startsWith('gefreite')) return '011';
+        // Basis-Mannschaft (Soldat/Schuetze/Matrose/Flieger/San-Soldat/Pionier/...)
+        return '001';
     }
 
-    // Gibt {x,y}-Pixel-Positionen fuer N Pips (in 32x32 viewBox, verfuegbarer
-    // Innenbereich ~6..26). Fuer die Heer-Anordnung: linear zentriert.
-    function _pipPositions(n) {
-        if (n === 0) return [];
-        if (n === 1) return [{x:16, y:16}];
-        if (n === 2) return [{x:11, y:16}, {x:21, y:16}];
-        if (n === 3) return [{x:16, y:10}, {x:11, y:21}, {x:21, y:21}];
-        if (n === 4) return [{x:11, y:11}, {x:21, y:11}, {x:11, y:22}, {x:21, y:22}];
-        // 5 = Kreuz-Pattern
-        return [{x:16, y:8}, {x:8, y:16}, {x:24, y:16}, {x:11, y:24}, {x:21, y:24}];
-    }
-
-    function _starPath(cx, cy, r) {
-        // 5-Punkt-Stern als SVG path
-        const pts = [];
-        for (let i = 0; i < 10; i++) {
-            const angle = -Math.PI/2 + i * Math.PI/5;
-            const rad = (i % 2 === 0) ? r : r * 0.45;
-            pts.push((cx + rad*Math.cos(angle)).toFixed(1) + ',' + (cy + rad*Math.sin(angle)).toFixed(1));
-        }
-        return 'M' + pts.join(' L') + 'Z';
-    }
-
-    function rankToBadgeSvg(rank) {
-        const info = _classifyRank(rank);
-        if (!info) {
-            // Kein Dienstgrad -> leere olive Box als Platzhalter
-            return `<svg viewBox="0 0 32 32" width="32" height="32" style="display:block"><rect x="1" y="1" width="30" height="30" rx="4" fill="#3a3a3a"/></svg>`;
-        }
-        const isGeneral = info.group === 'general';
-        const bg = isGeneral ? '#8b2f1f' : '#4a5e2e';
-        // Rand/Braid je nach Gruppe
-        let borderColor = 'transparent';
-        let borderWidth = 0;
-        let braidSvg = '';
-        const pipColor = (info.group === 'mann') ? '#e8c547'
-                       : (info.group === 'uffz') ? '#d8d8d8'
-                       : '#e8c547';  // Gold fuer alle mit Schulterstueck
-
-        if (info.group === 'uffz') {
-            // Silber-Streifen am oberen+unteren Rand (Tresse)
-            braidSvg = '<rect x="3" y="5" width="26" height="2" fill="#c8c8c8"/><rect x="3" y="25" width="26" height="2" fill="#c8c8c8"/>';
-            borderColor = '#5a7040'; borderWidth = 1;
-        } else if (info.group === 'fw') {
-            // Silber-Rand (Portepee)
-            borderColor = '#c8c8c8'; borderWidth = 2;
-        } else if (info.group === 'lt') {
-            // Silber-Flechtung: drei schraege Linien als Cord
-            braidSvg = '<path d="M4,8 L28,8 M4,16 L28,16 M4,24 L28,24" stroke="#c8c8c8" stroke-width="1.3" stroke-dasharray="2.5,1.5"/>';
-            borderColor = '#c8c8c8'; borderWidth = 1.5;
-        } else if (info.group === 'staboff') {
-            // Gold-Flechtung
-            braidSvg = '<path d="M4,8 L28,8 M4,16 L28,16 M4,24 L28,24" stroke="#d4af37" stroke-width="1.3" stroke-dasharray="2.5,1.5"/>';
-            borderColor = '#d4af37'; borderWidth = 1.5;
-        } else if (info.group === 'general') {
-            // Gold-Rand + diagonales Flechtmuster
-            braidSvg = '<path d="M4,10 L28,10 M4,22 L28,22" stroke="#d4af37" stroke-width="1.5"/>';
-            borderColor = '#d4af37'; borderWidth = 2;
-        }
-
-        const positions = _pipPositions(info.pipCount);
-        const starR = info.pipCount <= 2 ? 4 : (info.pipCount <= 4 ? 3.2 : 2.6);
-        const pipsSvg = positions.map(p =>
-            `<path d="${_starPath(p.x, p.y, starR)}" fill="${pipColor}" stroke="#4a3a0a" stroke-width="0.3"/>`
-        ).join('');
-
-        // San-Kennzeichen (rotes Kreuz unten rechts) fuer Sanitaets-Offiziere
-        const medicCross = info.medic ? '<g transform="translate(22,22)"><rect x="-3" y="-1" width="6" height="2" fill="#dc2020"/><rect x="-1" y="-3" width="2" height="6" fill="#dc2020"/></g>' : '';
-
-        return `<svg viewBox="0 0 32 32" width="32" height="32" style="display:block">
-            <rect x="1" y="1" width="30" height="30" rx="4" fill="${bg}" stroke="${borderColor}" stroke-width="${borderWidth}"/>
-            ${braidSvg}
-            ${pipsSvg}
-            ${medicCross}
-        </svg>`;
+    // Gibt HTML fuer das Rang-Abzeichen zurueck. Unbekannter Rang ->
+    // leerer String (Aufrufer zeigt dann stattdessen grauen Platzhalter).
+    function rankToBadgeHtml(rank) {
+        const num = _rankToFileNumber(rank);
+        if (!num) return '';
+        const label = (rank || '').replace(/"/g,'&quot;');
+        return `<img src="/static/images/ranks/${num}.svg" alt="${label}" title="${label}" class="rank-img" loading="lazy"/>`;
     }
 
     function renderPatientCards() {
@@ -5683,14 +5633,17 @@
                 // MIFARE-Karten sind vs. welche noch offen.
                 const hasRfidWritten = (p.timeline || []).some(ev => ev.event === 'rfid_written');
 
-                // Phase 0 (BAT): Dienstgradabzeichen statt Triage-Dot, weil
-                // Triage erst in der Rettungsstation vergeben wird. Role 1+:
-                // Triage-Farbe + Code. Kein Rang? -> leere graue Box als
-                // Platzhalter (statt "--"-Text in grauem Dot, sieht nach
-                // "fehlend" aus).
+                // Phase 0 (BAT): Offizielles BW-Schulterstueck statt Triage-
+                // Dot. Triage wird erst in der Rettungsstation gesetzt — im
+                // Feld ist der Dienstgrad die relevante Sofort-Info.
+                // Kein Rang? -> graue Placeholder-Box (nicht leerer Raum,
+                // damit Layout konsistent bleibt und "Rang unbekannt" erkennbar).
                 const showRankBadge = isPhase0;
+                const badgeImg = showRankBadge ? rankToBadgeHtml(p.rank) : '';
                 const rankBadgeHtml = showRankBadge
-                    ? `<div class="rank-badge" title="${(p.rank || '').replace(/"/g,'&quot;') || 'Dienstgrad unbekannt'}">${rankToBadgeSvg(p.rank)}</div>`
+                    ? (badgeImg
+                        ? `<div class="rank-badge">${badgeImg}</div>`
+                        : `<div class="rank-badge rank-badge-empty" title="Dienstgrad unbekannt"></div>`)
                     : `<div class="triage-dot" style="background:${color}">${p.triage || '--'}</div>`;
 
                 return `
