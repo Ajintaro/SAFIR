@@ -2478,11 +2478,14 @@ def segment_transcript_to_patients(transcript: str) -> dict:
     if sentences and _first_patient_re.match(sentences[0]) and 0 not in starts:
         starts.insert(0, 0)
 
-    # Sätze vor dem ersten Patient-Start sind Einleitung und gehören zu Patient 1:
-    # Wir ziehen den ersten Startindex auf 0 herunter und damit werden alle
-    # Einleitungssätze Teil des ersten Patienten-Segments.
+    # Sätze vor dem ersten Patient-Start sind Einleitung und gehören zu Patient 1.
+    # WICHTIG: NICHT starts[0] = 0 setzen — das wuerde einen echten Patient-
+    # Start ueberschreiben! Beispiel-Bug: Gemma sagt starts=[3, 5] bei 7 Saetzen
+    # (Arzt-Intro in 0-2, Patient 2 startet bei 3, Patient 3 bei 5). Wenn wir
+    # starts[0] auf 0 setzen, wird aus [3,5] -> [0,5] und Satz 3 (= Patient 2
+    # Start) ist weg. Richtige Loesung: 0 VORN EINFUEGEN wenn nicht schon drin.
     if starts[0] > 0:
-        starts[0] = 0
+        starts.insert(0, 0)
 
     # Sätze in Patient-Segmente aufteilen
     patients: list[dict] = []
