@@ -3426,7 +3426,29 @@
             password = prompt('Passwort für "' + ssid + '" eingeben:');
             if (password === null) return;
         }
-        showToast('Verbinde mit ' + ssid + '…', '&#128246;');
+        // Check ob wir gerade ueber den Hotspot verbunden sind -> die
+        // TCP-Session wird abreissen sobald der Connect den Hotspot killt.
+        let hotspotActive = false;
+        try {
+            const st = await fetch('/api/wifi/status').then(r => r.json());
+            hotspotActive = !!(st.hotspot && st.hotspot.active);
+        } catch (e) { /* noop */ }
+
+        if (hotspotActive) {
+            const ok = confirm(
+                'Verbindung zu "' + ssid + '" wird gestartet.\n\n' +
+                'WICHTIG: Dieser Browser verliert gleich die Verbindung zu SAFIR, weil ' +
+                'der Setup-Hotspot dafuer beendet werden muss.\n\n' +
+                'Gehe danach wie folgt vor:\n' +
+                '1. Warte 15-30 Sekunden\n' +
+                '2. Verbinde dein Geraet mit "' + ssid + '"\n' +
+                '3. Oeffne diese Seite erneut (am besten via jetson-orin:8080 oder die Tailscale-IP)\n\n' +
+                'Jetzt starten?'
+            );
+            if (!ok) return;
+        }
+
+        showToast('Verbindung zu ' + ssid + ' wird gestartet…', '&#128246;');
         try {
             const res = await fetch('/api/wifi/connect', {
                 method: 'POST',
@@ -3434,15 +3456,46 @@
                 body: JSON.stringify({ssid, password}),
             });
             const r = await res.json();
-            if (r.success) {
+            if (r.accepted) {
+                if (r.hotspot_was_active) {
+                    showToast('Hotspot wird beendet — Verbindung wird abreissen. ' +
+                              'In 20 s mit ' + ssid + ' verbinden.', '&#9888;');
+                } else {
+                    showToast('Verbinde mit ' + ssid + '…', '&#128246;');
+                    // Ohne Hotspot-Abriss koennen wir pollen
+                    pollConnectResult(ssid);
+                }
+            } else if (r.success) {
                 showToast('Verbunden mit ' + ssid, '&#9989;', 'voice');
+                wifiRefreshStatus();
+                wifiScan();
             } else {
-                showToast('Fehler: ' + (r.message || 'unbekannt'), '&#9888;');
+                showToast('Fehler: ' + (r.error || r.message || 'unbekannt'), '&#9888;');
             }
-            wifiRefreshStatus();
-            wifiScan();
         } catch (e) {
-            showToast('WLAN-Connect Fehler: ' + e.message, '&#9888;');
+            // Kann bei Hotspot-Abriss auftreten — der Connect laeuft aber weiter
+            showToast('Verbindung zum Server abgerissen — Connect laeuft im Hintergrund weiter.', '&#9888;');
+        }
+    }
+
+    async function pollConnectResult(ssid) {
+        // Pollt bis zu 30 s den Status. Nur sinnvoll wenn wir NICHT ueber den
+        // Hotspot verbunden sind — sonst reisst der Poll selbst ab.
+        for (let i = 0; i < 15; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+                const st = await fetch('/api/wifi/connect/status').then(r => r.json());
+                if (!st.in_progress && st.result) {
+                    if (st.result.success) {
+                        showToast('Verbunden mit ' + ssid, '&#9989;', 'voice');
+                    } else {
+                        showToast('Fehler: ' + (st.result.message || 'unbekannt'), '&#9888;');
+                    }
+                    wifiRefreshStatus();
+                    wifiScan();
+                    return;
+                }
+            } catch (e) { /* noop, weiter pollen */ }
         }
     }
 

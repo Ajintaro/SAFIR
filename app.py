@@ -2822,46 +2822,102 @@ async def wifi_status():
     }
 
 
+# Laufzeit-Status des Background-Connect-Tasks. Frontend pollt /api/wifi/connect/status.
+_wifi_connect_state: dict = {"in_progress": False, "ssid": "", "step": "", "result": None}
+
+
+async def _wifi_connect_bg(ssid: str, password: str, hotspot_was_active: bool):
+    """Background-Task: stoppt Hotspot -> verbindet -> bei Fehler Hotspot wieder an.
+    Status wird in _wifi_connect_state abgelegt und ueber WS broadcastet."""
+    global _wifi_connect_state
+    loop = asyncio.get_event_loop()
+
+    _wifi_connect_state["step"] = "stopping_hotspot" if hotspot_was_active else "connecting"
+    if hotspot_was_active:
+        print(f"[WIFI-CONNECT-BG] Hotspot stoppen vor Connect zu '{ssid}'", flush=True)
+        try:
+            await broadcast({"type": "wifi_connect_progress", "step": "stopping_hotspot", "ssid": ssid})
+        except Exception:
+            pass
+        await loop.run_in_executor(None, _hotspot_stop)
+        await asyncio.sleep(1.5)
+
+    _wifi_connect_state["step"] = "connecting"
+    try:
+        await broadcast({"type": "wifi_connect_progress", "step": "connecting", "ssid": ssid})
+    except Exception:
+        pass
+    success, msg = await loop.run_in_executor(None, _wifi_connect, ssid, password)
+
+    if not success and hotspot_was_active:
+        print(f"[WIFI-CONNECT-BG] Connect fehlgeschlagen, Hotspot wieder starten", flush=True)
+        _wifi_connect_state["step"] = "restoring_hotspot"
+        try:
+            await broadcast({"type": "wifi_connect_progress", "step": "restoring_hotspot", "ssid": ssid})
+        except Exception:
+            pass
+        await loop.run_in_executor(None, _hotspot_start)
+
+    _wifi_connect_state["in_progress"] = False
+    _wifi_connect_state["step"] = "done"
+    _wifi_connect_state["result"] = {"success": success, "message": msg, "ssid": ssid,
+                                      "hotspot_restored": (not success) and hotspot_was_active}
+    try:
+        await broadcast({"type": "wifi_connect_result", "ssid": ssid, "success": success, "message": msg})
+    except Exception:
+        pass
+
+
 @app.post("/api/wifi/connect")
 async def wifi_connect(body: dict):
-    """Verbindet mit einem WLAN. Body: {ssid, password}.
+    """Startet eine WLAN-Verbindung als Background-Task (fire-and-forget).
 
-    Wenn der Hotspot gerade aktiv ist (WLAN-Karte im AP-Mode), muss er
-    VOR dem Connect gestoppt werden — die Karte kann nicht gleichzeitig
-    AP + Client sein. Bei Connect-Fehler wird der Hotspot wieder
-    hochgefahren damit der User nicht komplett offline ist.
+    Kritisch: Wenn der Browser via Hotspot mit SAFIR verbunden ist und wir
+    den Hotspot jetzt fuer den Connect stoppen, reisst die Browser-TCP-
+    Verbindung zwangslaeufig ab. Ein synchroner Endpoint wuerde dann
+    'Failed to fetch' zeigen, obwohl der Connect vielleicht klappt.
+
+    Loesung: HTTP antwortet sofort mit 202/accepted. Der echte Connect
+    laeuft als Background-Task. Der User muss sich danach manuell mit
+    dem Ziel-WLAN verbinden und die neue IP aufrufen (oder Tailscale-Hostname).
+    Status kann via /api/wifi/connect/status gepollt werden (solange
+    ueber dieselbe Connection erreichbar).
     """
-    # Kein require_unlocked(): WLAN-Einrichtung muss auch im Sperrzustand
-    # moeglich sein (z.B. nach Ersteinrichtung via Hotspot).
+    global _wifi_connect_state
     ssid = (body.get("ssid") or "").strip()
     password = body.get("password") or ""
     if not ssid:
         return {"success": False, "error": "SSID fehlt"}
+    if _wifi_connect_state.get("in_progress"):
+        return {"success": False, "error": "Es laeuft bereits ein Connect-Versuch",
+                "current_ssid": _wifi_connect_state.get("ssid", "")}
 
-    loop = asyncio.get_event_loop()
     hotspot_was_active = _hotspot_status().get("active", False)
+    _wifi_connect_state = {
+        "in_progress": True,
+        "ssid": ssid,
+        "step": "starting",
+        "result": None,
+    }
+    asyncio.create_task(_wifi_connect_bg(ssid, password, hotspot_was_active))
+    return {
+        "accepted": True,
+        "ssid": ssid,
+        "hotspot_was_active": hotspot_was_active,
+        "note": ("Connect laeuft im Hintergrund. Falls der Hotspot aktiv war, "
+                 "wird die Verbindung zu SAFIR jetzt kurz abreissen. Verbinde "
+                 "dich in ca. 15-30 s mit '" + ssid + "' und rufe SAFIR erneut auf.")
+               if hotspot_was_active else
+               ("Connect laeuft im Hintergrund. Ergebnis via "
+                "/api/wifi/connect/status."),
+    }
 
-    # 1) Hotspot stoppen wenn aktiv (sonst kann nicht connected werden)
-    if hotspot_was_active:
-        print(f"[WIFI-CONNECT] Hotspot stoppen vor Connect zu '{ssid}'", flush=True)
-        await broadcast({"type": "wifi_connect_progress", "step": "stopping_hotspot", "ssid": ssid})
-        await loop.run_in_executor(None, _hotspot_stop)
-        # Kleiner Puffer damit die Karte den AP-Mode wirklich verlassen hat
-        await asyncio.sleep(1.5)
 
-    # 2) Connect versuchen
-    await broadcast({"type": "wifi_connect_progress", "step": "connecting", "ssid": ssid})
-    success, msg = await loop.run_in_executor(None, _wifi_connect, ssid, password)
-
-    # 3) Bei Fehler Hotspot wieder hochfahren, damit der User nicht gestrandet ist
-    if not success and hotspot_was_active:
-        print(f"[WIFI-CONNECT] Connect fehlgeschlagen, Hotspot wieder starten", flush=True)
-        await broadcast({"type": "wifi_connect_progress", "step": "restoring_hotspot", "ssid": ssid})
-        await loop.run_in_executor(None, _hotspot_start)
-
-    await broadcast({"type": "wifi_connect_result", "ssid": ssid, "success": success, "message": msg})
-    return {"success": success, "message": msg, "ssid": ssid,
-            "hotspot_restored": (not success) and hotspot_was_active}
+@app.get("/api/wifi/connect/status")
+async def wifi_connect_status():
+    """Liefert den aktuellen Stand des Background-Connect-Tasks.
+    Fields: in_progress, ssid, step, result."""
+    return _wifi_connect_state
 
 
 @app.post("/api/wifi/disconnect")
