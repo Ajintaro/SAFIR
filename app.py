@@ -532,17 +532,21 @@ async def _oled_analyze_pending():
         return
     tts.speak("Analyse gestartet")
     total_created = 0
+    batch_started = time.monotonic()
     for idx, pt in enumerate(todo):
         pt["analyzing"] = True
         full_text = pt["full_text"]
         record_time = pt.get("time") or datetime.now().strftime("%H:%M:%S")
         oled_menu.show_status("ANALYSE", f"Aufnahme {idx + 1}/{len(todo)}", int((idx + 1) / len(todo) * 100))
         await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
+        session_started = time.monotonic()
         try:
             created = await _segment_and_create_patients(full_text, record_time)
         finally:
             pt["analyzing"] = False
+        session_duration = round(time.monotonic() - session_started, 1)
         pt["analyzed"] = True
+        pt["analysis_duration_s"] = session_duration
         pt["created_patient_ids"] = created
         total_created += len(created)
         await broadcast({
@@ -550,8 +554,19 @@ async def _oled_analyze_pending():
             "pending_id": pt["id"],
             "count": len(created),
             "created_patient_ids": created,
+            "duration_s": session_duration,
         })
-    oled_menu.show_status("FERTIG", f"{total_created} Patient(en)")
+    total_duration = round(time.monotonic() - batch_started, 1)
+    oled_menu.show_status("FERTIG", f"{total_created}P · {total_duration}s")
+    # Gesamte Batch-Dauer auch broadcasten — Frontend kann die Zeit
+    # pro Session und insgesamt anzeigen.
+    await broadcast({
+        "type": "batch_analysis_complete",
+        "analyzed": len(todo),
+        "total": len(todo),
+        "created_total": total_created,
+        "duration_s": total_duration,
+    })
     tts.speak(f"{total_created} Patient angelegt" if total_created == 1 else f"{total_created} Patienten angelegt")
     await asyncio.sleep(2)
     oled_menu.clear_status()

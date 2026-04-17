@@ -3615,9 +3615,12 @@
                 // Eintrag behalten, Status von "unanalysiert" auf
                 // "analysiert" wechseln. So bleibt das Transkript dauerhaft
                 // in der Liste sichtbar, inklusive der erzeugten Patient-IDs.
-                markPendingAnalyzed(msg.pending_id, msg.created_patient_ids || []);
+                markPendingAnalyzed(msg.pending_id, msg.created_patient_ids || [], msg.duration_s);
                 const n = msg.count || 0;
-                showToast(`${n} Patient${n === 1 ? '' : 'en'} angelegt`, '&#129504;');
+                const durPart = (typeof msg.duration_s === 'number')
+                    ? ` in ${msg.duration_s.toFixed(1)}s`
+                    : '';
+                showToast(`${n} Patient${n === 1 ? '' : 'en'} angelegt${durPart}`, '&#129504;');
                 break;
             case 'pending_transcript_discarded':
                 removePendingTranscript(msg.pending_id);
@@ -3665,7 +3668,16 @@
             case 'batch_analysis_complete':
                 hideActivity();
                 document.querySelectorAll('.patient-card-details.analyzing').forEach(el => el.classList.remove('analyzing'));
-                showToast(`${msg.analyzed}/${msg.total} Patienten analysiert`, '&#9989;', 'voice');
+                {
+                    const createdTotal = typeof msg.created_total === 'number' ? msg.created_total : null;
+                    const batchDur = (typeof msg.duration_s === 'number')
+                        ? ` · ${msg.duration_s.toFixed(1)}s gesamt`
+                        : '';
+                    const head = createdTotal !== null
+                        ? `${createdTotal} Patient${createdTotal === 1 ? '' : 'en'} aus ${msg.analyzed}/${msg.total} Aufnahmen`
+                        : `${msg.analyzed}/${msg.total} Patienten analysiert`;
+                    showToast(head + batchDur, '&#9989;', 'voice');
+                }
                 document.getElementById('btn-analyze').innerHTML = '&#129504; Analyse';
                 document.getElementById('btn-analyze').disabled = false;
                 break;
@@ -4065,11 +4077,14 @@
         renderPendingList();
     }
 
-    function markPendingAnalyzed(id, createdPids) {
+    function markPendingAnalyzed(id, createdPids, durationS) {
         if (!id || !pendingTranscripts[id]) return;
         pendingTranscripts[id].analyzing = false;
         pendingTranscripts[id].analyzed = true;
         pendingTranscripts[id].created_patient_ids = createdPids || [];
+        if (typeof durationS === 'number') {
+            pendingTranscripts[id].analysis_duration_s = durationS;
+        }
         renderPendingList();
     }
 
@@ -4103,7 +4118,10 @@
                 borderColor = '#5DADE2';
             } else if (e.analyzed) {
                 const n = (e.created_patient_ids || []).length;
-                statusBadge = `<span style="display:inline-block;padding:2px 8px;background:rgba(46,204,113,0.18);color:#2ECC71;border-radius:4px;font-size:var(--fs-body-sm);font-weight:700">ANALYSIERT · ${n} PATIENT${n === 1 ? '' : 'EN'}</span>`;
+                const analysisDur = (typeof e.analysis_duration_s === 'number')
+                    ? ` · ${e.analysis_duration_s.toFixed(1)}s`
+                    : '';
+                statusBadge = `<span style="display:inline-block;padding:2px 8px;background:rgba(46,204,113,0.18);color:#2ECC71;border-radius:4px;font-size:var(--fs-body-sm);font-weight:700">ANALYSIERT · ${n} PATIENT${n === 1 ? '' : 'EN'}${analysisDur}</span>`;
                 borderColor = '#2ECC71';
             } else {
                 statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(200,184,120,0.15);color:var(--mil-tan,#c8b878);border-radius:4px;font-size:var(--fs-body-sm);font-weight:700">UNANALYSIERT</span>';
@@ -5344,11 +5362,18 @@
                 const isNew = !prevPids.has(p.patient_id);
                 const isOpen = openPids.has(p.patient_id) || (isActive && isNew);
                 const color = TRIAGE_COLORS[p.triage] || '#444';
-                const transcripts = patientTranscripts[p.patient_id] || [];
+                // BUG-FIX: Transkripte aus dem Store lesen (Live-Updates),
+                // Fallback auf p.transcripts aus dem Backend-Datum — damit
+                // auch Testdaten/serialisierte Patienten ihren Aufnahmetext
+                // zeigen, nicht nur frisch live diktierte.
+                const liveTranscripts = patientTranscripts[p.patient_id] || [];
+                const transcripts = liveTranscripts.length
+                    ? liveTranscripts
+                    : (Array.isArray(p.transcripts) ? p.transcripts : []);
                 const isFz = containerId.includes('fz');
 
                 const transcriptsHtml = transcripts.length
-                    ? transcripts.map(t => `<div class="pt-entry"><div class="pt-time">${t.time}</div><div class="pt-text">${t.text}</div></div>`).join('')
+                    ? transcripts.map(t => `<div class="pt-entry"><div class="pt-time">${t.time || ''}</div><div class="pt-text">${(t.text || '').replace(/</g,'&lt;')}</div></div>`).join('')
                     : '<div style="font-size:var(--fs-body-sm);color:var(--text-dim);padding:4px 0">Keine Aufnahmen</div>';
 
                 const injuriesHtml = (p.injuries || []).length
