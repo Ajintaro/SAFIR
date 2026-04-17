@@ -101,6 +101,10 @@ VOICE_COMMANDS = build_voice_commands(_config)
 
 app = FastAPI(title="CGI San-Feldeinsatz")
 app.mount("/static", StaticFiles(directory=str(PROJECT_DIR / "static")), name="static")
+# Vision-Mocks: statische HTML-Demos fuer Feuerwehr/Polizei/THW/Logistik/...
+_vision_mocks_dir = PROJECT_DIR / "docs" / "vision-mocks"
+if _vision_mocks_dir.exists():
+    app.mount("/vision-mocks", StaticFiles(directory=str(_vision_mocks_dir), html=True), name="vision_mocks")
 templates = Jinja2Templates(directory=str(PROJECT_DIR / "templates"))
 
 

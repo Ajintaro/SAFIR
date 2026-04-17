@@ -1694,9 +1694,28 @@
         .vision-usecase {
             background: var(--bg-surface); border: 1px solid var(--border);
             overflow: hidden; display: flex; flex-direction: column;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+            /* a-Tag-Reset */
+            text-decoration: none; color: inherit; cursor: pointer;
+            position: relative;
         }
-        .vision-usecase:hover { border-color: var(--accent, #c8b878); }
+        .vision-usecase:hover {
+            border-color: var(--accent, #c8b878);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        }
+        .vision-usecase:hover .vuc-link-arrow {
+            transform: translateX(4px);
+            opacity: 1;
+        }
+        .vision-usecase .vuc-link-arrow {
+            display: inline-block;
+            margin-left: 6px;
+            color: var(--accent, #c8b878);
+            opacity: 0.5;
+            transition: transform 0.2s, opacity 0.2s;
+            font-weight: 400;
+        }
         .vision-usecase .vuc-header {
             display: flex; align-items: center; gap: 14px;
             padding: 16px 18px; border-bottom: 1px solid var(--border);
@@ -2234,11 +2253,11 @@
 
                 <div class="vision-usecase-grid">
 
-                    <div class="vision-usecase">
+                    <a class="vision-usecase" href="/vision-mocks/feuerwehr.html" target="_blank">
                         <div class="vuc-header">
                             <div class="vuc-icon" style="background:linear-gradient(135deg,#cc2222,#8b1818)">&#128658;</div>
                             <div>
-                                <div class="vuc-title">Feuerwehr</div>
+                                <div class="vuc-title">Feuerwehr <span class="vuc-link-arrow">&rarr;</span></div>
                                 <div class="vuc-subtitle">Einsatzdokumentation &middot; MANV</div>
                             </div>
                         </div>
@@ -2255,13 +2274,13 @@
                                     <span>Schnittstelle zu ELS / FMS-Leitstellensystemen</span></div>
                             </div>
                         </div>
-                    </div>
+                    </a>
 
-                    <div class="vision-usecase">
+                    <a class="vision-usecase" href="/vision-mocks/polizei.html" target="_blank">
                         <div class="vuc-header">
                             <div class="vuc-icon" style="background:linear-gradient(135deg,#1e3a8a,#1e40af)">&#128737;</div>
                             <div>
-                                <div class="vuc-title">Polizei</div>
+                                <div class="vuc-title">Polizei <span class="vuc-link-arrow">&rarr;</span></div>
                                 <div class="vuc-subtitle">Sachverhalt &middot; Zeugenvernehmung</div>
                             </div>
                         </div>
@@ -2278,13 +2297,13 @@
                                     <span>POLIKS / ComVor / ViVA Landes-Vorgangssysteme</span></div>
                             </div>
                         </div>
-                    </div>
+                    </a>
 
-                    <div class="vision-usecase">
+                    <a class="vision-usecase" href="/vision-mocks/thw.html" target="_blank">
                         <div class="vuc-header">
                             <div class="vuc-icon" style="background:linear-gradient(135deg,#1e5f8f,#0d4f7a)">&#9960;</div>
                             <div>
-                                <div class="vuc-title">THW</div>
+                                <div class="vuc-title">THW <span class="vuc-link-arrow">&rarr;</span></div>
                                 <div class="vuc-subtitle">Bergung &middot; Katastrophenschutz</div>
                             </div>
                         </div>
@@ -2301,13 +2320,13 @@
                                     <span>DIVI-Intensivregister, Länderspezifische Katastrophenschutz-Systeme</span></div>
                             </div>
                         </div>
-                    </div>
+                    </a>
 
-                    <div class="vision-usecase">
+                    <a class="vision-usecase" href="/vision-mocks/logistik.html" target="_blank">
                         <div class="vuc-header">
                             <div class="vuc-icon" style="background:linear-gradient(135deg,#8b4513,#a0522d)">&#128230;</div>
                             <div>
-                                <div class="vuc-title">Logistik &middot; Lager</div>
+                                <div class="vuc-title">Logistik &middot; Lager <span class="vuc-link-arrow">&rarr;</span></div>
                                 <div class="vuc-subtitle">Inventur &middot; Quittierung</div>
                             </div>
                         </div>
@@ -2324,13 +2343,13 @@
                                     <span>SAP EWM, Oracle WMS, custom WMS via REST</span></div>
                             </div>
                         </div>
-                    </div>
+                    </a>
 
-                    <div class="vision-usecase">
+                    <a class="vision-usecase" href="/vision-mocks/sanitaetsdienste.html" target="_blank">
                         <div class="vuc-header">
                             <div class="vuc-icon" style="background:linear-gradient(135deg,#c8b878,#a09060)">&#10010;</div>
                             <div>
-                                <div class="vuc-title">Zivile Sanitätsdienste</div>
+                                <div class="vuc-title">Zivile Sanitätsdienste <span class="vuc-link-arrow">&rarr;</span></div>
                                 <div class="vuc-subtitle">DRK &middot; JUH &middot; MHD &middot; ASB</div>
                             </div>
                         </div>
@@ -2348,13 +2367,13 @@
                                     <span>divi-exchange, KatSys, ELDIS Leitstellen-Protokolle</span></div>
                             </div>
                         </div>
-                    </div>
+                    </a>
 
-                    <div class="vision-usecase">
+                    <a class="vision-usecase" href="/vision-mocks/forschung.html" target="_blank">
                         <div class="vuc-header">
                             <div class="vuc-icon" style="background:linear-gradient(135deg,#4a5a3e,#3a4a2e)">&#9876;</div>
                             <div>
-                                <div class="vuc-title">Out-of-Scope &middot; Forschung</div>
+                                <div class="vuc-title">Out-of-Scope &middot; Forschung <span class="vuc-link-arrow">&rarr;</span></div>
                                 <div class="vuc-subtitle">Feldforschung &middot; Expeditionen</div>
                             </div>
                         </div>
@@ -2372,7 +2391,7 @@
                                     <span>iNaturalist, GBIF, Fieldbook, DGfO-Forschungsdaten-Infrastrukturen</span></div>
                             </div>
                         </div>
-                    </div>
+                    </a>
 
                 </div>
 

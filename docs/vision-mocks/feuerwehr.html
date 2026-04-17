@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>SAFIR Vision — Feuerwehr</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+    :root {
+        --brand-primary: #dc2626;        /* Feuerwehr-Rot */
+        --brand-secondary: #fbbf24;      /* Feuerwehrgelb */
+        --brand-accent: #1f2937;
+    }
+    .mock-header {
+        background: linear-gradient(90deg, var(--brand-primary), #991b1b);
+        border-bottom: 4px solid var(--brand-secondary);
+    }
+    .mock-header-logo {
+        background: var(--brand-secondary);
+        color: var(--brand-primary);
+    }
+    /* Feuerwehr-typische Warnstreifen rechts */
+    .mock-header::after {
+        content: '';
+        display: block;
+        width: 80px;
+        background: repeating-linear-gradient(135deg,
+            var(--brand-secondary) 0, var(--brand-secondary) 12px,
+            var(--brand-primary) 12px, var(--brand-primary) 24px);
+        margin-left: 20px;
+        align-self: stretch;
+    }
+    .mock-field {
+        border-left-color: var(--brand-primary);
+    }
+    .priority-big {
+        font-family: var(--font-mono);
+        font-size: 48px;
+        font-weight: 800;
+        color: var(--brand-primary);
+        line-height: 1;
+        text-align: center;
+        padding: 12px 0;
+    }
+    .priority-big.warn { color: var(--brand-secondary); }
+    .at-log {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        background: #0f172a;
+        color: #86efac;
+        padding: 14px;
+        border-radius: 6px;
+        line-height: 1.7;
+        white-space: pre-wrap;
+    }
+    .at-log .t { color: #fbbf24; }
+    .at-log .w { color: #f87171; }
+    .manv-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+        margin-top: 12px;
+    }
+    .manv-cell {
+        background: var(--bg-surface-2);
+        border-radius: 6px;
+        padding: 12px 6px;
+        text-align: center;
+        border-left: 4px solid;
+    }
+    .manv-cell.t1 { border-left-color: #dc2626; }
+    .manv-cell.t2 { border-left-color: #f59e0b; }
+    .manv-cell.t3 { border-left-color: #16a34a; }
+    .manv-cell.t4 { border-left-color: #2563eb; }
+    .manv-cell.tot { border-left-color: #111827; }
+    .manv-num {
+        font-family: var(--font-mono);
+        font-size: 28px;
+        font-weight: 800;
+    }
+    .manv-lbl {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-dim);
+        font-weight: 600;
+    }
+</style>
+</head>
+<body>
+
+<div class="mock-back">
+    <a href="/#vision">&larr; Zurück zu SAFIR Vision</a>
+    <span style="color:var(--text-dim)">Mock — nicht funktional</span>
+    <span class="mock-tag">FEUERWEHR</span>
+</div>
+
+<div class="mock-shell">
+
+    <div class="mock-header">
+        <div class="mock-header-logo">FW</div>
+        <div>
+            <div class="mock-header-title">SAFIR Einsatzdokumentation</div>
+            <div class="mock-header-sub">FF Bonn-Beuel · ELW 1 · Einsatz-Nr. B-2026-0417-142</div>
+        </div>
+        <div class="mock-header-status">
+            <div class="mock-header-status-item">
+                <span class="mock-header-status-dot"></span>
+                Leitstelle verbunden
+            </div>
+            <div class="mock-header-status-item">
+                🎤 Sprache aktiv
+            </div>
+        </div>
+    </div>
+
+    <div style="max-width:1400px;margin:0 auto;padding:24px">
+
+        <div class="mock-voice">
+            <div class="mock-voice-icon">🎤</div>
+            <div class="mock-voice-text">
+                <div class="mock-voice-transcript">
+                    „Lage: Brand Mehrfamilienhaus Rheinaustraße 42, zweites Obergeschoss, zwei Personen vermisst, Brandbekämpfung mit zwei C-Rohren, Rettungsweg über Drehleiter, MANV mit zwei verletzten Bewohnern — Triage rot und gelb …"
+                </div>
+                <div class="mock-voice-meta">ZF · Transkribiert 14:07:23 · Whisper-small → Qwen-7B</div>
+            </div>
+        </div>
+
+        <div class="mock-main">
+
+            <div>
+                <!-- Einsatz-Stichwort -->
+                <div class="mock-card">
+                    <div class="mock-card-head">
+                        Einsatz-Stichwort · FwDV 100
+                        <span class="badge badge-danger">B3 Y — Wohnhaus + Personen</span>
+                    </div>
+                    <div class="mock-card-body">
+                        <div class="mock-field-grid">
+                            <div class="mock-field">
+                                <div class="mock-field-label">Lage</div>
+                                <div class="mock-field-value">Rheinaustraße 42, 53225 Bonn-Beuel</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Koordinaten</div>
+                                <div class="mock-field-value mono">50.7381, 7.1143</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Alarmzeit</div>
+                                <div class="mock-field-value mono">17.04.2026 · 14:02:58</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Ausrückeordnung</div>
+                                <div class="mock-field-value">B3 + RTW + NEF</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Einsatzleiter</div>
+                                <div class="mock-field-value">OBM Becker</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Wetter</div>
+                                <div class="mock-field-value">14 °C · leichter Wind NO</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MANV-Triage -->
+                <div class="mock-card">
+                    <div class="mock-card-head">
+                        MANV — Sichtungs-Kategorien (PRIOR-Schema)
+                        <span class="badge badge-warning">2 Verletzte</span>
+                    </div>
+                    <div class="mock-card-body">
+                        <div class="manv-grid">
+                            <div class="manv-cell t1">
+                                <div class="manv-num">1</div>
+                                <div class="manv-lbl">T1 Sofort</div>
+                            </div>
+                            <div class="manv-cell t2">
+                                <div class="manv-num">1</div>
+                                <div class="manv-lbl">T2 Dringend</div>
+                            </div>
+                            <div class="manv-cell t3">
+                                <div class="manv-num">0</div>
+                                <div class="manv-lbl">T3 Aufschub</div>
+                            </div>
+                            <div class="manv-cell t4">
+                                <div class="manv-num">0</div>
+                                <div class="manv-lbl">T4 Abwartend</div>
+                            </div>
+                            <div class="manv-cell tot">
+                                <div class="manv-num">0</div>
+                                <div class="manv-lbl">Verstorben</div>
+                            </div>
+                        </div>
+                        <table class="mock-table" style="margin-top:16px">
+                            <thead>
+                                <tr>
+                                    <th style="width:50px">T</th>
+                                    <th>Person</th>
+                                    <th>Verletzung</th>
+                                    <th>Status</th>
+                                    <th>RTW</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge badge-danger">T1</span></td>
+                                    <td>m, ca. 60 J.</td>
+                                    <td>Rauchgas-Inhalation, Bewusstlos</td>
+                                    <td>O₂ via HFNC, intubiert</td>
+                                    <td>RTW Bonn 1</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-warning">T2</span></td>
+                                    <td>w, ca. 34 J.</td>
+                                    <td>Rauchgas, Verbrennung 2° Unterarm</td>
+                                    <td>stabil, O₂ 6 l</td>
+                                    <td>RTW Beuel 2</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Atemschutz-Überwachung -->
+                <div class="mock-card">
+                    <div class="mock-card-head">
+                        Atemschutz-Überwachung (FwDV 7)
+                        <span class="badge badge-info">2 Trupps im Einsatz</span>
+                    </div>
+                    <div class="mock-card-body">
+                        <table class="mock-table">
+                            <thead>
+                                <tr>
+                                    <th>Trupp</th>
+                                    <th>Truppführer / Mann</th>
+                                    <th>Eingestiegen</th>
+                                    <th>Druck Eingang</th>
+                                    <th>Aktueller Druck</th>
+                                    <th>Rückzug spätestens</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>AT 1</strong></td>
+                                    <td>HBM Weber / BM Schulz</td>
+                                    <td>14:05:12</td>
+                                    <td>300 bar / 300 bar</td>
+                                    <td><strong>180 bar</strong> / 170 bar</td>
+                                    <td><span class="badge badge-warning">14:22 (in 7 min)</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>AT 2</strong></td>
+                                    <td>OBM Müller / HFM Kaiser</td>
+                                    <td>14:11:48</td>
+                                    <td>300 bar / 290 bar</td>
+                                    <td><strong>240 bar</strong> / 230 bar</td>
+                                    <td><span class="badge badge-success">14:31</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- AT-Log -->
+                <div class="mock-card">
+                    <div class="mock-card-head">Audio-Transkript · Funk + Einsatzleitung</div>
+                    <div class="mock-card-body">
+                        <pre class="at-log"><span class="t">14:02:58</span> ZF „<span class="w">Floriansbote Bonn 1-11-1</span>, ELW 1 rückt aus, B3 Y Rheinaustraße 42"
+<span class="t">14:07:23</span> EL „Erste Lagemeldung an Leitstelle, Brand zweite Etage, 2 Personen vermisst"
+<span class="t">14:09:10</span> AT1 „AT 1 eingestiegen, Druck 270, Suche im OG links"
+<span class="t">14:12:44</span> EL „<span class="w">Nachalarmierung DLK 23-12</span> Bonn-Innenstadt, Rettungsweg nicht begehbar"
+<span class="t">14:14:32</span> AT1 „Person gefunden, männlich, bewusstlos, bringen ins Freie"
+<span class="t">14:18:05</span> EL „T1 an RTW Bonn 1 übergeben, Fahrtziel Uniklinik Bonn"
+<span class="t">14:19:40</span> AT2 „AT 2 eingestiegen, zweite Person noch nicht gefunden"
+<span class="t">14:23:18</span> AT2 „Person gefunden OG rechts, weiblich, ansprechbar, Verbrennung Arm"</pre>
+                    </div>
+                </div>
+
+            </div>
+
+            <div>
+                <div class="mock-card mock-sidebar-card">
+                    <div class="mock-card-head">Kräfte am Einsatzort</div>
+                    <div class="mock-card-body">
+                        <h4>Feuerwehr</h4>
+                        <ul style="list-style:none;font-size:14px;line-height:1.9">
+                            <li>🚒 <strong>HLF 20-1</strong> FF Beuel · 1/0/5/6</li>
+                            <li>🚒 <strong>DLK 23-12</strong> BF Bonn · 1/0/1/2</li>
+                            <li>🚒 <strong>TLF 4000</strong> FF Beuel · 0/0/2/2</li>
+                            <li>🚓 <strong>ELW 1</strong> FF Beuel · 1/1/0/2</li>
+                        </ul>
+                        <h4 style="margin-top:16px">Rettungsdienst</h4>
+                        <ul style="list-style:none;font-size:14px;line-height:1.9">
+                            <li>🚑 RTW Bonn 1</li>
+                            <li>🚑 RTW Beuel 2</li>
+                            <li>🚐 NEF Bonn-Süd (NotArzt Dr. Halbach)</li>
+                        </ul>
+                        <h4 style="margin-top:16px">Polizei</h4>
+                        <ul style="list-style:none;font-size:14px;line-height:1.9">
+                            <li>🚔 FuStW Bonn-Beuel 11/1 (Absperrung)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mock-card mock-sidebar-card">
+                    <div class="mock-card-head">Einsatzverlauf</div>
+                    <div class="mock-card-body">
+                        <ul class="mock-timeline">
+                            <li>
+                                <span class="mock-timeline-time">14:02:58</span>
+                                Alarmierung B3 Y
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">14:05:00</span>
+                                Ankunft HLF, Lage-Erkundung
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">14:07:23</span>
+                                Erste Lagemeldung → B3
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">14:09:10</span>
+                                AT 1 im Innenangriff
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">14:14:32</span>
+                                Person 1 gerettet (T1)
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">14:18:05</span>
+                                T1 zum Transport übergeben
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">14:23:18</span>
+                                Person 2 gerettet (T2)
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mock-card mock-sidebar-card" style="border-top:4px solid var(--brand-secondary)">
+                    <div class="mock-card-head" style="background:var(--brand-secondary);color:var(--brand-accent)">
+                        Integration
+                    </div>
+                    <div class="mock-card-body">
+                        <div style="font-size:13px;line-height:1.7">
+                            <div style="margin-bottom:6px">✓ ELS Leitstellensystem</div>
+                            <div style="margin-bottom:6px">✓ FMS Rheinland</div>
+                            <div style="margin-bottom:6px">✓ divi-exchange</div>
+                            <div>✓ WebEinsatz Lagekarte</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="mock-footer">
+        SAFIR Vision Mock · Feuerwehr · Nicht funktional · AFCEA 2026
+    </div>
+
+</div>
+
+</body>
+</html>

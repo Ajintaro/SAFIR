@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>SAFIR Vision — THW</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+    :root {
+        --brand-primary: #003a7a;        /* THW-Ultramarinblau RAL 5002 */
+        --brand-secondary: #ffcc00;      /* THW-Gelb */
+        --brand-accent: #000000;
+    }
+    .mock-header {
+        background: var(--brand-primary);
+        border-bottom: 6px solid var(--brand-secondary);
+    }
+    .mock-header-logo {
+        background: var(--brand-secondary);
+        color: var(--brand-primary);
+        font-family: var(--font-mono);
+        font-size: 14px;
+        font-weight: 900;
+    }
+    .mock-field { border-left-color: var(--brand-primary); }
+    .mock-card-head { background: var(--brand-primary); }
+
+    /* THW-typisch: reduziert, funktional, blau-gelb */
+    .thw-banner {
+        background: var(--brand-secondary);
+        color: var(--brand-accent);
+        padding: 10px 20px;
+        font-weight: 700;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .ov-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+    }
+    .ov-cell {
+        background: var(--bg-surface-2);
+        border-top: 3px solid var(--brand-primary);
+        padding: 14px;
+        border-radius: 6px;
+    }
+    .ov-name {
+        font-weight: 700;
+        font-size: 15px;
+        color: var(--brand-primary);
+        margin-bottom: 4px;
+    }
+    .ov-fgr {
+        font-size: 12px;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 10px;
+    }
+    .ov-stat {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        padding: 3px 0;
+    }
+    .ov-stat strong { font-family: var(--font-mono); }
+
+    .mgrs {
+        font-family: var(--font-mono);
+        font-size: 16px;
+        background: var(--brand-accent);
+        color: var(--brand-secondary);
+        padding: 6px 12px;
+        border-radius: 4px;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+    }
+
+    .ekat-row {
+        display: grid;
+        grid-template-columns: 80px 1fr 1fr 80px;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+        align-items: center;
+    }
+    .ekat-row:last-child { border-bottom: none; }
+    .ekat-code {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--brand-primary);
+    }
+</style>
+</head>
+<body>
+
+<div class="mock-back">
+    <a href="/#vision">&larr; Zurück zu SAFIR Vision</a>
+    <span style="color:var(--text-dim)">Mock — nicht funktional</span>
+    <span class="mock-tag">THW</span>
+</div>
+
+<div class="mock-shell">
+
+    <div class="mock-header">
+        <div class="mock-header-logo">THW</div>
+        <div>
+            <div class="mock-header-title">SAFIR Einsatzlage · Katastrophenschutz</div>
+            <div class="mock-header-sub">OV Bonn · Einsatz 2026-0417-HOCHW-MIT</div>
+        </div>
+        <div class="mock-header-status">
+            <div class="mock-header-status-item">
+                <span class="mock-header-status-dot"></span>
+                LuK verbunden
+            </div>
+            <div class="mock-header-status-item">
+                📡 Iridium-Backup OK
+            </div>
+        </div>
+    </div>
+
+    <div class="thw-banner">
+        <div>Einsatzauftrag: Hochwasser-Unterstützung Ahrweiler · Tag 3</div>
+        <div>Zugführer: ZF Dr. Hoffmann · 12-14-40</div>
+    </div>
+
+    <div style="max-width:1400px;margin:0 auto;padding:24px">
+
+        <div class="mock-voice">
+            <div class="mock-voice-icon">🎤</div>
+            <div class="mock-voice-text">
+                <div class="mock-voice-transcript">
+                    „Lagemeldung Zugführer: Wasserstand Ahr bei Altenahr aktuell 3,20 Meter, fallend. Zwei Fahrzeuge aus dem Fluss geborgen, beide unbesetzt. Schadenskategorie EKAT III an Gebäude Hauptstraße 17. Fachgruppe Räumen EOD Berlin unterwegs, erwartete Ankunft 16 Uhr. Helfertausch in zwei Stunden geplant. Kein Vermisster mehr gemeldet …"
+                </div>
+                <div class="mock-voice-meta">Lagemeldung · Transkribiert 14:12:08 · Satellit-Uplink bei Bedarf</div>
+            </div>
+        </div>
+
+        <div class="mock-main">
+
+            <div>
+                <div class="mock-card">
+                    <div class="mock-card-head">Einsatzauftrag · Lage</div>
+                    <div class="mock-card-body">
+                        <div class="mock-field-grid">
+                            <div class="mock-field">
+                                <div class="mock-field-label">Einsatzstelle</div>
+                                <div class="mock-field-value">Altenahr · Hauptstraße</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">MGRS-Koordinaten</div>
+                                <div class="mock-field-value"><span class="mgrs">32U MC 1234 5678</span></div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Einsatzbeginn</div>
+                                <div class="mock-field-value mono">15.04.2026 · 06:20</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Voraussichtl. Ende</div>
+                                <div class="mock-field-value mono">18.04.2026 · offen</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Pegel Ahr</div>
+                                <div class="mock-field-value">3,20 m · fallend ↓</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Wetter (KNMI)</div>
+                                <div class="mock-field-value">17 °C · bewölkt · kein Regen</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mock-card">
+                    <div class="mock-card-head">Eingesetzte OVs · Fachgruppen</div>
+                    <div class="mock-card-body">
+                        <div class="ov-grid">
+                            <div class="ov-cell">
+                                <div class="ov-name">OV Bonn</div>
+                                <div class="ov-fgr">FGr Wassergefahren · FGr N</div>
+                                <div class="ov-stat"><span>Helfer aktiv</span><strong>22</strong></div>
+                                <div class="ov-stat"><span>Fahrzeuge</span><strong>5</strong></div>
+                                <div class="ov-stat"><span>MzKW</span><strong>1</strong></div>
+                                <div class="ov-stat"><span>MS 400</span><strong>2</strong></div>
+                            </div>
+                            <div class="ov-cell">
+                                <div class="ov-name">OV Euskirchen</div>
+                                <div class="ov-fgr">Technischer Zug · FGr Räumen</div>
+                                <div class="ov-stat"><span>Helfer aktiv</span><strong>18</strong></div>
+                                <div class="ov-stat"><span>Fahrzeuge</span><strong>4</strong></div>
+                                <div class="ov-stat"><span>LKW-K 7t</span><strong>2</strong></div>
+                                <div class="ov-stat"><span>Rad-Lader</span><strong>1</strong></div>
+                            </div>
+                            <div class="ov-cell">
+                                <div class="ov-name">OV Koblenz</div>
+                                <div class="ov-fgr">FGr Ortung · FGr Logistik</div>
+                                <div class="ov-stat"><span>Helfer aktiv</span><strong>14</strong></div>
+                                <div class="ov-stat"><span>Fahrzeuge</span><strong>3</strong></div>
+                                <div class="ov-stat"><span>Such-Team</span><strong>1</strong></div>
+                                <div class="ov-stat"><span>FmKW</span><strong>1</strong></div>
+                            </div>
+                            <div class="ov-cell">
+                                <div class="ov-name">OV Berlin-Steglitz</div>
+                                <div class="ov-fgr">FGr Räumen EOD · in Anfahrt</div>
+                                <div class="ov-stat"><span>Helfer</span><strong>12</strong></div>
+                                <div class="ov-stat"><span>Fahrzeuge</span><strong>3</strong></div>
+                                <div class="ov-stat"><span>ETA</span><strong>16:00</strong></div>
+                                <div class="ov-stat"><span>Status</span><strong>Rollend</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mock-card">
+                    <div class="mock-card-head">
+                        Schadens-Inventar · EKAT-Schema
+                        <span class="badge badge-info">14 Objekte erfasst</span>
+                    </div>
+                    <div class="mock-card-body">
+                        <div class="ekat-row" style="background:var(--bg-surface-2);border-radius:4px;padding:8px 10px;font-weight:600;font-size:11px;text-transform:uppercase;color:var(--text-dim)">
+                            <div>EKAT</div>
+                            <div>Objekt</div>
+                            <div>Schaden</div>
+                            <div>MGRS</div>
+                        </div>
+                        <div class="ekat-row">
+                            <div class="ekat-code">III-W</div>
+                            <div>MFH Hauptstr. 17</div>
+                            <div>Erdgeschoss komplett überflutet, Kellerwand Setzriss</div>
+                            <div style="font-family:var(--font-mono);font-size:12px">MC 1234 5678</div>
+                        </div>
+                        <div class="ekat-row">
+                            <div class="ekat-code">II</div>
+                            <div>EFH Hauptstr. 23</div>
+                            <div>Keller 60 cm Wasser, Heizung ausgefallen</div>
+                            <div style="font-family:var(--font-mono);font-size:12px">MC 1238 5672</div>
+                        </div>
+                        <div class="ekat-row">
+                            <div class="ekat-code">IV</div>
+                            <div>Brücke Mühlenweg</div>
+                            <div>Einsturz-Gefahr, Pfeiler unterspült</div>
+                            <div style="font-family:var(--font-mono);font-size:12px">MC 1201 5644</div>
+                        </div>
+                        <div class="ekat-row">
+                            <div class="ekat-code">I</div>
+                            <div>Garage Weinbergstr. 4</div>
+                            <div>Schlammablagerung, kein Strukturschaden</div>
+                            <div style="font-family:var(--font-mono);font-size:12px">MC 1245 5689</div>
+                        </div>
+                        <div class="ekat-row">
+                            <div class="ekat-code">V</div>
+                            <div>Bootsschuppen FVF Altenahr</div>
+                            <div>Fortgespült, keine Reste</div>
+                            <div style="font-family:var(--font-mono);font-size:12px">MC 1220 5655</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mock-card">
+                    <div class="mock-card-head">Helfer-Check-In · aktive Schicht</div>
+                    <div class="mock-card-body">
+                        <table class="mock-table">
+                            <thead>
+                                <tr><th>Name</th><th>OV</th><th>Qualif.</th><th>Eingecheckt</th><th>Einsatz bis</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><strong>ZFü Dr. Hoffmann</strong></td><td>Bonn</td><td>ZFü · FGr N</td><td>06:20</td><td>16:00</td></tr>
+                                <tr><td>Schulte, Anna</td><td>Bonn</td><td>THL · Bediener MS</td><td>06:22</td><td>14:30</td></tr>
+                                <tr><td>Weber, Klaus</td><td>Euskirchen</td><td>Gruppenführer</td><td>07:10</td><td>15:10</td></tr>
+                                <tr><td>Hartmann, Lars</td><td>Koblenz</td><td>FGr Ortung</td><td>08:05</td><td>16:05</td></tr>
+                                <tr><td>Kranz, Petra</td><td>Bonn</td><td>Sprechfunker</td><td>06:25</td><td>14:25</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div class="mock-card mock-sidebar-card">
+                    <div class="mock-card-head">Funk-Kanäle</div>
+                    <div class="mock-card-body">
+                        <div style="font-family:var(--font-mono);font-size:13px;line-height:1.9">
+                            <div>📻 <strong>TBZ 410</strong> — Führung Zug</div>
+                            <div>📻 <strong>TBZ 412</strong> — FGr Wasser</div>
+                            <div>📻 <strong>TBZ 414</strong> — FGr Räumen</div>
+                            <div>📻 <strong>TBZ 418</strong> — Logistik</div>
+                            <div>📻 <strong>BOS 50</strong> — Leitstelle AW</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mock-card mock-sidebar-card">
+                    <div class="mock-card-head">Meldeverlauf</div>
+                    <div class="mock-card-body">
+                        <ul class="mock-timeline">
+                            <li>
+                                <span class="mock-timeline-time">06:20</span>
+                                Einsatzbeginn · 22 Helfer OV Bonn
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">09:14</span>
+                                Pegel-Max 3,40 m
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">11:48</span>
+                                Fahrzeug 1 geborgen, unbesetzt
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">13:02</span>
+                                Fahrzeug 2 geborgen, unbesetzt
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">13:55</span>
+                                EKAT IV Brücke Mühlenweg
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">14:12</span>
+                                Aktuelle Lagemeldung
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mock-card mock-sidebar-card" style="border-top:4px solid var(--brand-secondary)">
+                    <div class="mock-card-head" style="background:var(--brand-secondary);color:var(--brand-accent)">
+                        Hardware · Redundanz
+                    </div>
+                    <div class="mock-card-body">
+                        <div style="font-size:13px;line-height:1.8">
+                            <div>🔋 Solar-Kit · 84% geladen</div>
+                            <div>📡 Iridium-Modem · aktiv</div>
+                            <div>💧 IP68 · Schutzklasse</div>
+                            <div>🌡️ Betriebstemperatur -20 °C bis +55 °C</div>
+                            <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;color:var(--text-dim);font-size:11px">
+                                Autark 48 h bei Solar-Fehlbetrieb
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mock-footer">
+        SAFIR Vision Mock · THW · Nicht funktional · AFCEA 2026
+    </div>
+
+</div>
+
+</body>
+</html>

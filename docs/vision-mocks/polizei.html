@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>SAFIR Vision — Polizei</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+    :root {
+        --brand-primary: #1e40af;      /* Deutschlandblau (polizei-bund) */
+        --brand-secondary: #fbbf24;    /* Reflexgelb */
+        --brand-accent: #0f172a;
+    }
+    .mock-header {
+        background: linear-gradient(90deg, var(--brand-primary) 0%, #1e3a8a 100%);
+        border-bottom: 3px solid var(--brand-secondary);
+    }
+    .mock-header-logo {
+        background: #ffffff;
+        color: var(--brand-primary);
+        border: 2px solid var(--brand-secondary);
+    }
+    .mock-field { border-left-color: var(--brand-primary); }
+    .mock-card-head { background: var(--brand-primary); }
+
+    /* Polizei-typisch: Fall-Nummer oben gross */
+    .fall-nr {
+        font-family: var(--font-mono);
+        font-size: 18px;
+        font-weight: 700;
+        background: var(--brand-accent);
+        color: white;
+        padding: 8px 14px;
+        border-radius: 4px;
+        letter-spacing: 0.1em;
+    }
+    .stgb-pill {
+        display: inline-block;
+        padding: 4px 10px;
+        background: var(--brand-primary);
+        color: white;
+        border-radius: 4px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 600;
+        margin-right: 6px;
+        margin-bottom: 6px;
+    }
+    .zeuge-block {
+        padding: 14px;
+        background: var(--bg-surface-2);
+        border-radius: 8px;
+        border-left: 4px solid var(--brand-primary);
+        margin-bottom: 14px;
+    }
+    .zeuge-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .zeuge-name {
+        font-weight: 700;
+        font-size: 15px;
+    }
+    .zeuge-meta {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-dim);
+    }
+    .zeuge-aussage {
+        font-size: 14px;
+        line-height: 1.6;
+        color: #374151;
+        padding-left: 12px;
+        border-left: 2px solid #d1d5db;
+    }
+</style>
+</head>
+<body>
+
+<div class="mock-back">
+    <a href="/#vision">&larr; Zurück zu SAFIR Vision</a>
+    <span style="color:var(--text-dim)">Mock — nicht funktional</span>
+    <span class="mock-tag">POLIZEI</span>
+</div>
+
+<div class="mock-shell">
+
+    <div class="mock-header">
+        <div class="mock-header-logo">⬟</div>
+        <div>
+            <div class="mock-header-title">SAFIR Vorgangsbearbeitung · Mobil</div>
+            <div class="mock-header-sub">PP Bonn · PHK Wagner · Bodycam 4711 · IMSI gültig</div>
+        </div>
+        <div class="mock-header-status">
+            <div class="mock-header-status-item">
+                <span class="mock-header-status-dot"></span>
+                POLIKS verbunden
+            </div>
+            <div class="mock-header-status-item">
+                🎤 Zeugenvernehmung aktiv
+            </div>
+        </div>
+    </div>
+
+    <div style="max-width:1400px;margin:0 auto;padding:24px">
+
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
+            <div class="fall-nr">VG-2026-04-17-K-00842</div>
+            <div style="flex:1">
+                <div style="font-weight:600;font-size:16px">Verkehrsunfall mit Personenschaden</div>
+                <div style="font-size:13px;color:var(--text-dim)">17.04.2026 · 13:48 Uhr · Bonn-Gronau · Adenauerallee / Kaiserplatz</div>
+            </div>
+            <div>
+                <span class="stgb-pill">§ 229 StGB</span>
+                <span class="stgb-pill">§ 142 StGB</span>
+                <span class="stgb-pill">§ 1 StVO</span>
+            </div>
+        </div>
+
+        <div class="mock-voice">
+            <div class="mock-voice-icon">🎤</div>
+            <div class="mock-voice-text">
+                <div class="mock-voice-transcript">
+                    „Zeugenaussage der Frau Meier, 52 Jahre, wohnhaft Bonn: Sie stand an der Ampel Adenauerallee, hat gesehen wie ein schwarzer SUV Audi Q5 mit hoher Geschwindigkeit über Rot fuhr und den Radfahrer erfasst hat. Der SUV ist Richtung Bad Godesberg weitergefahren ohne anzuhalten, Kennzeichen nur teilweise erkannt, beginnt mit BN dash CV …"
+                </div>
+                <div class="mock-voice-meta">Mobile Vernehmung · Transkribiert 13:56:12 · Vorlage: PolNRW ZV-Basis</div>
+            </div>
+        </div>
+
+        <div class="mock-main">
+
+            <div>
+                <div class="mock-card">
+                    <div class="mock-card-head">Sachverhalt</div>
+                    <div class="mock-card-body">
+                        <div class="mock-field-grid">
+                            <div class="mock-field">
+                                <div class="mock-field-label">Tatort</div>
+                                <div class="mock-field-value">Adenauerallee / Kaiserplatz</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Tatzeit</div>
+                                <div class="mock-field-value mono">17.04.2026 · 13:48</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Geschädigter</div>
+                                <div class="mock-field-value">m, ca. 40 J., Radfahrer</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Verletzungsgrad</div>
+                                <div class="mock-field-value">schwer, RTW zur Uniklinik</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Tatverdächtiger</div>
+                                <div class="mock-field-value">unbekannt · Fahrerflucht</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Kennzeichen (partiell)</div>
+                                <div class="mock-field-value mono">BN-CV-???</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Fahrzeug</div>
+                                <div class="mock-field-value">Audi Q5, schwarz</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Fluchtrichtung</div>
+                                <div class="mock-field-value">Bad Godesberg (südlich)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mock-card">
+                    <div class="mock-card-head">
+                        Zeugenaussagen
+                        <span class="badge badge-info">3 Zeugen · 2 aufgenommen</span>
+                    </div>
+                    <div class="mock-card-body">
+
+                        <div class="zeuge-block">
+                            <div class="zeuge-head">
+                                <div>
+                                    <div class="zeuge-name">Meier, Gabriele · 52 J.</div>
+                                    <div class="zeuge-meta">ID-Check ✓ · Personal-Nr. 55511234 · 13:56:12</div>
+                                </div>
+                                <span class="badge badge-success">Unterschrieben digital</span>
+                            </div>
+                            <div class="zeuge-aussage">
+                                Sie stand an der Ampel Adenauerallee Richtung Kaiserplatz und habe
+                                gesehen, dass ein schwarzer SUV (Audi Q5) mit erheblich überhöhter
+                                Geschwindigkeit über die rote Ampel gefahren sei und dabei einen
+                                Radfahrer erfasst habe. Der SUV sei anschließend ohne anzuhalten
+                                Richtung Bad Godesberg weitergefahren. Kennzeichen nur teilweise
+                                erkannt, beginnt mit „BN-CV".
+                            </div>
+                        </div>
+
+                        <div class="zeuge-block">
+                            <div class="zeuge-head">
+                                <div>
+                                    <div class="zeuge-name">Johansson, Erik · 28 J.</div>
+                                    <div class="zeuge-meta">ID-Check ✓ · Pass schwedisch · 14:02:33</div>
+                                </div>
+                                <span class="badge badge-success">Unterschrieben digital</span>
+                            </div>
+                            <div class="zeuge-aussage">
+                                Bestätigt die Aussage von Frau Meier in wesentlichen Teilen. Ergänzt,
+                                dass der Fahrer männlich, ca. 30-40 Jahre, mit Bart und Basecap,
+                                gewesen sei. Geschwindigkeit schätze er auf ca. 70-80 km/h bei
+                                innerörtlichem Tempolimit 50.
+                            </div>
+                        </div>
+
+                        <div class="zeuge-block" style="opacity:0.5;border-left-color:#9ca3af">
+                            <div class="zeuge-head">
+                                <div>
+                                    <div class="zeuge-name">Krause, Thomas · 67 J.</div>
+                                    <div class="zeuge-meta">Wartend · Audiodatei gesichert</div>
+                                </div>
+                                <span class="badge badge-muted">Transkription in Bearbeitung</span>
+                            </div>
+                            <div class="zeuge-aussage">
+                                [In Transkription …]
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="mock-card">
+                    <div class="mock-card-head">Sofortmaßnahmen</div>
+                    <div class="mock-card-body">
+                        <table class="mock-table">
+                            <thead>
+                                <tr>
+                                    <th>Zeit</th>
+                                    <th>Maßnahme</th>
+                                    <th>Durchführender</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>13:50</td>
+                                    <td>Absperrung Tatort, Verkehrsregelung</td>
+                                    <td>PHK Wagner / POM Schmitz</td>
+                                    <td><span class="badge badge-success">Laufend</span></td>
+                                </tr>
+                                <tr>
+                                    <td>13:52</td>
+                                    <td>Rettungsdienst alarmiert, RTW vor Ort</td>
+                                    <td>Leitstelle</td>
+                                    <td><span class="badge badge-success">Erledigt</span></td>
+                                </tr>
+                                <tr>
+                                    <td>13:58</td>
+                                    <td>Fahndung schwarzer Audi Q5 BN-CV-???</td>
+                                    <td>Kreispolizei Bonn</td>
+                                    <td><span class="badge badge-warning">Aktiv</span></td>
+                                </tr>
+                                <tr>
+                                    <td>14:05</td>
+                                    <td>Spurensicherung, Bremsspuren-Messung</td>
+                                    <td>KTI Bonn</td>
+                                    <td><span class="badge badge-warning">In Anfahrt</span></td>
+                                </tr>
+                                <tr>
+                                    <td>14:12</td>
+                                    <td>CCTV-Anfrage Busbahnhof Kaiserplatz</td>
+                                    <td>PHK Wagner</td>
+                                    <td><span class="badge badge-info">Rückruf erwartet</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div class="mock-card mock-sidebar-card">
+                    <div class="mock-card-head">Beweismittel</div>
+                    <div class="mock-card-body">
+                        <h4>Foto-Dokumentation</h4>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px">
+                            <div style="aspect-ratio:1;background:#cbd5e1;border-radius:4px;display:grid;place-items:center;font-size:11px;color:#475569">IMG_001<br>Unfallstelle</div>
+                            <div style="aspect-ratio:1;background:#cbd5e1;border-radius:4px;display:grid;place-items:center;font-size:11px;color:#475569">IMG_002<br>Bremsspuren</div>
+                            <div style="aspect-ratio:1;background:#cbd5e1;border-radius:4px;display:grid;place-items:center;font-size:11px;color:#475569">IMG_003<br>Fahrrad</div>
+                            <div style="aspect-ratio:1;background:#cbd5e1;border-radius:4px;display:grid;place-items:center;font-size:11px;color:#475569">IMG_004<br>Kennzeichen CCTV</div>
+                        </div>
+                        <h4>Bodycam-Aufnahmen</h4>
+                        <div style="font-size:13px;line-height:1.7">
+                            📹 <strong>BC4711_20260417_1348.mp4</strong><br>
+                            <span style="color:var(--text-dim);font-size:12px">14:28 min · 487 MB · gesichert</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mock-card mock-sidebar-card">
+                    <div class="mock-card-head">Vorgangsverlauf</div>
+                    <div class="mock-card-body">
+                        <ul class="mock-timeline">
+                            <li>
+                                <span class="mock-timeline-time">13:48</span>
+                                Tatzeitpunkt (lt. Zeugen)
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">13:49</span>
+                                Notruf 110 (ID 7739012)
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">13:52</span>
+                                FuStW 11/1 am Tatort
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">13:55</span>
+                                Vorgang in POLIKS erfasst
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">13:58</span>
+                                Fahndung rausgegeben
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">14:02</span>
+                                Zeuge 2 befragt (Johansson)
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">14:15</span>
+                                Geschädigter transportfähig
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mock-card mock-sidebar-card">
+                    <div class="mock-card-head" style="background:var(--brand-secondary);color:var(--brand-accent)">
+                        Übertragung
+                    </div>
+                    <div class="mock-card-body">
+                        <div style="font-size:13px;line-height:1.8">
+                            <div>✓ POLIKS NRW · Vorgang aktiv</div>
+                            <div>✓ ComVor Leitstelle · synchron</div>
+                            <div>✓ FLiPo Fahndungsnetzwerk</div>
+                            <div>✓ Bodycam-Archiv (BYOD)</div>
+                            <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;color:var(--text-dim);font-size:11px">
+                                Ende-zu-Ende-Verschlüsselt · BSI-Schutzklasse VS-NfD
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="mock-footer">
+        SAFIR Vision Mock · Polizei · Nicht funktional · AFCEA 2026
+    </div>
+
+</div>
+
+</body>
+</html>

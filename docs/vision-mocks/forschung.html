@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>SAFIR Vision — Forschung</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+    :root {
+        --brand-primary: #334155;       /* Wissenschaftlich-neutral Slate */
+        --brand-secondary: #22d3ee;     /* Akzent: Cyan */
+        --brand-accent: #0f172a;
+    }
+    .mock-header {
+        background: linear-gradient(90deg, var(--brand-primary) 0%, #1e293b 100%);
+        border-bottom: 2px solid var(--brand-secondary);
+    }
+    .mock-header-logo {
+        background: var(--brand-secondary);
+        color: var(--brand-accent);
+        font-size: 22px;
+    }
+    .mock-field { border-left-color: var(--brand-secondary); }
+    .mock-card-head {
+        background: var(--brand-primary);
+        font-family: var(--font-ui);
+    }
+
+    .study-banner {
+        background: linear-gradient(90deg, #fafafa, #e5e7eb);
+        padding: 16px 20px;
+        border-radius: 8px;
+        border-left: 4px solid var(--brand-secondary);
+        margin-bottom: 20px;
+    }
+    .study-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--brand-accent);
+    }
+    .study-meta {
+        font-size: 13px;
+        color: var(--text-dim);
+        margin-top: 4px;
+        font-family: var(--font-mono);
+    }
+
+    .obs-row {
+        display: grid;
+        grid-template-columns: 120px 1fr 200px 80px;
+        gap: 12px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+        align-items: start;
+        font-size: 14px;
+    }
+    .obs-row.head {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-dim);
+        font-weight: 600;
+        border-bottom: 2px solid var(--border);
+    }
+    .obs-time {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--brand-primary);
+    }
+    .obs-tax {
+        font-style: italic;
+        font-size: 13px;
+        color: var(--brand-accent);
+    }
+    .gps-pill {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        background: var(--brand-accent);
+        color: var(--brand-secondary);
+        padding: 3px 8px;
+        border-radius: 4px;
+        letter-spacing: 0.05em;
+    }
+
+    .env-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+    }
+    .env-cell {
+        padding: 14px;
+        background: var(--bg-surface-2);
+        border-radius: 6px;
+        text-align: center;
+    }
+    .env-num {
+        font-family: var(--font-mono);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--brand-primary);
+    }
+    .env-unit {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-left: 4px;
+    }
+    .env-lbl {
+        font-size: 11px;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-top: 6px;
+        font-weight: 600;
+    }
+</style>
+</head>
+<body>
+
+<div class="mock-back">
+    <a href="/#vision">&larr; Zurück zu SAFIR Vision</a>
+    <span style="color:var(--text-dim)">Mock — nicht funktional</span>
+    <span class="mock-tag">FORSCHUNG</span>
+</div>
+
+<div class="mock-shell">
+
+    <div class="mock-header">
+        <div class="mock-header-logo">∑</div>
+        <div>
+            <div class="mock-header-title">SAFIR Feldbuch · Ornithologie</div>
+            <div class="mock-header-sub">Dr. L. Hartmann · Universität Kiel · Expedition Doñana 2026</div>
+        </div>
+        <div class="mock-header-status">
+            <div class="mock-header-status-item">
+                <span class="mock-header-status-dot" style="background:#fbbf24;box-shadow:0 0 8px rgba(251,191,36,0.6)"></span>
+                Offline (Iridium Standby)
+            </div>
+            <div class="mock-header-status-item">
+                🔋 78 % Solar
+            </div>
+        </div>
+    </div>
+
+    <div style="max-width:1400px;margin:0 auto;padding:24px">
+
+        <div class="study-banner">
+            <div class="study-title">Studie: Zugvogel-Bestand Doñana — Frühjahrspassage 2026</div>
+            <div class="study-meta">DOI 10.1234/doñana-2026-spring · PI Dr. L. Hartmann · Tag 14 von 30 · Beobachtungen: 327</div>
+        </div>
+
+        <div class="mock-voice">
+            <div class="mock-voice-icon">🎤</div>
+            <div class="mock-voice-text">
+                <div class="mock-voice-transcript">
+                    „Beobachtung sechs-null-fünf, Uhrzeit sechs Uhr zweiundvierzig, Art Anas platyrhynchos, Stockente, männlich, dreizehn Individuen, Ort Lagune Norte Ost-Ufer, Verhalten ruhend in Kleingruppe, Wetter bedeckt acht Grad, Fotos dreihundertvier zu dreihundert-sieben gespeichert …"
+                </div>
+                <div class="mock-voice-meta">Feldnotiz · 06:42 UTC · CSV-Export nach Rückkehr an Basis-WLAN</div>
+            </div>
+        </div>
+
+        <div class="mock-main">
+
+            <div>
+                <div class="mock-card">
+                    <div class="mock-card-head">Standort · Umweltparameter</div>
+                    <div class="mock-card-body">
+                        <div class="mock-field-grid">
+                            <div class="mock-field">
+                                <div class="mock-field-label">Beobachtungsplot</div>
+                                <div class="mock-field-value">Lagune Norte · Ost-Ufer</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">GPS (WGS84)</div>
+                                <div class="mock-field-value mono">37.0514 N · 6.3772 W</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">UTM-Grid</div>
+                                <div class="mock-field-value mono">29S 751220 4103880</div>
+                            </div>
+                            <div class="mock-field">
+                                <div class="mock-field-label">Höhe ü. NN</div>
+                                <div class="mock-field-value">4 m</div>
+                            </div>
+                        </div>
+                        <div class="env-grid" style="margin-top:16px">
+                            <div class="env-cell">
+                                <div><span class="env-num">8.2</span><span class="env-unit">°C</span></div>
+                                <div class="env-lbl">Lufttemp.</div>
+                            </div>
+                            <div class="env-cell">
+                                <div><span class="env-num">87</span><span class="env-unit">%</span></div>
+                                <div class="env-lbl">Luftfeuchte</div>
+                            </div>
+                            <div class="env-cell">
+                                <div><span class="env-num">1018</span><span class="env-unit">hPa</span></div>
+                                <div class="env-lbl">Luftdruck</div>
+                            </div>
+                            <div class="env-cell">
+                                <div><span class="env-num">NO 12</span><span class="env-unit">km/h</span></div>
+                                <div class="env-lbl">Wind</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mock-card">
+                    <div class="mock-card-head">
+                        Beobachtungen · heute
+                        <span class="badge badge-info">Session #605-628</span>
+                    </div>
+                    <div class="mock-card-body">
+                        <div class="obs-row head">
+                            <div>Zeit / Nr.</div>
+                            <div>Taxon · Individuum</div>
+                            <div>Standort</div>
+                            <div>Fotos</div>
+                        </div>
+                        <div class="obs-row">
+                            <div>
+                                <div class="obs-time">06:42 UTC</div>
+                                <div style="font-family:var(--font-mono);font-size:11px;color:var(--brand-secondary)">#605</div>
+                            </div>
+                            <div>
+                                <div class="obs-tax">Anas platyrhynchos</div>
+                                <div style="font-size:12px;color:var(--text-dim);margin-top:2px">Stockente · 13 Ind. · männl. · ruhend</div>
+                            </div>
+                            <div>
+                                <span class="gps-pill">Lagune Norte Ost</span>
+                                <div style="font-size:11px;color:var(--text-dim);margin-top:4px">37.0514 N / 6.3772 W</div>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:12px">304–307</div>
+                        </div>
+                        <div class="obs-row">
+                            <div>
+                                <div class="obs-time">06:31 UTC</div>
+                                <div style="font-family:var(--font-mono);font-size:11px;color:var(--brand-secondary)">#604</div>
+                            </div>
+                            <div>
+                                <div class="obs-tax">Platalea leucorodia</div>
+                                <div style="font-size:12px;color:var(--text-dim);margin-top:2px">Löffler · 2 Ind. · adult · Nahrungs-Suche</div>
+                            </div>
+                            <div>
+                                <span class="gps-pill">Lagune Norte Mitte</span>
+                                <div style="font-size:11px;color:var(--text-dim);margin-top:4px">37.0502 N / 6.3794 W</div>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:12px">301–303</div>
+                        </div>
+                        <div class="obs-row">
+                            <div>
+                                <div class="obs-time">06:15 UTC</div>
+                                <div style="font-family:var(--font-mono);font-size:11px;color:var(--brand-secondary)">#603</div>
+                            </div>
+                            <div>
+                                <div class="obs-tax">Phoenicopterus roseus</div>
+                                <div style="font-size:12px;color:var(--text-dim);margin-top:2px">Flamingo · ≈40 Ind. · gemischt · flach-ruhend</div>
+                            </div>
+                            <div>
+                                <span class="gps-pill">Lagune Norte West</span>
+                                <div style="font-size:11px;color:var(--text-dim);margin-top:4px">37.0528 N / 6.3801 W</div>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:12px">295–300</div>
+                        </div>
+                        <div class="obs-row">
+                            <div>
+                                <div class="obs-time">06:02 UTC</div>
+                                <div style="font-family:var(--font-mono);font-size:11px;color:var(--brand-secondary)">#602</div>
+                            </div>
+                            <div>
+                                <div class="obs-tax">Ardea cinerea</div>
+                                <div style="font-size:12px;color:var(--text-dim);margin-top:2px">Graureiher · 1 Ind. · juvenil · Stakender Lauf</div>
+                            </div>
+                            <div>
+                                <span class="gps-pill">Kanal Süd</span>
+                                <div style="font-size:11px;color:var(--text-dim);margin-top:4px">37.0488 N / 6.3755 W</div>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:12px">293–294</div>
+                        </div>
+                        <div class="obs-row">
+                            <div>
+                                <div class="obs-time">05:44 UTC</div>
+                                <div style="font-family:var(--font-mono);font-size:11px;color:var(--brand-secondary)">#601</div>
+                            </div>
+                            <div>
+                                <div class="obs-tax">Marmaronetta angustirostris</div>
+                                <div style="font-size:12px;color:var(--text-dim);margin-top:2px">Marmelente · 4 Ind. · männl. · rel. selten!</div>
+                            </div>
+                            <div>
+                                <span class="gps-pill">Kanal Süd</span>
+                                <div style="font-size:11px;color:var(--text-dim);margin-top:4px">37.0481 N / 6.3751 W</div>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:12px">289–292</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mock-card">
+                    <div class="mock-card-head">Taxonomie-Assistenz</div>
+                    <div class="mock-card-body" style="font-size:14px;line-height:1.6">
+                        <div style="padding:12px;background:#ecfeff;border-left:3px solid var(--brand-secondary);border-radius:4px">
+                            <div style="font-weight:600;margin-bottom:6px">Marmaronetta angustirostris — Kontext</div>
+                            <div>
+                                In der lokalen Roten Liste als stark gefährdet geführt. Letzte Sichtung
+                                in Studienregion: Mai 2024 (3 Ind.). Aktuelle Beobachtung #601 wird
+                                automatisch als Priorität markiert und bei nächstem Uplink an
+                                <code>iNaturalist</code>, <code>GBIF</code> und <code>SEO/BirdLife</code>
+                                gemeldet.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div class="mock-card mock-sidebar-card">
+                    <div class="mock-card-head">Offline-Queue</div>
+                    <div class="mock-card-body">
+                        <div style="font-size:13px;line-height:1.8">
+                            <div style="display:flex;justify-content:space-between">
+                                <span>Beobachtungen</span>
+                                <strong>24</strong>
+                            </div>
+                            <div style="display:flex;justify-content:space-between">
+                                <span>Fotos</span>
+                                <strong>14</strong>
+                            </div>
+                            <div style="display:flex;justify-content:space-between">
+                                <span>Audio-Notizen</span>
+                                <strong>6</strong>
+                            </div>
+                            <div style="display:flex;justify-content:space-between">
+                                <span>Datenvolumen</span>
+                                <strong>92 MB</strong>
+                            </div>
+                            <hr style="margin:10px 0;border:0;border-top:1px solid var(--border)">
+                            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;font-weight:600">Sync geplant</div>
+                            <div>Basis-WLAN 17:30 UTC</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mock-card mock-sidebar-card">
+                    <div class="mock-card-head">Tages-Timeline</div>
+                    <div class="mock-card-body">
+                        <ul class="mock-timeline">
+                            <li>
+                                <span class="mock-timeline-time">05:30</span>
+                                Feldstart, Checkpoint A
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">05:44</span>
+                                #601 Marmelente (rel. selten)
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">06:15</span>
+                                #603 Flamingo-Kolonie
+                            </li>
+                            <li>
+                                <span class="mock-timeline-time">06:42</span>
+                                Aktueller Beobachtungs-Slot
+                            </li>
+                            <li style="opacity:0.5">
+                                <span class="mock-timeline-time">08:00</span>
+                                Checkpoint B (geplant)
+                            </li>
+                            <li style="opacity:0.5">
+                                <span class="mock-timeline-time">12:00</span>
+                                Rückkehr Basislager
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mock-card mock-sidebar-card" style="border-top:3px solid var(--brand-secondary)">
+                    <div class="mock-card-head" style="background:var(--brand-secondary);color:var(--brand-accent)">
+                        Datenfluss
+                    </div>
+                    <div class="mock-card-body">
+                        <div style="font-size:13px;line-height:1.8">
+                            <div>📊 Darwin Core · CSV</div>
+                            <div>🌍 iNaturalist · Research-Grade</div>
+                            <div>🔬 GBIF · automatisch</div>
+                            <div>📖 Fieldbook Project</div>
+                            <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;color:var(--text-dim);font-size:11px">
+                                FAIR-Prinzipien · DOI-konform · ORCID-signiert
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mock-footer">
+        SAFIR Vision Mock · Forschung &amp; Feld-Expedition · Nicht funktional · AFCEA 2026
+    </div>
+
+</div>
+
+</body>
+</html>
