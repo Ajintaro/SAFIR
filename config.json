@@ -178,6 +178,7 @@
     },
     "whisper": {
         "model": "small",
+        "default_model": "large-v3-turbo",
         "language": "de",
         "server_port": 8178
     },

@@ -3005,6 +3005,11 @@ async def get_models():
 
 @app.post("/api/models/load")
 async def load_model(body: dict):
+    """Laedt ein Whisper-Modell. Bei grossen Modellen (medium, large,
+    turbo) ist die Unified-Memory des Jetson oft zu fragmentiert —
+    wenn der erste Ladeversuch fehlschlaegt, entladen wir Ollama aus
+    der GPU, versuchen den Whisper-Server nochmal und laden Ollama
+    direkt danach wieder, damit Qwen-Inference weiter laeuft."""
     name = body.get("model", "medium")
     path = MODELS_DIR / f"ggml-{name}.bin"
     if not path.exists():
@@ -3019,6 +3024,35 @@ async def load_model(body: dict):
     loop = asyncio.get_event_loop()
     success = await loop.run_in_executor(None, start_whisper_server, path)
 
+    retry_used = False
+    if not success:
+        # Zweiter Versuch: Ollama aus VRAM werfen, damit Whisper einen
+        # zusammenhaengenden Speicherblock bekommt. Danach Ollama wieder
+        # warmmachen (keep_alive=-1 bei naechstem _call_ollama).
+        print(f"[LOAD-MODEL] Erster Versuch fehlgeschlagen, entlade Ollama und retry ...", flush=True)
+        await broadcast({"type": "model_loading", "model": name,
+                         "note": "Qwen entladen, zweiter Versuch ..."})
+        try:
+            await loop.run_in_executor(None, _unload_ollama_model)
+        except Exception as e:
+            print(f"[LOAD-MODEL] _unload_ollama_model Exception: {e}", flush=True)
+        await asyncio.sleep(2.0)  # Puffer bis der Speicher frei ist
+        success = await loop.run_in_executor(None, start_whisper_server, path)
+        retry_used = True
+        # Egal ob erfolgreich: Qwen wieder warmmachen damit Analysen funktionieren.
+        try:
+            import httpx
+            httpx.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={"model": OLLAMA_MODEL, "prompt": "ok",
+                      "stream": False, "keep_alive": -1,
+                      "options": {"num_predict": 1}},
+                timeout=30,
+            )
+            print(f"[LOAD-MODEL] Qwen wieder in VRAM geladen (keep_alive=-1)", flush=True)
+        except Exception as e:
+            print(f"[LOAD-MODEL] Qwen-Reload Fehler: {e}", flush=True)
+
     state.model_loading = False
 
     if success:
@@ -3029,10 +3063,15 @@ async def load_model(body: dict):
             "model": name,
             "ram_mb": state.model_ram_mb,
             "loaded": True,
+            "retry_used": retry_used,
         })
-        return {"status": "ok", "model": name, "ram_mb": state.model_ram_mb}
+        note = " (Qwen-Reload-Trick)" if retry_used else ""
+        return {"status": "ok", "model": name,
+                "ram_mb": state.model_ram_mb, "retry_used": retry_used,
+                "message": f"{name} geladen{note}"}
     else:
-        return {"error": f"Modell {name} konnte nicht geladen werden"}
+        return {"error": f"Modell {name} konnte nicht geladen werden "
+                          "(auch nicht nach Qwen-Unload — zu wenig Unified Memory)"}
 
 
 @app.post("/api/models/unload")
@@ -5208,21 +5247,44 @@ async def startup():
     oled_menu.show_status("SAFIR", "Vosk laden...", 10)
     init_vosk()
 
-    # Whisper-Modell laden
+    # Whisper-Modell laden. Reihenfolge:
+    #   1. whisper.default_model aus config.json (falls gesetzt)
+    #   2. large-v3-turbo (beste Qualitaet)
+    #   3. medium (mittlere Qualitaet)
+    #   4. small (sicherer Fallback)
+    # Jedes Modell wird einzeln probiert — wenn cudaMalloc OOM schlaegt
+    # (Fragmentierung mit Ollama/Qwen das bereits im VRAM liegt), wird
+    # das naechst-kleinere Modell probiert. Der Browser-Endpoint
+    # /api/models/load hat einen Qwen-Unload-Retry-Trick falls der User
+    # spaeter manuell hochschaltet.
     models = state.available_models()
     if models:
-        best = next((m for m in models if m["name"] == "small"), models[0])
-        path = MODELS_DIR / f"ggml-{best['name']}.bin"
-        print(f"Lade Modell: {best['name']} ({best['size_mb']} MB)...")
-        oled_menu.show_status("SAFIR", f"Whisper {best['name']}...", 30)
-        success = start_whisper_server(path)
-        if success:
-            state.model_path = path
-            state.current_model = best["name"]
-            print(f"Modell bereit: {best['name']} (~{state.model_ram_mb} MB RAM)")
-            oled_menu.show_status("SAFIR", "Whisper geladen", 60)
-        else:
-            print("WARNUNG: Modell konnte nicht geladen werden!")
+        default_name = _config.get("whisper", {}).get("default_model", "")
+        tried_order = []
+        if default_name:
+            tried_order.append(default_name)
+        for fb in ("large-v3-turbo", "medium", "small"):
+            if fb not in tried_order:
+                tried_order.append(fb)
+        loaded = False
+        for name in tried_order:
+            m = next((m for m in models if m["name"] == name), None)
+            if not m:
+                continue
+            path = MODELS_DIR / f"ggml-{m['name']}.bin"
+            print(f"Lade Modell: {m['name']} ({m['size_mb']} MB)...")
+            oled_menu.show_status("SAFIR", f"Whisper {m['name']}...", 30)
+            if start_whisper_server(path):
+                state.model_path = path
+                state.current_model = m["name"]
+                print(f"Modell bereit: {m['name']} (~{state.model_ram_mb} MB RAM)")
+                oled_menu.show_status("SAFIR", f"Whisper {m['name']}", 60)
+                loaded = True
+                break
+            print(f"WARNUNG: Modell {m['name']} konnte nicht geladen werden "
+                  f"(cudaMalloc OOM?) — probiere naechst-kleineres ...")
+        if not loaded:
+            print("FEHLER: Kein Whisper-Modell konnte geladen werden!")
             oled_menu.show_status("FEHLER", "Whisper fehlgeschlagen")
 
     # Audio-Device automatisch erkennen: bevorzugt USB-Mikrofon
