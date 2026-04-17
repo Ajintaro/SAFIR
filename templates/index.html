@@ -4322,8 +4322,30 @@
         document.body.appendChild(modal);
     }
 
-    async function analyzePendingById(id) {
-        const res = await api('/api/analyze/pending', 'POST', { id });
+    async function analyzePendingById(id, forceAnalysis) {
+        // force=true ueberspringt den Content-Guardrail (Messe-Hardening A3).
+        // Wird vom Confirm-Dialog gesetzt wenn der User trotz "nicht
+        // medizinisch"-Warnung weitermachen moechte.
+        const body = { id };
+        if (forceAnalysis) body.force_analysis = true;
+        const res = await api('/api/analyze/pending', 'POST', body);
+        if (res.status === 'needs_confirmation') {
+            // Content-Guardrail: Transkript scheint nicht medizinisch.
+            // Soft-Dialog mit Begruendung + Preview + Trotzdem-Button.
+            const preview = (res.preview || '').replace(/</g, '&lt;');
+            const msg = [
+                res.reason || 'Transkript scheint nicht medizinisch zu sein.',
+                '',
+                'Transkript-Vorschau:',
+                '"' + preview + '"',
+                '',
+                'Trotzdem analysieren?'
+            ].join('\n');
+            if (confirm(msg)) {
+                return analyzePendingById(id, true);
+            }
+            return;
+        }
         if (res.status !== 'ok') {
             showToast('Analyse-Fehler: ' + (res.error || 'unbekannt'), '&#9888;');
         }

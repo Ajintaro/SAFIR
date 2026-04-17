@@ -2842,12 +2842,46 @@ async def analyze_pending_transcript(body: dict):
     if pt.get("analyzing"):
         return {"status": "error", "error": "Analyse läuft bereits."}
 
+    # Content-Guardrail (Messe-Hardening A3): Pruefen ob das Transkript
+    # ueberhaupt medizinischen Inhalt enthaelt. Wenn nicht und body
+    # body.force_analysis=False, eine "needs_confirmation"-Response
+    # schicken. Das Frontend zeigt dann einen Dialog mit der Frage
+    # "trotzdem analysieren?" und ruft den Endpoint mit force_analysis=True
+    # auf wenn der User bestaetigt.
+    full_text = pt["full_text"]
+    force_analysis = bool((body or {}).get("force_analysis", False))
+    if not force_analysis:
+        try:
+            from shared.content_filter import is_medical_transcript
+            is_med, kw_count, kw_preview = is_medical_transcript(full_text)
+            if not is_med:
+                print(f"[CONTENT-FILTER] Transkript nicht-medizinisch "
+                      f"(only {kw_count} kw, {kw_preview}): "
+                      f"'{full_text[:120]}'", flush=True)
+                return {
+                    "status": "needs_confirmation",
+                    "reason": (
+                        "Transkript scheint keinen medizinischen Inhalt zu "
+                        "enthalten. Nur {n} medizinische Begriff{s} gefunden "
+                        "({kw}). Trotzdem analysieren?".format(
+                            n=kw_count,
+                            s="" if kw_count == 1 else "e",
+                            kw=(", ".join(kw_preview) if kw_preview else "keine"),
+                        )
+                    ),
+                    "matched_keywords": kw_preview,
+                    "keyword_count": kw_count,
+                    "pending_id": pt["id"],
+                    "preview": full_text[:200],
+                }
+        except Exception as e:
+            print(f"[CONTENT-FILTER] Fehler (lasse weiterlaufen): {e}", flush=True)
+
     # GPU-Swap: Whisper raus, Qwen rein (nur wenn swap_mode aktiv)
     if getattr(state, "swap_mode", "coexist") != "coexist":
         await _enter_analysis_mode(reason="api_analyze")
 
     pt["analyzing"] = True
-    full_text = pt["full_text"]
     record_time = pt.get("time") or datetime.now().strftime("%H:%M:%S")
     # 9-Liner Flag vom pending_transcript durchschleifen. body.force_nine_liner
     # erlaubt manuellen UI-Override ohne dass der Flag im pending stehen muss.
