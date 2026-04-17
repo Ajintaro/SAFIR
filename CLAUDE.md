@@ -26,7 +26,7 @@ Auftraggeber: CGI Deutschland. Zielgruppe: Bundeswehr Sanitätsdienst.
 - Hardware: NVIDIA Jetson Orin Nano Super, 7.4 GB shared CPU/GPU RAM (Unified Memory), CUDA 12.6
 - Whisper small (whisper.cpp, GPU, ~862 MB VRAM) für Echtzeit-Transkription
 - Vosk (CPU) für Sprachbefehle — routen auf die shared `_start_record_flow` / `_stop_record_flow` wie der Taster
-- Ollama Qwen2.5-1.5B (permanent im VRAM, `keep_alive: -1`) für Segmentierung (Multi-Patient-Diktat) und 9-Liner-Feldextraktion
+- Ollama Gemma 3 4B (`gemma3:4b`, 4.3 GB Q4_K_M, 100% GPU via `num_gpu=-1`, permanent im VRAM via `keep_alive=-1`) für Segmentierung (Multi-Patient-Diktat) und 9-Liner-Feldextraktion. **Eiserne Regel: num_gpu=-1 — Gemma hat 34 Layer, num_gpu=20 aus Qwen-Zeiten laesst sonst 40% auf CPU.** Upgrade von Qwen 1.5B am 17.04.2026 (bessere Extraktionsqualitaet, ~15s/Patient).
 - Piper TTS (CPU, de_DE-thorsten-medium) mit `check_output_settings` Resample auf device-rate
 - FastAPI + WebSocket Dashboard auf Port 8080
 - Hardware-Integration: 2 Taster (Rot/Grün, GPIO Pin 11/26), OLED SSD1306 (I2C Bus 7), RFID RC522, LEDs, Shutdown-Combo

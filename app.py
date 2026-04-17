@@ -2090,8 +2090,14 @@ def _call_ollama(prompt: str, label: str = "LLM") -> dict:
     bedarf, Schnelligkeit zählt.
     num_ctx (siehe OLLAMA_NUM_CTX) begrenzt das Context-Fenster damit der
     KV-Cache klein bleibt — sonst passt 3B nicht neben Whisper ins VRAM."""
-    for num_gpu in [20, 0]:
-        gpu_label = f"GPU:{num_gpu}" if num_gpu > 0 else "CPU"
+    # num_gpu=-1 = alle Modell-Layer auf GPU (Pflicht fuer Gemma 3 4B, sonst
+    # landen 40% auf der CPU und die Analyse wird 10-30x langsamer — eiserne
+    # Regel: niemals CPU-only). Historisch war 20 hier, was fuer Qwen 1.5B
+    # mit 28 Layern noch passte. Fuer groessere Modelle muss -1 verwendet
+    # werden. Fallback auf 0 (CPU) bleibt fuer extreme OOM-Faelle als
+    # Notnagel, damit die Analyse wenigstens durchlaeuft statt zu crashen.
+    for num_gpu in [-1, 0]:
+        gpu_label = "GPU:all" if num_gpu < 0 else ("GPU" if num_gpu > 0 else "CPU")
         try:
             response = httpx.post(
                 f"{OLLAMA_URL}/api/generate",
@@ -2185,23 +2191,27 @@ def _check_qwen_on_gpu() -> tuple[bool, int, int]:
 
 def _warmup_qwen_on_gpu() -> bool:
     """Triggert Ollama einen vollen Warmup-Call mit keep_alive=-1 damit
-    qwen ins VRAM wandert. Rueckgabe: True wenn danach wirklich GPU-resident."""
+    das LLM ins VRAM wandert. num_gpu=-1 = alle Layer auf GPU (wichtig
+    fuer Modelle >2B Params wie gemma3:4b mit 34 Layern — num_gpu=20 aus
+    historischen Qwen-Zeiten laesst sonst 40% des Modells auf CPU).
+    Rueckgabe: True wenn danach wirklich GPU-resident."""
     try:
         httpx.post(
             f"{OLLAMA_URL}/api/generate",
             json={"model": OLLAMA_MODEL, "prompt": "ok",
                   "stream": False, "keep_alive": -1,
-                  "options": {"num_predict": 1}},
+                  "options": {"num_predict": 1, "num_gpu": -1,
+                              "num_ctx": OLLAMA_NUM_CTX}},
             timeout=30,
         )
     except Exception as e:
-        print(f"[WARMUP-QWEN] Generate-Call Fehler: {e}", flush=True)
+        print(f"[WARMUP-LLM] Generate-Call Fehler: {e}", flush=True)
     time.sleep(1.0)
     on_gpu, vram, total = _check_qwen_on_gpu()
     if on_gpu:
-        print(f"[WARMUP-QWEN] Qwen GPU-resident: {vram//1024//1024}/{total//1024//1024} MB", flush=True)
+        print(f"[WARMUP-LLM] {OLLAMA_MODEL} GPU-resident: {vram//1024//1024}/{total//1024//1024} MB", flush=True)
     else:
-        print(f"[WARMUP-QWEN] WARNUNG: Qwen NICHT auf GPU ({vram//1024//1024}/{total//1024//1024} MB)", flush=True)
+        print(f"[WARMUP-LLM] WARNUNG: {OLLAMA_MODEL} NICHT voll auf GPU ({vram//1024//1024}/{total//1024//1024} MB)", flush=True)
     return on_gpu
 
 

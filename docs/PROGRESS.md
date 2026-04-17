@@ -7,10 +7,31 @@
 > `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md` (lokal,
 > nicht im Repo).
 
-**Letzte Session:** 16.04.2026 (Phase 7 + 9 abgeschlossen, Phase 8 deferred)
+**Letzte Session:** 17.04.2026 (GPU-Swap-Architektur + Gemma 3 4B LLM-Upgrade)
 **Demo-Ziel:** AFCEA-Messe in 3–4 Wochen
 **Nächste Aktion:** 🎉 **Alle Phasen abgeschlossen!** System demo-ready.
 **Phase 8 Entscheidung:** User hat "Überspringen für jetzt" gewählt — Remote-Audio wird als "konzeptionell vorhanden, V2-Roadmap" in der Messe-Präsentation erwähnt, aber nicht implementiert. Priorität auf Demo-Robustheit.
+
+## 🚀 Post-Demo-Upgrades (17.04.2026, nach regulaerem Phase-Plan)
+
+Nach Abschluss aller Phasen hat der User Performance-Optimierungen angestossen:
+
+### GPU-Swap-Architektur (erlaubt Whisper turbo + grosse LLMs auf Jetson)
+- `_enter_analysis_mode()` / `_enter_recording_mode()` wechseln Whisper/LLM sequenziell im GPU-RAM
+- `swap_mode = "coexist" | "recording" | "analyzing"` in `state`
+- Whisper small + LLM bleibt coexist (<5.5 GB Total). Whisper turbo/medium braucht Swap
+- `_is_swap_needed_for_model()` entscheidet per Whisper-Modellname
+
+### LLM-Upgrade Qwen 1.5B → Gemma 3 4B (`gemma3:4b`, 4.3 GB Q4_K_M)
+- **Eiserne Regel: num_gpu=-1 (alle Layer!)**. Historisches `num_gpu=20` war fuer Qwen (28 Layer) passend, aber Gemma hat 34 Layer → 40% auf CPU waere Analyse-GAU
+- `_warmup_qwen_on_gpu()` + `_call_ollama()` verwenden jetzt `num_gpu: -1` statt `20`
+- `scripts/safir-start.sh` liest Modellname + num_ctx aus `config.json` (kein Hardcoding mehr) und entlaedt alte Qwen-Modelle vor dem Warmup
+- **Verifiziertes Ergebnis**:
+  - Gemma 3 4B: 4.30 GB VRAM / 4.30 GB Total = **100% GPU-resident**
+  - Analyse-Latenz: ~30s fuer 2-Patienten-Transkript (= ~15s/Patient, vergleichbar mit Qwen 1.5B)
+  - Qualitaet: Name, Rank, Mechanism, Injuries, Vitals komplett extrahiert; 4/4 Patienten korrekt segmentiert
+  - RAM: 89-94% used (tight aber stabil)
+- **Caveat**: Whisper turbo + Gemma 4B geht nicht mehr in coexist (sprengt 7.4 GB). Swap-Mode sorgt dafuer dass beide sequenziell koennen. `safir-start.sh` versucht turbo→medium→small Fallback, auf Prod-Jetson ist aktuell Whisper small aktiv.
 
 ## 🎯 Demo-Readiness
 
