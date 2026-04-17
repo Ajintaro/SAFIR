@@ -2110,6 +2110,57 @@ def _unload_ollama_model():
         print(f"Ollama entladen Fehler: {e}")
 
 
+def _check_qwen_on_gpu() -> tuple[bool, int, int]:
+    """Prueft ob Qwen im VRAM (GPU) liegt. EISERNE REGEL: Qwen muss
+    mehrheitlich auf GPU sein — CPU-only ist 10-30x langsamer.
+
+    Schwelle: >= 50% der Modell-Groesse im VRAM zaehlt als 'auf GPU'.
+    Ollama macht bei Unified Memory oft Hybrid-Splits (z.B. 72% GPU /
+    28% CPU fuer qwen2.5:1.5b mit ctx=2048), das ist OK solange der
+    Grossteil im VRAM liegt. Wenn aber VRAM=0 oder deutlich unter 50%,
+    ist der Speicher zu fragmentiert oder Whisper blockiert zu viel.
+
+    Returns: (is_on_gpu, vram_bytes, total_bytes)
+    """
+    try:
+        r = httpx.get(f"{OLLAMA_URL}/api/ps", timeout=5)
+        if r.status_code != 200:
+            return (False, 0, 0)
+        for m in r.json().get("models", []):
+            if OLLAMA_MODEL.split(":")[0] in m.get("name", ""):
+                vram = int(m.get("size_vram", 0))
+                total = int(m.get("size", 0))
+                on_gpu = total > 0 and vram >= total * 0.5
+                return (on_gpu, vram, total)
+        # Modell gar nicht geladen
+        return (False, 0, 0)
+    except Exception as e:
+        print(f"[QWEN-GPU-CHECK] Fehler: {e}", flush=True)
+        return (False, 0, 0)
+
+
+def _warmup_qwen_on_gpu() -> bool:
+    """Triggert Ollama einen vollen Warmup-Call mit keep_alive=-1 damit
+    qwen ins VRAM wandert. Rueckgabe: True wenn danach wirklich GPU-resident."""
+    try:
+        httpx.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={"model": OLLAMA_MODEL, "prompt": "ok",
+                  "stream": False, "keep_alive": -1,
+                  "options": {"num_predict": 1}},
+            timeout=30,
+        )
+    except Exception as e:
+        print(f"[WARMUP-QWEN] Generate-Call Fehler: {e}", flush=True)
+    time.sleep(1.0)
+    on_gpu, vram, total = _check_qwen_on_gpu()
+    if on_gpu:
+        print(f"[WARMUP-QWEN] Qwen GPU-resident: {vram//1024//1024}/{total//1024//1024} MB", flush=True)
+    else:
+        print(f"[WARMUP-QWEN] WARNUNG: Qwen NICHT auf GPU ({vram//1024//1024}/{total//1024//1024} MB)", flush=True)
+    return on_gpu
+
+
 def run_llm_extraction(template_id: str, text: str) -> dict:
     """Extrahiert Template-Felder aus Text via Ollama LLM."""
     prompt = build_extraction_prompt(template_id, text)
@@ -3032,11 +3083,17 @@ async def get_models():
 
 @app.post("/api/models/load")
 async def load_model(body: dict):
-    """Laedt ein Whisper-Modell. Bei grossen Modellen (medium, large,
-    turbo) ist die Unified-Memory des Jetson oft zu fragmentiert —
-    wenn der erste Ladeversuch fehlschlaegt, entladen wir Ollama aus
-    der GPU, versuchen den Whisper-Server nochmal und laden Ollama
-    direkt danach wieder, damit Qwen-Inference weiter laeuft."""
+    """Laedt ein Whisper-Modell. EISERNE REGEL (User-bestaetigt):
+    Nach jedem Whisper-Load muss Qwen weiterhin auf GPU laufen — CPU-
+    Inference ist verboten, 10-30x langsamer. Wenn das neue Whisper-Modell
+    den VRAM so belegt dass Qwen nur noch auf CPU passt, wird automatisch
+    auf das vorherige Whisper-Modell zurueckgerollt.
+
+    Ablauf:
+    1. Whisper-Modell laden (ggf. mit Qwen-Unload-Retry bei cudaMalloc-OOM)
+    2. Qwen warmmachen + GPU-Status pruefen
+    3. Wenn Qwen nicht auf GPU -> Rollback Whisper auf vorheriges Modell
+    """
     name = body.get("model", "medium")
     path = MODELS_DIR / f"ggml-{name}.bin"
     if not path.exists():
@@ -3044,6 +3101,10 @@ async def load_model(body: dict):
 
     if state.model_loading:
         return {"error": "Modell wird bereits geladen"}
+
+    # Vorheriges Modell merken fuer Rollback
+    prev_model_name = state.current_model
+    prev_model_path = state.model_path
 
     state.model_loading = True
     await broadcast({"type": "model_loading", "model": name})
@@ -3053,52 +3114,87 @@ async def load_model(body: dict):
 
     retry_used = False
     if not success:
-        # Zweiter Versuch: Ollama aus VRAM werfen, damit Whisper einen
-        # zusammenhaengenden Speicherblock bekommt. Danach Ollama wieder
-        # warmmachen (keep_alive=-1 bei naechstem _call_ollama).
-        print(f"[LOAD-MODEL] Erster Versuch fehlgeschlagen, entlade Ollama und retry ...", flush=True)
+        # Whisper passt nicht neben Qwen -> Qwen raus, Whisper laden,
+        # Qwen danach wieder auf GPU
+        print(f"[LOAD-MODEL] Erster Versuch fehlgeschlagen, entlade Qwen und retry ...", flush=True)
         await broadcast({"type": "model_loading", "model": name,
                          "note": "Qwen entladen, zweiter Versuch ..."})
         try:
             await loop.run_in_executor(None, _unload_ollama_model)
         except Exception as e:
             print(f"[LOAD-MODEL] _unload_ollama_model Exception: {e}", flush=True)
-        await asyncio.sleep(2.0)  # Puffer bis der Speicher frei ist
+        await asyncio.sleep(2.0)
         success = await loop.run_in_executor(None, start_whisper_server, path)
         retry_used = True
-        # Egal ob erfolgreich: Qwen wieder warmmachen damit Analysen funktionieren.
-        try:
-            import httpx
-            httpx.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={"model": OLLAMA_MODEL, "prompt": "ok",
-                      "stream": False, "keep_alive": -1,
-                      "options": {"num_predict": 1}},
-                timeout=30,
-            )
-            print(f"[LOAD-MODEL] Qwen wieder in VRAM geladen (keep_alive=-1)", flush=True)
-        except Exception as e:
-            print(f"[LOAD-MODEL] Qwen-Reload Fehler: {e}", flush=True)
 
-    state.model_loading = False
-
-    if success:
-        state.model_path = path
-        state.current_model = name
-        await broadcast({
-            "type": "model_loaded",
-            "model": name,
-            "ram_mb": state.model_ram_mb,
-            "loaded": True,
-            "retry_used": retry_used,
-        })
-        note = " (Qwen-Reload-Trick)" if retry_used else ""
-        return {"status": "ok", "model": name,
-                "ram_mb": state.model_ram_mb, "retry_used": retry_used,
-                "message": f"{name} geladen{note}"}
-    else:
+    if not success:
+        state.model_loading = False
+        # Qwen jetzt zurueck auf GPU, auch wenn Load fehlschlug
+        await loop.run_in_executor(None, _warmup_qwen_on_gpu)
         return {"error": f"Modell {name} konnte nicht geladen werden "
-                          "(auch nicht nach Qwen-Unload — zu wenig Unified Memory)"}
+                          "(auch nicht nach Qwen-Unload)"}
+
+    # EISERNE REGEL: Pruefen ob Qwen noch auf GPU ist. Wenn nicht -> Rollback.
+    await broadcast({"type": "model_loading", "model": name,
+                     "note": "Pruefe Qwen-GPU-Status ..."})
+    qwen_on_gpu = await loop.run_in_executor(None, _warmup_qwen_on_gpu)
+
+    if not qwen_on_gpu:
+        # AUTO-ROLLBACK: Whisper-Modell raus, vorheriges wieder rein,
+        # Qwen warmmachen
+        print(f"[LOAD-MODEL] ROLLBACK: Qwen nicht mehr auf GPU nach '{name}'-Load", flush=True)
+        await broadcast({"type": "model_loading", "model": prev_model_name or "small",
+                         "note": f"'{name}' dr\u00e4ngt Qwen auf CPU \u2014 Rollback ..."})
+        stop_whisper_server()
+        await asyncio.sleep(1.5)
+        await loop.run_in_executor(None, _unload_ollama_model)
+        await asyncio.sleep(1.0)
+        # Vorheriges Modell laden, oder small als Fallback
+        rollback_path = prev_model_path if prev_model_path else (MODELS_DIR / "ggml-small.bin")
+        rollback_name = prev_model_name if prev_model_name else "small"
+        rollback_success = await loop.run_in_executor(None, start_whisper_server, rollback_path)
+        # Qwen auf GPU bringen (jetzt mit mehr freiem Speicher)
+        await loop.run_in_executor(None, _warmup_qwen_on_gpu)
+        state.model_loading = False
+        if rollback_success:
+            state.model_path = rollback_path
+            state.current_model = rollback_name
+            await broadcast({
+                "type": "model_loaded",
+                "model": rollback_name,
+                "ram_mb": state.model_ram_mb,
+                "loaded": True,
+                "rollback": True,
+                "rolled_back_from": name,
+            })
+            return {
+                "status": "rolled_back",
+                "model": rollback_name,
+                "requested_model": name,
+                "error": (f"'{name}' belegt zuviel VRAM, Qwen musste auf CPU. "
+                          f"Zurueck auf '{rollback_name}' gerollt (Regel: "
+                          f"niemals Qwen auf CPU)."),
+                "ram_mb": state.model_ram_mb,
+            }
+        else:
+            # Sowohl neues als auch Rollback fehlgeschlagen — very bad
+            return {"error": "Rollback fehlgeschlagen. Service-Neustart noetig."}
+
+    # Alles gut: Whisper geladen, Qwen weiter auf GPU
+    state.model_loading = False
+    state.model_path = path
+    state.current_model = name
+    await broadcast({
+        "type": "model_loaded",
+        "model": name,
+        "ram_mb": state.model_ram_mb,
+        "loaded": True,
+        "retry_used": retry_used,
+    })
+    note = " (Qwen-Unload-Trick)" if retry_used else ""
+    return {"status": "ok", "model": name,
+            "ram_mb": state.model_ram_mb, "retry_used": retry_used,
+            "message": f"{name} geladen{note}. Qwen weiter auf GPU."}
 
 
 @app.post("/api/models/unload")

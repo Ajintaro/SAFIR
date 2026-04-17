@@ -4535,7 +4535,18 @@
         }
     }
 
-    async function loadModel(name) { const res = await api('/api/models/load', 'POST', { model: name }); if (res.error) showToast(res.error, '&#9888;'); }
+    async function loadModel(name) {
+        const res = await api('/api/models/load', 'POST', { model: name });
+        if (res.status === 'rolled_back') {
+            // Eiserne Regel griff: Rollback weil Qwen sonst auf CPU gelandet waere
+            showToast('⚠ ' + name + ' zu gross — zurueck auf ' + res.model
+                     + ' (Qwen muss auf GPU bleiben)', '\u26a0', 7000);
+        } else if (res.error) {
+            showToast(res.error, '&#9888;');
+        } else if (res.retry_used) {
+            showToast(res.message || (name + ' geladen (Qwen-Reload noetig)'), '\u2705');
+        }
+    }
     async function unloadModel() { if (!confirm('Modell entladen? GPU-Speicher wird freigegeben.')) return; await api('/api/models/unload', 'POST'); }
     async function selectDevice(id) { await api('/api/devices/select', 'POST', { device_id: parseInt(id) }); }
     async function setLanguage(lang) { await api('/api/language', 'POST', { language: lang }); }
