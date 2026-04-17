@@ -284,6 +284,9 @@ class AppState:
     def __init__(self):
         self.current_model = None
         self.model_path = None
+        # GPU-Swap-Mode: 'coexist' (beide geladen) / 'recording' (Whisper aktiv)
+        # / 'analyzing' (Qwen aktiv). Wird beim load_model berechnet.
+        self.swap_mode: str = "coexist"
         self.model_loaded = False
         self.model_loading = False
         self.whisper_process = None
@@ -522,7 +525,12 @@ def _handle_oled_action(action: dict):
 async def _oled_analyze_pending():
     """OLED-Untermenü 'Analysieren': Analysiert ALLE noch unanalysierten
     Transkripte in der pending-Liste sequentiell. Jede Aufnahme bleibt
-    dabei einzeln erhalten und bekommt ihre eigenen Patienten."""
+    dabei einzeln erhalten und bekommt ihre eigenen Patienten.
+
+    GPU-Swap-Integration: Wenn swap_mode != coexist, wird vor Beginn
+    Whisper aus dem VRAM genommen und Qwen reingeladen. Nach der Analyse
+    wird der Ruecktausch als Hintergrund-Task ausgeloest (User sieht die
+    fertigen Patienten sofort, Whisper laedt unsichtbar wieder)."""
     todo = [p for p in state.pending_transcripts if not p.get("analyzed") and not p.get("analyzing")]
     if not todo:
         tts.speak("Kein Transkript vorhanden")
@@ -530,6 +538,11 @@ async def _oled_analyze_pending():
         await asyncio.sleep(2)
         oled_menu.clear_status()
         return
+    # Swap-Mode-Handling: Wenn Whisper + Qwen nicht koexistieren, jetzt
+    # Whisper rausschmeissen damit Qwen auf GPU kann.
+    if getattr(state, "swap_mode", "coexist") != "coexist":
+        oled_menu.show_status("SWAP", "Qwen laden...", 10)
+        await _enter_analysis_mode(reason="analyze_pending")
     tts.speak("Analyse gestartet")
     total_created = 0
     batch_started = time.monotonic()
@@ -570,6 +583,11 @@ async def _oled_analyze_pending():
     tts.speak(f"{total_created} Patient angelegt" if total_created == 1 else f"{total_created} Patienten angelegt")
     await asyncio.sleep(2)
     oled_menu.clear_status()
+    # Swap zurueck auf Recording-Mode im Hintergrund, damit der User nach
+    # der Analyse sofort wieder aufnehmen kann (Whisper ist dann ca. 8-12 s
+    # spaeter bereit).
+    if getattr(state, "swap_mode", "coexist") == "analyzing":
+        asyncio.create_task(_enter_recording_mode())
 
 
 async def _start_record_flow():
@@ -581,6 +599,17 @@ async def _start_record_flow():
         tts.speak("System gesperrt")
         return
     _mark_activity()
+    # GPU-Swap-Mode: Falls gerade analyzing ist (z.B. nach Analyse, Swap
+    # zurueck auf Whisper laeuft noch im Hintergrund), hier synchron
+    # warten bis Whisper wieder da ist. Der User soll nicht verwirrt sein.
+    if getattr(state, "swap_mode", "coexist") == "analyzing":
+        tts.speak("Lade Aufnahmemodell")
+        oled_menu.show_status("SWAP", "Whisper laden...")
+        ok = await _enter_recording_mode()
+        oled_menu.clear_status()
+        if not ok:
+            tts.speak("Aufnahmemodell Fehler")
+            return
     if state.recording:
         return  # läuft schon
     if state.transcribing:
@@ -2161,6 +2190,79 @@ def _warmup_qwen_on_gpu() -> bool:
     return on_gpu
 
 
+# ---------------------------------------------------------------------------
+# GPU-Swap-Mode (fuer grosse Whisper-Modelle wie turbo/medium, die nicht
+# gleichzeitig mit Qwen in die Unified Memory des Jetson passen)
+# ---------------------------------------------------------------------------
+# state.swap_mode laeuft parallel zu state.current_model:
+#   "coexist"   = Whisper + Qwen gleichzeitig geladen (klein+klein, z.B. small)
+#   "recording" = Swap-Mode AN, aktuell Whisper geladen / Qwen entladen
+#   "analyzing" = Swap-Mode AN, aktuell Qwen auf GPU / Whisper entladen
+# Swap-Mode wird aktiviert wenn load_model merkt dass Modelle sich nicht
+# vertragen (Qwen faellt auf CPU). Bleibt aktiv bis ein kleineres Whisper-
+# Modell gewaehlt wird, das wieder "coexist" erlaubt.
+
+
+def _is_swap_needed_for_model(whisper_name: str) -> bool:
+    """Heuristik: turbo / medium / large brauchen Swap-Mode neben Qwen
+    auf Jetson Orin Nano (7.4 GB Unified Memory). small passt immer."""
+    big = ("medium", "large", "turbo", "large-v3", "large-v3-turbo")
+    return any(b in whisper_name.lower() for b in big)
+
+
+async def _enter_analysis_mode(reason: str = "") -> bool:
+    """Wechselt in den Analyse-Zustand: Whisper raus, Qwen rein.
+    Nur relevant wenn swap_mode != 'coexist'. Gibt True zurueck wenn
+    Qwen danach auf GPU ist (oder schon war).
+    """
+    current_mode = getattr(state, "swap_mode", "coexist")
+    if current_mode in ("coexist", "analyzing"):
+        # Nichts zu tun (entweder beide da, oder schon im analyzing-Modus)
+        on_gpu, _, _ = _check_qwen_on_gpu()
+        if not on_gpu:
+            return _warmup_qwen_on_gpu()
+        return True
+
+    # current_mode == "recording" -> wirklich swappen
+    print(f"[SWAP] Analyse-Mode: Whisper raus, Qwen rein (reason={reason})", flush=True)
+    await broadcast({"type": "model_swap", "target": "qwen",
+                     "note": "Whisper wird entladen, Qwen kommt rein ..."})
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, stop_whisper_server)
+    await asyncio.sleep(0.8)
+    on_gpu = await loop.run_in_executor(None, _warmup_qwen_on_gpu)
+    state.swap_mode = "analyzing"
+    await broadcast({"type": "model_swap_done", "target": "qwen",
+                     "on_gpu": on_gpu})
+    return on_gpu
+
+
+async def _enter_recording_mode() -> bool:
+    """Wechselt in den Aufnahme-Zustand: Qwen raus, Whisper rein.
+    Nur relevant wenn swap_mode != 'coexist'. Gibt True zurueck wenn
+    Whisper danach bereit ist.
+    """
+    current_mode = getattr(state, "swap_mode", "coexist")
+    if current_mode in ("coexist", "recording"):
+        return state.model_loaded
+
+    # current_mode == "analyzing" -> swap zurueck
+    print(f"[SWAP] Recording-Mode: Qwen raus, Whisper rein", flush=True)
+    await broadcast({"type": "model_swap", "target": "whisper",
+                     "note": "Qwen wird entladen, Whisper kommt rein ..."})
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _unload_ollama_model)
+    await asyncio.sleep(0.8)
+    if state.model_path and state.model_path.exists():
+        success = await loop.run_in_executor(None, start_whisper_server, state.model_path)
+    else:
+        success = False
+    state.swap_mode = "recording" if success else state.swap_mode
+    await broadcast({"type": "model_swap_done", "target": "whisper",
+                     "loaded": success})
+    return success
+
+
 def run_llm_extraction(template_id: str, text: str) -> dict:
     """Extrahiert Template-Felder aus Text via Ollama LLM."""
     prompt = build_extraction_prompt(template_id, text)
@@ -2592,6 +2694,10 @@ async def analyze_pending_transcript(body: dict):
     if pt.get("analyzing"):
         return {"status": "error", "error": "Analyse läuft bereits."}
 
+    # GPU-Swap: Whisper raus, Qwen rein (nur wenn swap_mode aktiv)
+    if getattr(state, "swap_mode", "coexist") != "coexist":
+        await _enter_analysis_mode(reason="api_analyze")
+
     pt["analyzing"] = True
     full_text = pt["full_text"]
     record_time = pt.get("time") or datetime.now().strftime("%H:%M:%S")
@@ -2599,11 +2705,14 @@ async def analyze_pending_transcript(body: dict):
     # erlaubt manuellen UI-Override ohne dass der Flag im pending stehen muss.
     is_nine_liner = bool(pt.get("is_nine_liner")) or bool((body or {}).get("force_nine_liner"))
     await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
+    session_started = time.monotonic()
     try:
         created = await _segment_and_create_patients(full_text, record_time, is_nine_liner=is_nine_liner)
     finally:
         pt["analyzing"] = False
+    session_duration = round(time.monotonic() - session_started, 1)
     pt["analyzed"] = True
+    pt["analysis_duration_s"] = session_duration
     pt["created_patient_ids"] = created
     count = len(created)
     # Bei 9-Liner wird der TTS-Text schon in der 9-Liner-Branch gesagt,
@@ -2615,7 +2724,11 @@ async def analyze_pending_transcript(body: dict):
         "pending_id": pt["id"],
         "count": count,
         "created_patient_ids": created,
+        "duration_s": session_duration,
     })
+    # Swap zurueck auf Recording-Mode im Hintergrund
+    if getattr(state, "swap_mode", "coexist") == "analyzing":
+        asyncio.create_task(_enter_recording_mode())
     return {"status": "ok", "created_patient_ids": created, "count": count, "pending_id": pt["id"]}
 
 
@@ -2907,6 +3020,10 @@ async def get_status():
         # Phase 11: Security-Lock-Status fuer das Frontend
         "locked": state.locked,
         "current_operator": state.current_operator,
+        # GPU-Swap-Mode: coexist (normal, kleines Whisper) / recording
+        # (Swap-Mode aktiv, Whisper geladen) / analyzing (Swap-Mode aktiv,
+        # Qwen geladen). Frontend zeigt Hinweis wenn != coexist.
+        "swap_mode": getattr(state, "swap_mode", "coexist"),
     }
 
 
@@ -3084,15 +3201,22 @@ async def get_models():
 @app.post("/api/models/load")
 async def load_model(body: dict):
     """Laedt ein Whisper-Modell. EISERNE REGEL (User-bestaetigt):
-    Nach jedem Whisper-Load muss Qwen weiterhin auf GPU laufen — CPU-
-    Inference ist verboten, 10-30x langsamer. Wenn das neue Whisper-Modell
-    den VRAM so belegt dass Qwen nur noch auf CPU passt, wird automatisch
-    auf das vorherige Whisper-Modell zurueckgerollt.
+    Qwen MUSS auf GPU laufen — CPU-Inference ist 10-30x langsamer.
 
-    Ablauf:
-    1. Whisper-Modell laden (ggf. mit Qwen-Unload-Retry bei cudaMalloc-OOM)
-    2. Qwen warmmachen + GPU-Status pruefen
-    3. Wenn Qwen nicht auf GPU -> Rollback Whisper auf vorheriges Modell
+    REIHENFOLGE-TRICK (Laufzeit-Reproduktion der Boot-Regel 'Ollama vor
+    Whisper'): Beim Boot wird Ollama zuerst gestartet, dann Whisper —
+    beide bekommen saubere VRAM-Bloecke. Zur Laufzeit blockiert aber
+    der bereits geladene Qwen die Unified Memory, und ein Whisper-
+    Modellwechsel fragmentiert den Speicher so dass Qwen anschliessend
+    auf CPU ausweichen muss.
+
+    Loesung: Fuer JEDEN Modellwechsel dieselbe Boot-Reihenfolge
+    reproduzieren:
+      1. Qwen komplett aus VRAM entladen  (= 'Ollama vor' Zustand)
+      2. Neues Whisper-Modell laden         (= Whisper bekommt sauberen Block)
+      3. Qwen wieder warmmachen             (= 'Whisper danach' Zustand)
+      4. GPU-Status pruefen
+      5. Wenn Qwen nicht auf GPU -> Rollback aufs vorherige Whisper-Modell
     """
     name = body.get("model", "medium")
     path = MODELS_DIR / f"ggml-{name}.bin"
@@ -3102,99 +3226,131 @@ async def load_model(body: dict):
     if state.model_loading:
         return {"error": "Modell wird bereits geladen"}
 
-    # Vorheriges Modell merken fuer Rollback
+    # Vorheriges Modell fuer Rollback merken
     prev_model_name = state.current_model
     prev_model_path = state.model_path
 
     state.model_loading = True
     await broadcast({"type": "model_loading", "model": name})
-
     loop = asyncio.get_event_loop()
+
+    # Schritt 1: Qwen komplett aus VRAM entladen (verhindert Fragmentierung)
+    print(f"[LOAD-MODEL] Qwen entladen (Boot-Reihenfolge reproduzieren) ...", flush=True)
+    await broadcast({"type": "model_loading", "model": name,
+                     "note": "Qwen entladen (Reihenfolge-Trick) ..."})
+    try:
+        await loop.run_in_executor(None, _unload_ollama_model)
+    except Exception as e:
+        print(f"[LOAD-MODEL] _unload_ollama_model Exception: {e}", flush=True)
+    await asyncio.sleep(1.5)
+
+    # Schritt 2: Whisper-Modell laden (bekommt jetzt sauberen Block)
+    print(f"[LOAD-MODEL] Whisper '{name}' laden ...", flush=True)
+    await broadcast({"type": "model_loading", "model": name,
+                     "note": "Whisper laden ..."})
     success = await loop.run_in_executor(None, start_whisper_server, path)
 
-    retry_used = False
     if not success:
-        # Whisper passt nicht neben Qwen -> Qwen raus, Whisper laden,
-        # Qwen danach wieder auf GPU
-        print(f"[LOAD-MODEL] Erster Versuch fehlgeschlagen, entlade Qwen und retry ...", flush=True)
-        await broadcast({"type": "model_loading", "model": name,
-                         "note": "Qwen entladen, zweiter Versuch ..."})
-        try:
-            await loop.run_in_executor(None, _unload_ollama_model)
-        except Exception as e:
-            print(f"[LOAD-MODEL] _unload_ollama_model Exception: {e}", flush=True)
-        await asyncio.sleep(2.0)
-        success = await loop.run_in_executor(None, start_whisper_server, path)
-        retry_used = True
-
-    if not success:
-        state.model_loading = False
-        # Qwen jetzt zurueck auf GPU, auch wenn Load fehlschlug
+        # Whisper-Load hat nicht geklappt — Qwen trotzdem wieder laden
+        # damit das System funktional bleibt.
+        print(f"[LOAD-MODEL] Whisper '{name}' Laden fehlgeschlagen", flush=True)
         await loop.run_in_executor(None, _warmup_qwen_on_gpu)
+        # Vorheriges Modell wiederherstellen
+        if prev_model_path and prev_model_path.exists():
+            await loop.run_in_executor(None, start_whisper_server, prev_model_path)
+        state.model_loading = False
         return {"error": f"Modell {name} konnte nicht geladen werden "
-                          "(auch nicht nach Qwen-Unload)"}
+                          f"(cudaMalloc OOM). Vorheriges Modell "
+                          f"{prev_model_name or 'small'} wiederhergestellt."}
 
-    # EISERNE REGEL: Pruefen ob Qwen noch auf GPU ist. Wenn nicht -> Rollback.
+    # Schritt 3: Qwen wieder auf GPU bringen
+    print(f"[LOAD-MODEL] Qwen warmmachen (keep_alive=-1) ...", flush=True)
     await broadcast({"type": "model_loading", "model": name,
-                     "note": "Pruefe Qwen-GPU-Status ..."})
+                     "note": "Qwen warm machen ..."})
     qwen_on_gpu = await loop.run_in_executor(None, _warmup_qwen_on_gpu)
 
-    if not qwen_on_gpu:
-        # AUTO-ROLLBACK: Whisper-Modell raus, vorheriges wieder rein,
-        # Qwen warmmachen
-        print(f"[LOAD-MODEL] ROLLBACK: Qwen nicht mehr auf GPU nach '{name}'-Load", flush=True)
-        await broadcast({"type": "model_loading", "model": prev_model_name or "small",
-                         "note": f"'{name}' dr\u00e4ngt Qwen auf CPU \u2014 Rollback ..."})
-        stop_whisper_server()
-        await asyncio.sleep(1.5)
-        await loop.run_in_executor(None, _unload_ollama_model)
-        await asyncio.sleep(1.0)
-        # Vorheriges Modell laden, oder small als Fallback
-        rollback_path = prev_model_path if prev_model_path else (MODELS_DIR / "ggml-small.bin")
-        rollback_name = prev_model_name if prev_model_name else "small"
-        rollback_success = await loop.run_in_executor(None, start_whisper_server, rollback_path)
-        # Qwen auf GPU bringen (jetzt mit mehr freiem Speicher)
-        await loop.run_in_executor(None, _warmup_qwen_on_gpu)
+    # Schritt 4: Je nach Ergebnis entscheiden:
+    #   a) Qwen ist auf GPU -> coexist-Mode, alles gut
+    #   b) Qwen nicht auf GPU -> pruefen ob es ein "grosses" Whisper-Modell ist
+    #      -> wenn ja: SWAP-MODE aktivieren (Whisper jetzt raus, Qwen rein bis
+    #         Analyse-Ende; vor naechster Aufnahme wird dann Whisper wieder
+    #         geladen)
+    #      -> wenn nein: Rollback (z.B. bei small duerfte das nie passieren)
+    if qwen_on_gpu:
         state.model_loading = False
-        if rollback_success:
-            state.model_path = rollback_path
-            state.current_model = rollback_name
-            await broadcast({
-                "type": "model_loaded",
-                "model": rollback_name,
+        state.model_path = path
+        state.current_model = name
+        state.swap_mode = "coexist"
+        await broadcast({
+            "type": "model_loaded",
+            "model": name,
+            "ram_mb": state.model_ram_mb,
+            "loaded": True,
+            "swap_mode": "coexist",
+        })
+        return {"status": "ok", "model": name,
                 "ram_mb": state.model_ram_mb,
-                "loaded": True,
-                "rollback": True,
-                "rolled_back_from": name,
-            })
-            return {
-                "status": "rolled_back",
-                "model": rollback_name,
-                "requested_model": name,
-                "error": (f"'{name}' belegt zuviel VRAM, Qwen musste auf CPU. "
-                          f"Zurueck auf '{rollback_name}' gerollt (Regel: "
-                          f"niemals Qwen auf CPU)."),
-                "ram_mb": state.model_ram_mb,
-            }
-        else:
-            # Sowohl neues als auch Rollback fehlgeschlagen — very bad
-            return {"error": "Rollback fehlgeschlagen. Service-Neustart noetig."}
+                "swap_mode": "coexist",
+                "message": f"{name} geladen. Qwen weiter auf GPU."}
 
-    # Alles gut: Whisper geladen, Qwen weiter auf GPU
+    # Qwen nicht auf GPU — Entscheidung abhaengig von Modellgroesse
+    if _is_swap_needed_for_model(name):
+        # Swap-Mode aktivieren: Whisper bleibt geladen (aktuell im VRAM
+        # anstelle von Qwen), ab jetzt wird bei Analyse dynamisch getauscht.
+        # Zunaechst: Qwen darf nicht im VRAM stehen, bis Analyse beginnt.
+        # Aktueller Stand nach Schritt 3: Qwen versucht hat ins VRAM zu gehen
+        # und hat teilweise geklappt (CPU-Fallback). Wir entladen ihn jetzt
+        # komplett, damit Whisper 'atmet'. Beim naechsten /api/analyze
+        # oder _oled_analyze_pending wird _enter_analysis_mode() den Swap
+        # machen.
+        await loop.run_in_executor(None, _unload_ollama_model)
+        state.swap_mode = "recording"
+        state.model_loading = False
+        state.model_path = path
+        state.current_model = name
+        await broadcast({
+            "type": "model_loaded",
+            "model": name,
+            "ram_mb": state.model_ram_mb,
+            "loaded": True,
+            "swap_mode": "recording",
+        })
+        print(f"[LOAD-MODEL] '{name}' passt nicht coexist — SWAP-MODE aktiv "
+              f"(Whisper geladen, Qwen waehrend Analyse dynamisch eingewechselt)", flush=True)
+        return {"status": "swap_mode",
+                "model": name,
+                "swap_mode": "recording",
+                "ram_mb": state.model_ram_mb,
+                "message": (f"{name} geladen — Swap-Mode aktiv: Qwen wird nur "
+                            f"waehrend der Analyse geladen (~4 s Swap-Overhead).")}
+
+    # Kleines Whisper-Modell (small) aber Qwen trotzdem nicht auf GPU —
+    # ungewoehnlich, Rollback ist sicherer.
+    print(f"[LOAD-MODEL] Rollback: '{name}' ist nicht 'gross', aber Qwen "
+          f"dennoch nicht auf GPU — zurueck auf '{prev_model_name or 'small'}'", flush=True)
+    await broadcast({"type": "model_loading", "model": prev_model_name or "small",
+                     "note": f"'{name}' -> Rollback ..."})
+    stop_whisper_server()
+    await asyncio.sleep(1.5)
+    await loop.run_in_executor(None, _unload_ollama_model)
+    await asyncio.sleep(1.0)
+    rollback_path = prev_model_path if prev_model_path else (MODELS_DIR / "ggml-small.bin")
+    rollback_name = prev_model_name if prev_model_name else "small"
+    rollback_success = await loop.run_in_executor(None, start_whisper_server, rollback_path)
+    await loop.run_in_executor(None, _warmup_qwen_on_gpu)
     state.model_loading = False
-    state.model_path = path
-    state.current_model = name
-    await broadcast({
-        "type": "model_loaded",
-        "model": name,
-        "ram_mb": state.model_ram_mb,
-        "loaded": True,
-        "retry_used": retry_used,
-    })
-    note = " (Qwen-Unload-Trick)" if retry_used else ""
-    return {"status": "ok", "model": name,
-            "ram_mb": state.model_ram_mb, "retry_used": retry_used,
-            "message": f"{name} geladen{note}. Qwen weiter auf GPU."}
+    state.swap_mode = "coexist"
+    if rollback_success:
+        state.model_path = rollback_path
+        state.current_model = rollback_name
+        await broadcast({"type": "model_loaded", "model": rollback_name,
+                         "ram_mb": state.model_ram_mb, "loaded": True,
+                         "rollback": True, "rolled_back_from": name})
+        return {"status": "rolled_back", "model": rollback_name,
+                "requested_model": name,
+                "error": f"Unerwartet: '{name}' verdraengte Qwen ohne gross zu sein.",
+                "ram_mb": state.model_ram_mb}
+    return {"error": "Rollback fehlgeschlagen. Service-Neustart noetig."}
 
 
 @app.post("/api/models/unload")
@@ -5419,7 +5575,24 @@ async def startup():
             if start_whisper_server(path):
                 state.model_path = path
                 state.current_model = m["name"]
-                print(f"Modell bereit: {m['name']} (~{state.model_ram_mb} MB RAM)")
+                # Swap-Mode bestimmen: Bei grossem Modell koexistiert es
+                # nicht mit Qwen auf 7.4 GB Unified Memory -> Swap-Mode
+                # aktivieren. Qwen wird dann spaeter dynamisch zur Analyse
+                # eingewechselt.
+                if _is_swap_needed_for_model(m["name"]):
+                    state.swap_mode = "recording"
+                    # Falls Qwen beim Boot schon im VRAM war (safir-start.sh
+                    # laedt ihn), jetzt entladen damit Whisper klar atmen
+                    # kann.
+                    try:
+                        _unload_ollama_model()
+                    except Exception:
+                        pass
+                    print(f"Modell bereit: {m['name']} (SWAP-MODE aktiv, "
+                          f"Qwen wird bei Analyse dynamisch eingewechselt)")
+                else:
+                    state.swap_mode = "coexist"
+                    print(f"Modell bereit: {m['name']} (~{state.model_ram_mb} MB RAM)")
                 oled_menu.show_status("SAFIR", f"Whisper {m['name']}", 60)
                 loaded = True
                 break

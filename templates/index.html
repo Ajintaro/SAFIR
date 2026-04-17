@@ -3665,6 +3665,22 @@
                 document.querySelectorAll(`.patient-card-details[data-pid="${msg.patient_id}"]`).forEach(el => el.classList.add('analyzing'));
                 { const p = patients[msg.patient_id]; if (p) updateActivityDetail(`${p.name || msg.patient_id}...`); }
                 break;
+            case 'model_swap':
+                // GPU-Swap beginnt: Qwen kommt rein, Whisper raus (oder umgekehrt)
+                if (msg.target === 'qwen') {
+                    showToast('🔄 Qwen wird geladen (Swap-Mode)...', '&#129504;');
+                } else if (msg.target === 'whisper') {
+                    showToast('🔄 Whisper wird nachgeladen (Hintergrund)...', '&#127908;');
+                }
+                break;
+            case 'model_swap_done':
+                if (msg.target === 'qwen' && msg.on_gpu) {
+                    // stillschweigend — Analyse startet gleich, die eigentliche
+                    // Info sieht der User im Analyse-Toast
+                } else if (msg.target === 'whisper' && msg.loaded) {
+                    showToast('Aufnahme wieder bereit', '&#9989;');
+                }
+                break;
             case 'batch_analysis_complete':
                 hideActivity();
                 document.querySelectorAll('.patient-card-details.analyzing').forEach(el => el.classList.remove('analyzing'));
