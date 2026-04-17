@@ -2824,29 +2824,44 @@ async def wifi_status():
 
 @app.post("/api/wifi/connect")
 async def wifi_connect(body: dict):
-    """Verbindet mit einem WLAN. Body: {ssid, password}. Wenn aktueller
-    Hotspot aktiv ist, wird er NACH erfolgreicher Verbindung gestoppt
-    (sonst kann sich das Surface waehrend des Handshakes trennen)."""
-    require_unlocked()
+    """Verbindet mit einem WLAN. Body: {ssid, password}.
+
+    Wenn der Hotspot gerade aktiv ist (WLAN-Karte im AP-Mode), muss er
+    VOR dem Connect gestoppt werden — die Karte kann nicht gleichzeitig
+    AP + Client sein. Bei Connect-Fehler wird der Hotspot wieder
+    hochgefahren damit der User nicht komplett offline ist.
+    """
+    # Kein require_unlocked(): WLAN-Einrichtung muss auch im Sperrzustand
+    # moeglich sein (z.B. nach Ersteinrichtung via Hotspot).
     ssid = (body.get("ssid") or "").strip()
     password = body.get("password") or ""
     if not ssid:
         return {"success": False, "error": "SSID fehlt"}
 
-    def _do():
-        return _wifi_connect(ssid, password)
+    loop = asyncio.get_event_loop()
+    hotspot_was_active = _hotspot_status().get("active", False)
 
-    success, msg = await asyncio.get_event_loop().run_in_executor(None, _do)
+    # 1) Hotspot stoppen wenn aktiv (sonst kann nicht connected werden)
+    if hotspot_was_active:
+        print(f"[WIFI-CONNECT] Hotspot stoppen vor Connect zu '{ssid}'", flush=True)
+        await broadcast({"type": "wifi_connect_progress", "step": "stopping_hotspot", "ssid": ssid})
+        await loop.run_in_executor(None, _hotspot_stop)
+        # Kleiner Puffer damit die Karte den AP-Mode wirklich verlassen hat
+        await asyncio.sleep(1.5)
+
+    # 2) Connect versuchen
+    await broadcast({"type": "wifi_connect_progress", "step": "connecting", "ssid": ssid})
+    success, msg = await loop.run_in_executor(None, _wifi_connect, ssid, password)
+
+    # 3) Bei Fehler Hotspot wieder hochfahren, damit der User nicht gestrandet ist
+    if not success and hotspot_was_active:
+        print(f"[WIFI-CONNECT] Connect fehlgeschlagen, Hotspot wieder starten", flush=True)
+        await broadcast({"type": "wifi_connect_progress", "step": "restoring_hotspot", "ssid": ssid})
+        await loop.run_in_executor(None, _hotspot_start)
+
     await broadcast({"type": "wifi_connect_result", "ssid": ssid, "success": success, "message": msg})
-
-    # Wenn Hotspot gerade lief und Verbindung erfolgreich war -> Hotspot aus
-    if success:
-        hs = _hotspot_status()
-        if hs.get("active"):
-            await asyncio.sleep(2.0)  # kurzer Puffer fuer Client-Switch
-            await asyncio.get_event_loop().run_in_executor(None, _hotspot_stop)
-
-    return {"success": success, "message": msg, "ssid": ssid}
+    return {"success": success, "message": msg, "ssid": ssid,
+            "hotspot_restored": (not success) and hotspot_was_active}
 
 
 @app.post("/api/wifi/disconnect")
@@ -5421,19 +5436,42 @@ def _get_eth_ip() -> str:
 # ---------------------------------------------------------------------------
 # WLAN-Scan + Connect (via nmcli)
 # ---------------------------------------------------------------------------
-def _wifi_scan() -> list[dict]:
+# Scan-Cache: im Hotspot-Modus kann die WLAN-Karte nicht scannen, weil sie
+# gerade AP ist. Wir cachen den letzten Scan (vor Hotspot-Start oder wenn
+# die Karte im Client-Mode ist) und liefern ihn zurueck wenn rescan gerade
+# nicht moeglich ist.
+_wifi_scan_cache: list[dict] = []
+_wifi_scan_cache_ts: float = 0.0
+
+
+def _wifi_scan(use_cache_if_hotspot: bool = True) -> list[dict]:
     """Sucht verfuegbare WLANs via nmcli. Gibt Liste zurueck:
       [{'ssid': str, 'signal': int (0-100), 'security': str, 'in_use': bool}, ...]
     Sortiert nach Signal-Staerke absteigend. Duplikate (mehrere APs gleicher
     SSID) werden auf den staerksten Eintrag reduziert.
+
+    Im Hotspot-Modus kann nmcli rescan die AP-Funktionalitaet killen (WLAN-
+    Karte kann nicht gleichzeitig AP sein und scannen). Daher: Wenn der
+    Hotspot aktiv ist UND ein Cache existiert, liefern wir den Cache statt
+    einen neuen Scan zu triggern.
     """
+    global _wifi_scan_cache, _wifi_scan_cache_ts
+
+    hotspot_active = _hotspot_status().get("active", False)
+    if hotspot_active and use_cache_if_hotspot and _wifi_scan_cache:
+        # Im Hotspot-Modus nur den Cache liefern
+        print(f"[WIFI-SCAN] Hotspot aktiv -> Cache ({len(_wifi_scan_cache)} Netze,"
+              f" age={time.monotonic() - _wifi_scan_cache_ts:.0f}s)", flush=True)
+        return list(_wifi_scan_cache)
+
     results: dict[str, dict] = {}
     try:
-        # Fresh rescan auslosen, blockiert bis zu 10 s
-        subprocess.run(
-            ["nmcli", "dev", "wifi", "rescan"],
-            capture_output=True, text=True, timeout=10.0,
-        )
+        # Fresh rescan auslosen, blockiert bis zu 10 s. Nur wenn kein Hotspot.
+        if not hotspot_active:
+            subprocess.run(
+                ["nmcli", "dev", "wifi", "rescan"],
+                capture_output=True, text=True, timeout=10.0,
+            )
     except Exception:
         pass  # rescan-failure ist nicht fatal, list gibt dann den Cache
 
@@ -5443,14 +5481,15 @@ def _wifi_scan() -> list[dict]:
             capture_output=True, text=True, timeout=5.0,
         )
         if out.returncode != 0:
-            return []
+            return list(_wifi_scan_cache)
         for line in out.stdout.splitlines():
             parts = line.split(":")
             if len(parts) < 4:
                 continue
             in_use = parts[0].strip() == "*"
             ssid = parts[1].strip()
-            if not ssid:
+            if not ssid or ssid == HOTSPOT_SSID:
+                # Eigenen Hotspot nicht auflisten
                 continue
             try:
                 signal = int(parts[2].strip())
@@ -5467,9 +5506,13 @@ def _wifi_scan() -> list[dict]:
                 }
     except Exception as e:
         print(f"[WIFI-SCAN] Fehler: {e}", flush=True)
-        return []
+        return list(_wifi_scan_cache)
 
-    return sorted(results.values(), key=lambda r: r["signal"], reverse=True)
+    networks = sorted(results.values(), key=lambda r: r["signal"], reverse=True)
+    if networks:
+        _wifi_scan_cache = networks
+        _wifi_scan_cache_ts = time.monotonic()
+    return networks
 
 
 def _wifi_connect(ssid: str, password: str = "") -> tuple[bool, str]:
@@ -5571,8 +5614,21 @@ def _hotspot_start() -> tuple[bool, str]:
     """Startet den Setup-Hotspot. Legt eine dedizierte WLAN-Connection im
     AP-Modus mit explizit WPA2-PSK an (kein WPS, damit Windows den normalen
     Passwort-Dialog zeigt statt den 8-stelligen WPS-PIN-Dialog).
+
+    Fuehrt vor dem Hotspot-Start einen WLAN-Scan durch und cached das
+    Ergebnis, damit Clients die Liste der verfuegbaren WLANs im Browser
+    sehen koennen ohne dass der Jetson im Hotspot-Modus scannen muss
+    (was die AP-Funktion killen wuerde).
     """
     pw = _hotspot_password()
+
+    # Pre-Scan: WLANs jetzt noch scannen solange die Karte im Client-Mode ist.
+    # Ergebnis wird automatisch im Cache abgelegt.
+    try:
+        _wifi_scan(use_cache_if_hotspot=False)
+        print(f"[HOTSPOT] Pre-Scan: {len(_wifi_scan_cache)} Netze gecacht", flush=True)
+    except Exception as e:
+        print(f"[HOTSPOT] Pre-Scan fehlgeschlagen: {e}", flush=True)
 
     # Primaeres WLAN-Interface finden (Jetson: wlP1p1s0)
     wifi_if = ""
