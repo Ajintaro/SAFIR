@@ -2,19 +2,23 @@
 
 > ## 🟢 AKTUELLER STAND — IMMER ZUERST `docs/PROGRESS.md` LESEN
 >
-> Wir arbeiten gerade am **Messe-Hardening** (Phasen 1–9 der urspruenglichen
-> Roadmap sind komplett, zusaetzlich LLM-Upgrade auf Gemma 3 4B + viele
-> Bugfixes). Naechste Arbeit: `docs/messe-hardening-plan.md` — ein 16-Stunden-
-> Plan in 4 Phasen (A Hardening / B UX / C Narrative / D Messe-Prep) um SAFIR
-> gegen BWI-Adversarial-Tests auf der AFCEA-Messe zu haerten.
+> **Messe-Hardening Phase A (A1–A5) ist komplett abgeschlossen** auf Commit
+> `0a9dc26`. System ist gegen Prompt-Injection, unplausible Vitals, Nicht-
+> Medical-Input, Rapid-Click und Length-Extreme abgesichert.
 >
-> Wenn der User sagt „weiter mit dem Plan" oder „mach weiter wo wir gestern
-> aufgehört haben", lies SOFORT `docs/PROGRESS.md` (fuer den Gesamtstand)
-> und `docs/messe-hardening-plan.md` (fuer die naechsten Schritte).
+> **🎯 Nächste Aufgabe (morgen, 19.04.2026): Phase B → B1 Confidence-Badges
+> pro Feld**. Details in `docs/messe-hardening-plan.md` Abschnitt "Phase B → B1".
+> Das ist der stärkste Baustein aus Phase B — Grün/Gelb/Rot Confidence-Indikator
+> pro extrahiertem Feld, damit Messe-Besucher explizit sehen "System weiß was
+> es weiß vs. was es geraten hat". Entkräftet direkt den BWI-Halluzinations-
+> Vorwurf. Geschätzter Aufwand: 2 h.
+>
+> Wenn der User sagt „weiter mit B1" oder „mach weiter wo wir gestern
+> aufgehört haben", lies SOFORT `docs/PROGRESS.md` (für den Gesamtstand) und
+> `docs/messe-hardening-plan.md` Abschnitt B1 (für die Implementation-Details).
 >
 > **Urspruengliche Roadmap-Plan-Datei lokal:** `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md`
-> (lokal, nicht im Repo, aber im Jetson-/Surface-Repo gespiegelt durch
-> `docs/PROGRESS.md`).
+> (lokal, nicht im Repo, aber durch `docs/PROGRESS.md` im Repo gespiegelt).
 
 ## Was ist SAFIR?
 Sprachgestützte Assistenz für Informationserfassung in der Rettungskette. KI-gestütztes Dokumentationssystem
