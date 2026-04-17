@@ -3903,10 +3903,18 @@
                     showSessionInfo(msg.session_data);
                     msg.session_data.records.forEach(r => addTranscriptEntry(r));
                 }
-                if (msg.patients) {
+                if (msg.patients !== undefined) {
+                    // Vollsync: lokalen Cache leeren, dann neue Liste uebernehmen.
+                    // Kritisch fuer /api/data/reset (msg.patients=[]) — sonst
+                    // bleiben alte Patienten-Cards in der UI.
+                    Object.keys(patients).forEach(k => delete patients[k]);
+                    Object.keys(patientTranscripts).forEach(k => delete patientTranscripts[k]);
+                    Object.keys(pendingTranscripts).forEach(k => delete pendingTranscripts[k]);
+                    activePatient = null;
                     msg.patients.forEach(p => { patients[p.patient_id] = p; });
                     renderPatientList();
-                    // Role 1 Daten initialisieren (einmalig)
+                    renderPendingList();
+                    // Role 1 Daten initialisieren
                     role1Patients = Object.values(patients).filter(p => p.synced || (p.patient_id && p.patient_id.startsWith('SIM-')));
                     role1ScheduleUIUpdate();
                 }
