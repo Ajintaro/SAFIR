@@ -1902,8 +1902,11 @@ def _is_noise_transcript(text: str) -> bool:
     return False
 
 
-def run_transcribe(audio: np.ndarray, language: str = "de") -> dict:
-    """Transkribiert Audio via whisper-server HTTP API."""
+def run_transcribe(audio: np.ndarray, language: str = "de", _retry: bool = False) -> dict:
+    """Transkribiert Audio via whisper-server HTTP API.
+    Auto-Recovery: Wenn der whisper-server crasht (Connection-Refused), wird er
+    einmal neu gestartet und der Chunk erneut probiert. Verhindert dass ein
+    einmaliger Absturz eine ganze Aufnahme unbrauchbar macht."""
     if not state.model_loaded:
         return {"error": "Kein Modell geladen", "text": "", "duration": 0}
 
@@ -1953,6 +1956,30 @@ def run_transcribe(audio: np.ndarray, language: str = "de") -> dict:
         }
     except httpx.TimeoutException:
         return {"error": "Transkription Timeout", "text": "", "duration": 0}
+    except (httpx.ConnectError, httpx.RemoteProtocolError, ConnectionRefusedError) as e:
+        # Whisper-Server ist nicht erreichbar -> wahrscheinlich abgestuerzt
+        # (Defunct-Prozess, Segfault bei grossem Modell mit langem Chunk, etc.)
+        # Einmaliger Recovery-Versuch: neu starten + retry.
+        if _retry:
+            print(f"[TRANSCRIBE] Auto-Recovery fehlgeschlagen, gebe auf: {e}", flush=True)
+            return {"error": f"Whisper-Server nicht erreichbar (auch nach Restart): {str(e)[:150]}",
+                    "text": "", "duration": 0}
+        print(f"[TRANSCRIBE] Connection-Refused -> whisper-server vermutlich tot, starte neu ...", flush=True)
+        try:
+            # Defunct-Prozesse wegraeumen
+            stop_whisper_server()
+            time.sleep(1.5)
+            if state.model_path and start_whisper_server(state.model_path):
+                print(f"[TRANSCRIBE] Recovery erfolgreich, retry Chunk", flush=True)
+                return run_transcribe(audio, language, _retry=True)
+            else:
+                print(f"[TRANSCRIBE] Recovery-Start fehlgeschlagen", flush=True)
+                return {"error": "Whisper-Server abgestuerzt, Neustart fehlgeschlagen",
+                        "text": "", "duration": 0}
+        except Exception as recovery_err:
+            print(f"[TRANSCRIBE] Recovery-Exception: {recovery_err}", flush=True)
+            return {"error": f"Whisper-Recovery fehlgeschlagen: {str(recovery_err)[:150]}",
+                    "text": "", "duration": 0}
     except Exception as e:
         return {"error": str(e)[:300], "text": "", "duration": 0}
     finally:
