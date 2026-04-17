@@ -62,22 +62,38 @@ def rc522_write(addr, val):
     _GPIO.output(_CS, _GPIO.HIGH)
 
 
+_gpio_setup_done = False
+
+
 def rc522_init():
-    """Initialisiert den RC522 RFID-Reader. Gibt True zurück wenn erkannt."""
-    global _rc522_available, _GPIO
+    """Initialisiert den RC522 RFID-Reader. Gibt True zurück wenn erkannt.
+
+    WICHTIG: GPIO.setup() wird nur beim ERSTEN Call ausgefuehrt
+    (_gpio_setup_done-Flag). Bei erneutem rc522_init() waehrend des
+    Sektor-Wechsels (siehe Phase 4.1-Hardware-Reset in
+    rc522_write_patient_to_card) wuerde ein zweiter GPIO.setup die
+    bereits beanspruchten Pins in einen inkonsistenten Zustand bringen,
+    Jetson.GPIO wirft dann EINVAL ("Setting line value: Invalid argument")
+    auf dem naechsten GPIO.output(_RST, ...). Fuer den Sektor-Reset reicht
+    der RST-Pin-Puls plus Register-Re-Config — GPIO-Claim bleibt bestehen.
+    """
+    global _rc522_available, _GPIO, _gpio_setup_done
     try:
         import time
         import Jetson.GPIO as GPIO
         _GPIO = GPIO
-        GPIO.setmode(GPIO.BOARD)
-        GPIO.setwarnings(False)
 
-        GPIO.setup([_MOSI, _SCK, _CS, _RST], GPIO.OUT)
-        GPIO.setup(_MISO, GPIO.IN)
-        GPIO.output(_CS, GPIO.HIGH)
-        GPIO.output(_SCK, GPIO.LOW)
+        if not _gpio_setup_done:
+            GPIO.setmode(GPIO.BOARD)
+            GPIO.setwarnings(False)
+            GPIO.setup([_MOSI, _SCK, _CS, _RST], GPIO.OUT)
+            GPIO.setup(_MISO, GPIO.IN)
+            GPIO.output(_CS, GPIO.HIGH)
+            GPIO.output(_SCK, GPIO.LOW)
+            _gpio_setup_done = True
 
-        # Hard Reset
+        # Hard Reset per RST-Pin (setzt RC522-Register zurueck ohne
+        # die GPIO-Konfiguration anzufassen).
         GPIO.output(_RST, GPIO.LOW)
         time.sleep(0.05)
         GPIO.output(_RST, GPIO.HIGH)

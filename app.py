@@ -1075,7 +1075,17 @@ async def _handle_patient_scan(uid: str):
 
     Die bisherige HTTP-API /api/rfid/scan bleibt als manueller Fallback
     erhalten. Dieser Pfad hier ist der automatische Weg via Hardware-Reader.
+
+    Waehrend eines laufenden RFID-Schreib-Batches (state.rfid_write_active)
+    wird dieser Handler uebersprungen: await_next_scan() hat den Scan
+    bereits exklusiv verbraucht (siehe RfidService._emit), aber falls der
+    User die Karte zwischen den Batch-Iterationen nochmal drauflegt oder
+    unser Debounce die gleiche UID nicht erwischt, darf hier kein
+    'Scan erfolgreich' mehr getoetet werden — der Batch spielt eigene
+    TTS-Meldungen ("Karte N. Name", "Fertig").
     """
+    if getattr(state, "rfid_write_active", False):
+        return
     existing_pid = lookup_by_rfid(state.rfid_map, uid)
     if existing_pid and existing_pid in state.patients:
         state.active_patient = existing_pid
@@ -1664,96 +1674,104 @@ async def voice_write_card():
 
     loop = asyncio.get_event_loop()
 
-    for idx, patient in enumerate(todo):
-        name = (patient.get("name") or "Unbekannt").strip()
-        pid = patient["patient_id"]
-        label_idx = f"{idx + 1}/{total}"
-        short_name = name[:14]
-        oled_menu.show_status(f"KARTE {label_idx}", f"{short_name} auflegen")
-        if hardware_service._leds:
-            hardware_service._leds.set(red=LedPattern.BLINK_SLOW)
-        tts.speak(f"Karte {idx + 1}. {name}")
+    # Flag fuer _handle_patient_scan: blockt 'Scan erfolgreich'-TTS waehrend
+    # der Karte-Schreiben-Schleife. try/finally, damit bei Exceptions der
+    # Flag sicher wieder freigegeben wird (sonst wuerden Patient-Scans
+    # dauerhaft stumm bleiben).
+    state.rfid_write_active = True
+    try:
+        for idx, patient in enumerate(todo):
+            name = (patient.get("name") or "Unbekannt").strip()
+            pid = patient["patient_id"]
+            label_idx = f"{idx + 1}/{total}"
+            short_name = name[:14]
+            oled_menu.show_status(f"KARTE {label_idx}", f"{short_name} auflegen")
+            if hardware_service._leds:
+                hardware_service._leds.set(red=LedPattern.BLINK_SLOW)
+            tts.speak(f"Karte {idx + 1}. {name}")
 
-        uid = await hardware_service.await_rfid_scan(timeout=15.0)
-        if uid is None:
-            oled_menu.show_status("TIMEOUT", f"{label_idx} uebersprungen")
-            tts.speak("Zeit abgelaufen, weiter")
-            skipped.append(pid)
-            await asyncio.sleep(1.0)
-            continue
+            uid = await hardware_service.await_rfid_scan(timeout=15.0)
+            if uid is None:
+                oled_menu.show_status("TIMEOUT", f"{label_idx} uebersprungen")
+                tts.speak("Zeit abgelaufen, weiter")
+                skipped.append(pid)
+                await asyncio.sleep(1.0)
+                continue
 
-        # Operator-Karte? Nicht überschreiben
-        if _find_operator(uid) is not None:
-            oled_menu.show_status("OPERATOR", "Weisse Karte bitte")
-            tts.speak("Keine Operator-Karte")
-            await hardware_service.flash_error(1.0)
-            # erneut auf dieselben Patient warten, Schleife rückwärts
-            skipped.append(pid)
-            await asyncio.sleep(1.5)
-            continue
+            # Operator-Karte? Nicht überschreiben
+            if _find_operator(uid) is not None:
+                oled_menu.show_status("OPERATOR", "Weisse Karte bitte")
+                tts.speak("Keine Operator-Karte")
+                await hardware_service.flash_error(1.0)
+                # erneut auf dieselben Patient warten, Schleife rückwärts
+                skipped.append(pid)
+                await asyncio.sleep(1.5)
+                continue
 
-        # Schreiben
-        oled_menu.show_status("SCHREIBE", f"{label_idx} {uid[:8]}", progress=int((idx + 1) / total * 100))
-        try:
-            success, result = await loop.run_in_executor(
-                None, rc522_write_patient_to_card, patient, 8.0
-            )
-        except Exception as e:
-            success, result = False, str(e)
-
-        if success:
-            patient.setdefault("timeline", []).append({
-                "time": datetime.now().isoformat(),
-                "role": patient.get("current_role", "phase0"),
-                "event": "rfid_written",
-                "details": f"Karte UID {result} von {op_label}",
-            })
-            # UID persistent im Patient-Record ablegen — damit das Surface
-            # den Patient per UID-Lookup wiederfinden kann (Omnikey-Flow).
-            patient["rfid_tag_id"] = result
-            patient["timestamp_updated"] = datetime.now().isoformat()
-            state.rfid_map[result] = pid
-            state.last_rfid_uid = result
-            await broadcast({
-                "type": "rfid_written",
-                "patient_id": pid,
-                "uid": result,
-            })
-            # Den gesamten Patient-Record neu broadcasten, damit Frontend
-            # die RFID-Spalte in der Datenbank-Tabelle aktualisiert und das
-            # Surface die UID ebenfalls mitbekommt.
-            await broadcast({"type": "patient_update", "patient": patient})
-            # Direkt ans Surface pushen (auch wenn schon synced) — sonst
-            # kennt das Surface die neue UID nicht und kann sie beim
-            # Omnikey-Scan nicht zuordnen.
+            # Schreiben
+            oled_menu.show_status("SCHREIBE", f"{label_idx} {uid[:8]}", progress=int((idx + 1) / total * 100))
             try:
-                await push_single_patient(patient)
+                success, result = await loop.run_in_executor(
+                    None, rc522_write_patient_to_card, patient, 8.0
+                )
             except Exception as e:
-                print(f"[RFID] push_single_patient nach Write fehlgeschlagen: {e}", flush=True)
-            await hardware_service.flash_success(0.7)
-            tts.speak(f"Karte {idx + 1} fertig")
-            written += 1
+                success, result = False, str(e)
+
+            if success:
+                patient.setdefault("timeline", []).append({
+                    "time": datetime.now().isoformat(),
+                    "role": patient.get("current_role", "phase0"),
+                    "event": "rfid_written",
+                    "details": f"Karte UID {result} von {op_label}",
+                })
+                # UID persistent im Patient-Record ablegen — damit das Surface
+                # den Patient per UID-Lookup wiederfinden kann (Omnikey-Flow).
+                patient["rfid_tag_id"] = result
+                patient["timestamp_updated"] = datetime.now().isoformat()
+                state.rfid_map[result] = pid
+                state.last_rfid_uid = result
+                await broadcast({
+                    "type": "rfid_written",
+                    "patient_id": pid,
+                    "uid": result,
+                })
+                # Den gesamten Patient-Record neu broadcasten, damit Frontend
+                # die RFID-Spalte in der Datenbank-Tabelle aktualisiert und das
+                # Surface die UID ebenfalls mitbekommt.
+                await broadcast({"type": "patient_update", "patient": patient})
+                # Direkt ans Surface pushen (auch wenn schon synced) — sonst
+                # kennt das Surface die neue UID nicht und kann sie beim
+                # Omnikey-Scan nicht zuordnen.
+                try:
+                    await push_single_patient(patient)
+                except Exception as e:
+                    print(f"[RFID] push_single_patient nach Write fehlgeschlagen: {e}", flush=True)
+                await hardware_service.flash_success(0.7)
+                tts.speak(f"Karte {idx + 1} fertig")
+                written += 1
+            else:
+                oled_menu.show_status("FEHLER", str(result)[:18])
+                tts.speak(f"Karte {idx + 1} Fehler")
+                await hardware_service.flash_error(1.0)
+                skipped.append(pid)
+            await asyncio.sleep(0.8)
+
+        if hardware_service._leds:
+            hardware_service._leds.set(red=LedPattern.OFF)
+
+        if written == total:
+            oled_menu.show_status("FERTIG", f"{written}/{total} OK")
+            tts.speak(f"{written} Karten geschrieben" if written != 1 else "Eine Karte geschrieben")
+        elif written > 0:
+            oled_menu.show_status("TEIL OK", f"{written}/{total}")
+            tts.speak(f"{written} von {total} Karten geschrieben")
         else:
-            oled_menu.show_status("FEHLER", str(result)[:18])
-            tts.speak(f"Karte {idx + 1} Fehler")
-            await hardware_service.flash_error(1.0)
-            skipped.append(pid)
-        await asyncio.sleep(0.8)
-
-    if hardware_service._leds:
-        hardware_service._leds.set(red=LedPattern.OFF)
-
-    if written == total:
-        oled_menu.show_status("FERTIG", f"{written}/{total} OK")
-        tts.speak(f"{written} Karten geschrieben" if written != 1 else "Eine Karte geschrieben")
-    elif written > 0:
-        oled_menu.show_status("TEIL OK", f"{written}/{total}")
-        tts.speak(f"{written} von {total} Karten geschrieben")
-    else:
-        oled_menu.show_status("KEINE OK", "0 Karten")
-        tts.speak("Keine Karten geschrieben")
-    await asyncio.sleep(2.5)
-    oled_menu.clear_status()
+            oled_menu.show_status("KEINE OK", "0 Karten")
+            tts.speak("Keine Karten geschrieben")
+        await asyncio.sleep(2.5)
+        oled_menu.clear_status()
+    finally:
+        state.rfid_write_active = False
     return
 
 
@@ -4749,9 +4767,36 @@ JSON:"""
 
 
 def run_patient_enrichment(text: str) -> dict:
-    """Extrahiert Patientendaten aus Transkript-Text via Ollama LLM."""
+    """Extrahiert Patientendaten aus Transkript-Text via Ollama LLM.
+
+    Post-Processing: Der extrahierte `rank`-String wird gegen die
+    BW-Dienstgrad-Whitelist (shared/bundeswehr_ranks.py) fuzzy-gematcht.
+    Whisper verhaspelt sich bei langen Dienstgraden (z.B. "Oberstabselwebel"
+    statt "Oberstabsfeldwebel"), das Gemma extrahiert dann genau den
+    Hoerfehler. Hier korrigieren wir das post-hoc. Kostet ~1 ms pro Patient.
+    """
     prompt = build_patient_enrichment_prompt(text)
-    return _call_ollama(prompt, "Patienten-Anreicherung")
+    result = _call_ollama(prompt, "Patienten-Anreicherung")
+    try:
+        from shared.bundeswehr_ranks import normalize_rank
+        raw_rank = (result.get("rank") or "").strip() if result else ""
+        if raw_rank:
+            fixed, conf = normalize_rank(raw_rank)
+            if fixed != raw_rank and conf >= 0.78:
+                print(f"[RANK-NORM] '{raw_rank}' -> '{fixed}' (conf {conf:.2f})", flush=True)
+                result["rank"] = fixed
+                result["rank_normalized_from"] = raw_rank
+                result["rank_confidence"] = conf
+            elif conf == 1.0 and fixed == raw_rank:
+                # Exact-Match, nichts zu tun
+                result["rank_confidence"] = 1.0
+            else:
+                # Kein Match gefunden — markieren als unsicher damit das UI
+                # ggf. ein Warn-Icon zeigen kann. Originalwert bleibt.
+                result["rank_confidence"] = round(conf, 3)
+    except Exception as e:
+        print(f"[RANK-NORM] Fehler bei Dienstgrad-Normalisierung: {e}", flush=True)
+    return result
 
 
 async def _run_analysis_background(sid: str):

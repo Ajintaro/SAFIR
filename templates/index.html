@@ -3388,11 +3388,17 @@
                 `<option value="${m.name}" ${m.name === models.current ? 'selected' : ''}>${m.name} (${m.size_mb} MB)</option>`
             ).join('');
 
-            // Audio devices für Settings-Seite
+            // Audio devices für Settings-Seite.
+            // WICHTIG: "current" ist die ID des aktuell gewaehlten Input-Devices
+            // (kommt aus config.json:audio.preferred_device_name + Boot-Preload
+            // der persistent_audio_stream). "default" ist nur ein ALSA-Flag und
+            // waere meist False fuer echte Hardware — fuer die UI-Vorauswahl
+            // muss "current" benutzt werden, sonst zeigt das Dropdown falsch
+            // "nicht gewaehlt" obwohl Jabra seit Boot aktiv ist.
             const devs = await api('/api/devices');
             const dsel = document.getElementById('settings-audio-device');
             dsel.innerHTML = devs.devices.map(d =>
-                `<option value="${d.id}" ${d.default ? 'selected' : ''}>${d.name}</option>`
+                `<option value="${d.id}" ${d.id === devs.current ? 'selected' : ''}>${d.name}</option>`
             ).join('');
 
             // WLAN status + scan
@@ -5506,6 +5512,13 @@
                 // Fahrzeug-Modus: Löschen-Icon
                 const deleteIcon = isFz ? `<span onclick="event.stopPropagation();deletePatient('${p.patient_id}')" style="cursor:pointer;color:var(--text-dim);font-size:14px;padding:0 4px" title="Patient löschen">&#128465;</span>` : '';
 
+                // RFID-Karte geschrieben? Pruefen ueber Timeline-Event
+                // "rfid_written" (wird von voice_write_card in app.py gesetzt).
+                // Badge bleibt dauerhaft am Patient (auch nach Role-Wechsel),
+                // damit man auf einen Blick sieht welche Patienten schon auf
+                // MIFARE-Karten sind vs. welche noch offen.
+                const hasRfidWritten = (p.timeline || []).some(ev => ev.event === 'rfid_written');
+
                 return `
                 <details class="patient-card-details ${isActive ? 'active-patient' : ''} ${analyzingPids.has(p.patient_id) ? 'analyzing' : ''}" data-pid="${p.patient_id}" ${isOpen ? 'open' : ''} onclick="if(event.target.closest('summary'))selectPatient('${p.patient_id}')">
                     <summary>
@@ -5514,6 +5527,7 @@
                         <div class="p-badges">
                             ${isNlPatient ? '<span class="badge-sm" style="background:rgba(93,173,226,0.2);color:#5DADE2">&#9992; 9-Liner</span>' : ''}
                             ${p.analyzed ? '<span class="badge-sm" style="background:rgba(93,173,226,0.15);color:#5DADE2">analysiert</span>' : ''}
+                            ${hasRfidWritten ? '<span class="badge-sm" style="background:rgba(200,184,120,0.2);color:#c8b878" title="RFID-Karte geschrieben">&#128179; RFID</span>' : ''}
                             ${p.synced ? '<span class="badge-sm" style="background:rgba(46,204,113,0.15);color:#2ECC71">gemeldet</span>' : ''}
                         </div>
                         ${deleteIcon}
@@ -6353,8 +6367,9 @@
         const devs = await api('/api/devices');
         const dsel = document.getElementById('device-select');
         if (dsel) {
+            // devs.current = ID des gewaehlten Input-Devices (persistent via config)
             dsel.innerHTML = devs.devices.map(d =>
-                `<option value="${d.id}" ${d.default ? 'selected' : ''}>${d.name}</option>`
+                `<option value="${d.id}" ${d.id === devs.current ? 'selected' : ''}>${d.name}</option>`
             ).join('');
         }
 
