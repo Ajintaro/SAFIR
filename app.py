@@ -2816,6 +2816,58 @@ async def list_pending_transcripts():
     return {"pending": state.pending_transcripts}
 
 
+# ---------------------------------------------------------------------------
+# Rate-Limiting + Length-Limits (Messe-Hardening Phasen A4 + A5)
+# ---------------------------------------------------------------------------
+# Schutz gegen Rapid-Click-Spam (Messe-Besucher druecken 10x den Analyse-
+# Button) und pathologische Eingaben (0-char oder 100k-char-Transkripte).
+# Rate-Limit pro pending_id, weil ein User durchaus parallel verschiedene
+# Transkripte analysieren darf, aber NICHT dasselbe 5x in Folge.
+
+ANALYSIS_RATE_LIMIT_SECONDS = 5.0      # Min. Abstand zwischen 2 Analysen desselben Pendings
+MIN_TRANSCRIPT_CHARS = 20              # < 3 Worte = zu kurz (Mikro-Aussetzer)
+MAX_TRANSCRIPT_CHARS = 50_000          # ~10 min Sprechzeit, darueber = pathologisch
+MAX_PATIENTS_PER_PENDING = 30          # Safety-Cap fuer Segmenter-Halluzination
+
+# Rate-Limit-Dict: pending_id -> time.monotonic() des letzten Analyse-Starts.
+# Wird beim Pruefen gesetzt (nicht erst beim Erfolg), damit auch abgebrochene
+# Calls das Limit triggern — sonst waere Rapid-Click kein Schutz.
+_last_analysis_ts: dict[str, float] = {}
+
+
+def _check_analysis_rate_limit(pending_id: str) -> tuple[bool, float]:
+    """Rueckgabe: (ok, wait_seconds). ok=True heisst analysieren erlaubt,
+    Timestamp wurde gesetzt. ok=False heisst bitte noch wait_seconds warten."""
+    now = time.monotonic()
+    last = _last_analysis_ts.get(pending_id, 0.0)
+    wait = ANALYSIS_RATE_LIMIT_SECONDS - (now - last)
+    if wait > 0:
+        return (False, round(wait, 1))
+    _last_analysis_ts[pending_id] = now
+    return (True, 0.0)
+
+
+def _validate_transcript_length(text: str) -> tuple[bool, str, str, bool]:
+    """Prueft Transkript-Laenge. Rueckgabe:
+      (ok, text_after_truncate, warning_or_error, was_truncated)
+    - ok=False bei MIN_TRANSCRIPT_CHARS-Violation (harter Block)
+    - ok=True + warning_or_error gesetzt + was_truncated=True bei
+      MAX_TRANSCRIPT_CHARS-Violation (Soft-Warning, weiter mit Truncated-Text)
+    - ok=True + leerer warning_or_error bei normaler Laenge
+    """
+    if not isinstance(text, str):
+        return (False, "", "Transkript ist leer", False)
+    t = text.strip()
+    if len(t) < MIN_TRANSCRIPT_CHARS:
+        return (False, t, f"Aufnahme zu kurz ({len(t)} Zeichen, min. {MIN_TRANSCRIPT_CHARS}). Bitte neu aufnehmen.", False)
+    if len(t) > MAX_TRANSCRIPT_CHARS:
+        truncated = t[:MAX_TRANSCRIPT_CHARS]
+        warn = (f"Transkript sehr lang ({len(t)} Zeichen) — "
+                f"nur erste {MAX_TRANSCRIPT_CHARS:,} Zeichen werden analysiert.")
+        return (True, truncated, warn, True)
+    return (True, t, "", False)
+
+
 def _find_pending(tid: str) -> dict | None:
     for p in state.pending_transcripts:
         if p.get("id") == tid:
@@ -2842,13 +2894,33 @@ async def analyze_pending_transcript(body: dict):
     if pt.get("analyzing"):
         return {"status": "error", "error": "Analyse läuft bereits."}
 
-    # Content-Guardrail (Messe-Hardening A3): Pruefen ob das Transkript
-    # ueberhaupt medizinischen Inhalt enthaelt. Wenn nicht und body
-    # body.force_analysis=False, eine "needs_confirmation"-Response
-    # schicken. Das Frontend zeigt dann einen Dialog mit der Frage
-    # "trotzdem analysieren?" und ruft den Endpoint mit force_analysis=True
-    # auf wenn der User bestaetigt.
-    full_text = pt["full_text"]
+    # A5: Transcript-Length-Limits VOR Rate-Limit pruefen — zu kurze
+    # Aufnahmen (Mikro-Aussetzer) brauchen gar keinen Rate-Limit-Slot zu
+    # verbrauchen, und zu lange werden truncated (Soft-Warning). Hartes
+    # Block nur bei Unter-Limit.
+    raw_text = pt["full_text"]
+    len_ok, full_text, len_msg, was_truncated = _validate_transcript_length(raw_text)
+    if not len_ok:
+        print(f"[LENGTH] {len_msg}", flush=True)
+        return {"status": "error", "error": len_msg}
+    length_warning = len_msg if was_truncated else ""
+
+    # A4: Rate-Limit pro pending_id. Timestamp wird gesetzt sobald die
+    # Ratenpruefung durchlaeuft — damit auch bei rapidem Mehrfach-Klick
+    # der erste Klick "gewinnt" und alle weiteren waehrend der Wartezeit
+    # geblockt werden.
+    rate_ok, rate_wait = _check_analysis_rate_limit(pt["id"])
+    if not rate_ok:
+        print(f"[RATE-LIMIT] Analyse von '{pt['id']}' geblockt, "
+              f"noch {rate_wait}s warten", flush=True)
+        return {
+            "status": "rate_limited",
+            "error": f"Bitte {rate_wait}s warten bevor derselbe Transkript "
+                     f"erneut analysiert wird.",
+            "wait_seconds": rate_wait,
+            "pending_id": pt["id"],
+        }
+
     force_analysis = bool((body or {}).get("force_analysis", False))
     if not force_analysis:
         try:
@@ -2897,6 +2969,19 @@ async def analyze_pending_transcript(body: dict):
     pt["analysis_duration_s"] = session_duration
     pt["created_patient_ids"] = created
     count = len(created)
+    # A5: Wenn Transkript truncated wurde, Warning dem ersten Patienten
+    # anhaengen (sichtbar im Warn-Badge + Card-Body-Liste) und am
+    # pending_transcript persistieren (damit Frontend es auch dort zeigen
+    # kann).
+    if length_warning:
+        pt["length_warning"] = length_warning
+        if created and created[0] in state.patients:
+            first = state.patients[created[0]]
+            ws = first.get("warnings") or []
+            if length_warning not in ws:
+                ws.append(length_warning)
+                first["warnings"] = ws
+                await broadcast({"type": "patient_update", "patient": first})
     # Bei 9-Liner wird der TTS-Text schon in der 9-Liner-Branch gesagt,
     # hier nur noch fuer Standard-Segmentierung ansagen.
     if not is_nine_liner:
@@ -2911,7 +2996,13 @@ async def analyze_pending_transcript(body: dict):
     # Swap zurueck auf Recording-Mode im Hintergrund
     if getattr(state, "swap_mode", "coexist") == "analyzing":
         asyncio.create_task(_enter_recording_mode())
-    return {"status": "ok", "created_patient_ids": created, "count": count, "pending_id": pt["id"]}
+    return {
+        "status": "ok",
+        "created_patient_ids": created,
+        "count": count,
+        "pending_id": pt["id"],
+        **({"length_warning": length_warning} if length_warning else {}),
+    }
 
 
 @app.post("/api/analyze/discard")
@@ -4788,6 +4879,22 @@ async def _segment_and_create_patients(full_text: str, record_time: str, is_nine
     if not patient_list:
         patient_list = [{"patient_nr": 1, "text": full_text, "summary": ""}]
     print(f"[SEGMENT] {len(patient_list)} Patient-Segment(e) erkannt", flush=True)
+
+    # A4-Safety-Cap: Wenn der Segmenter pathologisch viele Patienten findet
+    # (Halluzination bei Stoerungen oder wenn jemand 50+ Namen am Stueck
+    # diktiert), cappen wir bei MAX_PATIENTS_PER_PENDING. Im Log + via
+    # broadcast kommuniziert, damit der User weiss dass was gekuerzt wurde.
+    if len(patient_list) > MAX_PATIENTS_PER_PENDING:
+        dropped = len(patient_list) - MAX_PATIENTS_PER_PENDING
+        print(f"[SEGMENT] WARNUNG: {len(patient_list)} Patienten erkannt, "
+              f"cappe auf {MAX_PATIENTS_PER_PENDING} (verwerfe {dropped}).", flush=True)
+        await broadcast({
+            "type": "segment_capped",
+            "recognized": len(patient_list),
+            "kept": MAX_PATIENTS_PER_PENDING,
+            "dropped": dropped,
+        })
+        patient_list = patient_list[:MAX_PATIENTS_PER_PENDING]
 
     cfg = load_config()
     device_id = cfg.get("device_id", "jetson-01")

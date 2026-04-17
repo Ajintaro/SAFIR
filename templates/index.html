@@ -4328,10 +4328,20 @@
         // medizinisch"-Warnung weitermachen moechte.
         const body = { id };
         if (forceAnalysis) body.force_analysis = true;
+        // A4-UX: Button im Pending-Card waehrend der Analyse disablen.
+        // Wird von renderPendingCards eh disabled (analyzing=true), aber
+        // bei Rate-Limit-Hit unten zusaetzlich Countdown anzeigen.
         const res = await api('/api/analyze/pending', 'POST', body);
+        if (res.status === 'rate_limited') {
+            // A4: Rapid-Click-Schutz. Server teilt uns mit wie viel Sekunden
+            // noch. Wir zeigen Toast + Button bleibt disabled fuer die Zeit.
+            const wait = Number(res.wait_seconds || 5);
+            showToast(`Zu schnell — bitte ${wait.toFixed(1)}s warten`, '&#9203;');
+            _disableAnalyzeButton(id, Math.ceil(wait));
+            return;
+        }
         if (res.status === 'needs_confirmation') {
-            // Content-Guardrail: Transkript scheint nicht medizinisch.
-            // Soft-Dialog mit Begruendung + Preview + Trotzdem-Button.
+            // A3 Content-Guardrail
             const preview = (res.preview || '').replace(/</g, '&lt;');
             const msg = [
                 res.reason || 'Transkript scheint nicht medizinisch zu sein.',
@@ -4348,7 +4358,43 @@
         }
         if (res.status !== 'ok') {
             showToast('Analyse-Fehler: ' + (res.error || 'unbekannt'), '&#9888;');
+            return;
         }
+        // A5: Truncation-Warning ausgeben falls vorhanden
+        if (res.length_warning) {
+            showToast(res.length_warning, '&#9888;');
+        }
+    }
+
+    // A4: Countdown-Disable fuer Analyse-Button im Pending-Card. Findet alle
+    // Buttons mit onclick=analyzePendingById(id) und disabled sie fuer
+    // `seconds` Sekunden mit laufendem Countdown-Label.
+    function _disableAnalyzeButton(pendingId, seconds) {
+        const sel = `button[onclick*="analyzePendingById('${pendingId}')"]`;
+        const btns = Array.from(document.querySelectorAll(sel));
+        if (btns.length === 0) return;
+        const originalLabels = btns.map(b => b.innerHTML);
+        let remaining = seconds;
+        btns.forEach(b => {
+            b.disabled = true;
+            b.style.opacity = '0.45';
+            b.style.cursor = 'not-allowed';
+            b.innerHTML = `&#9203; ${remaining}s`;
+        });
+        const timer = setInterval(() => {
+            remaining -= 1;
+            if (remaining <= 0) {
+                clearInterval(timer);
+                btns.forEach((b, i) => {
+                    b.disabled = false;
+                    b.style.opacity = '';
+                    b.style.cursor = '';
+                    b.innerHTML = originalLabels[i];
+                });
+                return;
+            }
+            btns.forEach(b => { b.innerHTML = `&#9203; ${remaining}s`; });
+        }, 1000);
     }
 
     async function discardPendingById(id) {
