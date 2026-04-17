@@ -1507,6 +1507,22 @@
             color: #fff; flex-shrink: 0;
             line-height: 1;
         }
+        /* Dienstgradabzeichen in Phase 0 — gleiche Dimensionen wie Triage-Dot
+           damit das Summary-Layout konsistent bleibt. Das innere SVG bringt
+           sein eigenes Styling mit, hier nur das Flex-Frame. */
+        .patient-card-details summary .rank-badge {
+            width: 32px; height: 32px;
+            flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 6px;
+            overflow: hidden;
+            background: transparent;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+        }
+        .patient-card-details summary .rank-badge svg {
+            width: 32px; height: 32px;
+            border-radius: 5px;
+        }
         .patient-card-details summary .p-name {
             font-weight: var(--fw-semibold);
             font-size: var(--fs-body);
@@ -5417,6 +5433,154 @@
         }).join('');
     }
 
+    // ==================== BUNDESWEHR-DIENSTGRAD-ABZEICHEN ====================
+    // Erzeugt ein 32x32 SVG-Schulterstueck fuer den uebergebenen Dienstgrad.
+    // Folgt der echten BW-Insignie-Farbsystematik:
+    //   - Olive-Gruen (#4a5e2e) als Heer/Luft/San-Schulterbasis
+    //   - Rot (#8b2f1f) fuer Generalsraenge
+    //   - Silber (#c0c0c0) fuer Unteroffiziere ohne Portepee
+    //   - Silber-Braid (Flechten) fuer Feldwebel und Leutnante
+    //   - Gold-Braid (#d4af37) fuer Stabsoffiziere und Generale
+    //   - Gold-Sterne (#e8c547) als Rang-Pips
+    // Die weibliche Form wird durch Endungen ("in", "frau") erkannt und
+    // mappt auf dasselbe Abzeichen wie die maennliche.
+    function _normRankKey(s) {
+        return (s || '').toLowerCase()
+            .replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/ß/g,'ss')
+            .replace(/ae/g,'a').replace(/oe/g,'o').replace(/ue/g,'u')
+            .replace(/[.\s-]/g,'').trim();
+    }
+
+    // Rang -> {group, pipCount, extra}
+    // group: 'mann'|'uffz'|'fw'|'lt'|'staboff'|'general'
+    // pipCount: Anzahl kleiner Sterne
+    function _classifyRank(rank) {
+        const k = _normRankKey(rank);
+        if (!k) return null;
+
+        // Generale (roter Hintergrund + Gold)
+        if (/^general(in)?$/.test(k) || k === 'admiral' || k === 'admiralin') return {group:'general', pipCount:4};
+        if (k.startsWith('generalleutnant') || k.startsWith('vizeadmiral')) return {group:'general', pipCount:3};
+        if (k.startsWith('generalmajor') || k.startsWith('konteradmiral')) return {group:'general', pipCount:2};
+        if (k.startsWith('brigadegeneral') || k.startsWith('flottillenadmiral')) return {group:'general', pipCount:1};
+        if (k.startsWith('generalarzt') || k.startsWith('admiralarzt')) return {group:'general', pipCount:1, medic:true};
+        if (k.startsWith('generalstabsarzt') || k.startsWith('generaloberstabsarzt')) return {group:'general', pipCount:2, medic:true};
+
+        // Stabsoffiziere (Gold-Braid)
+        if (k.startsWith('oberst') && !k.startsWith('oberstleutnant') && !k.startsWith('oberstabs')) return {group:'staboff', pipCount:3};
+        if (k.startsWith('kapitanzur')) return {group:'staboff', pipCount:3};
+        if (k.startsWith('oberstleutnant') || k.startsWith('fregattenkapitan')) return {group:'staboff', pipCount:2};
+        if (k.startsWith('major') || k.startsWith('korvettenkapitan')) return {group:'staboff', pipCount:1};
+        // San-Stabsoffiziere
+        if (k.startsWith('oberstarzt') || k.startsWith('oberstaerzt') || k.startsWith('oberstveterinar') || k.startsWith('oberstapotheker')) return {group:'staboff', pipCount:3, medic:true};
+        if (k.startsWith('oberfeldarzt') || k.startsWith('oberfeldaerzt') || k.startsWith('oberfeldveterinar') || k.startsWith('oberfeldapotheker')) return {group:'staboff', pipCount:2, medic:true};
+        if (k.startsWith('oberstabsarzt') || k.startsWith('oberstabsaerzt') || k.startsWith('oberstabsveterinar') || k.startsWith('oberstabsapotheker')) return {group:'staboff', pipCount:1, medic:true};
+
+        // Leutnante (Silber-Braid)
+        if (k.startsWith('hauptmann') || k.startsWith('hauptfrau') || k.startsWith('kapitanleutnant')) return {group:'lt', pipCount:3};
+        if (k.startsWith('oberleutnant')) return {group:'lt', pipCount:2};
+        if (k.startsWith('leutnant')) return {group:'lt', pipCount:1};
+        // San-Leutnante
+        if (k.startsWith('stabsarzt') || k.startsWith('stabsaerzt') || k.startsWith('stabsveterinar') || k.startsWith('stabsapotheker')) return {group:'lt', pipCount:3, medic:true};
+
+        // Feldwebel (Silber-Rand + Gold-Pips)
+        if (k.startsWith('oberstabsfeldwebel') || k.startsWith('oberstabsbootsmann')) return {group:'fw', pipCount:4};
+        if (k.startsWith('stabsfeldwebel') || k.startsWith('stabsbootsmann')) return {group:'fw', pipCount:3};
+        if (k.startsWith('hauptfeldwebel') || k.startsWith('hauptbootsmann')) return {group:'fw', pipCount:2};
+        if (k.startsWith('oberfeldwebel') || k.startsWith('oberbootsmann')) return {group:'fw', pipCount:1};
+        if (k.startsWith('feldwebel') || k.startsWith('bootsmann') || k.startsWith('bootsfrau')) return {group:'fw', pipCount:0};
+
+        // Unteroffiziere ohne Portepee (Silber-Streifen)
+        if (k.startsWith('stabsunteroffizier') || k.startsWith('obermaat')) return {group:'uffz', pipCount:1};
+        if (k.startsWith('unteroffizier') || k === 'maat' || k === 'maatin') return {group:'uffz', pipCount:0};
+
+        // Mannschaften (Olive + gelbe Pips, aufsteigend)
+        if (k.startsWith('oberstabsgefreite')) return {group:'mann', pipCount:5};
+        if (k.startsWith('stabsgefreite')) return {group:'mann', pipCount:4};
+        if (k.startsWith('hauptgefreite')) return {group:'mann', pipCount:3};
+        if (k.startsWith('obergefreite')) return {group:'mann', pipCount:2};
+        if (k.startsWith('gefreite')) return {group:'mann', pipCount:1};
+        // Basis-Mannschaft (Soldat, Schütze, Matrose, Flieger, ...)
+        return {group:'mann', pipCount:0};
+    }
+
+    // Gibt {x,y}-Pixel-Positionen fuer N Pips (in 32x32 viewBox, verfuegbarer
+    // Innenbereich ~6..26). Fuer die Heer-Anordnung: linear zentriert.
+    function _pipPositions(n) {
+        if (n === 0) return [];
+        if (n === 1) return [{x:16, y:16}];
+        if (n === 2) return [{x:11, y:16}, {x:21, y:16}];
+        if (n === 3) return [{x:16, y:10}, {x:11, y:21}, {x:21, y:21}];
+        if (n === 4) return [{x:11, y:11}, {x:21, y:11}, {x:11, y:22}, {x:21, y:22}];
+        // 5 = Kreuz-Pattern
+        return [{x:16, y:8}, {x:8, y:16}, {x:24, y:16}, {x:11, y:24}, {x:21, y:24}];
+    }
+
+    function _starPath(cx, cy, r) {
+        // 5-Punkt-Stern als SVG path
+        const pts = [];
+        for (let i = 0; i < 10; i++) {
+            const angle = -Math.PI/2 + i * Math.PI/5;
+            const rad = (i % 2 === 0) ? r : r * 0.45;
+            pts.push((cx + rad*Math.cos(angle)).toFixed(1) + ',' + (cy + rad*Math.sin(angle)).toFixed(1));
+        }
+        return 'M' + pts.join(' L') + 'Z';
+    }
+
+    function rankToBadgeSvg(rank) {
+        const info = _classifyRank(rank);
+        if (!info) {
+            // Kein Dienstgrad -> leere olive Box als Platzhalter
+            return `<svg viewBox="0 0 32 32" width="32" height="32" style="display:block"><rect x="1" y="1" width="30" height="30" rx="4" fill="#3a3a3a"/></svg>`;
+        }
+        const isGeneral = info.group === 'general';
+        const bg = isGeneral ? '#8b2f1f' : '#4a5e2e';
+        // Rand/Braid je nach Gruppe
+        let borderColor = 'transparent';
+        let borderWidth = 0;
+        let braidSvg = '';
+        const pipColor = (info.group === 'mann') ? '#e8c547'
+                       : (info.group === 'uffz') ? '#d8d8d8'
+                       : '#e8c547';  // Gold fuer alle mit Schulterstueck
+
+        if (info.group === 'uffz') {
+            // Silber-Streifen am oberen+unteren Rand (Tresse)
+            braidSvg = '<rect x="3" y="5" width="26" height="2" fill="#c8c8c8"/><rect x="3" y="25" width="26" height="2" fill="#c8c8c8"/>';
+            borderColor = '#5a7040'; borderWidth = 1;
+        } else if (info.group === 'fw') {
+            // Silber-Rand (Portepee)
+            borderColor = '#c8c8c8'; borderWidth = 2;
+        } else if (info.group === 'lt') {
+            // Silber-Flechtung: drei schraege Linien als Cord
+            braidSvg = '<path d="M4,8 L28,8 M4,16 L28,16 M4,24 L28,24" stroke="#c8c8c8" stroke-width="1.3" stroke-dasharray="2.5,1.5"/>';
+            borderColor = '#c8c8c8'; borderWidth = 1.5;
+        } else if (info.group === 'staboff') {
+            // Gold-Flechtung
+            braidSvg = '<path d="M4,8 L28,8 M4,16 L28,16 M4,24 L28,24" stroke="#d4af37" stroke-width="1.3" stroke-dasharray="2.5,1.5"/>';
+            borderColor = '#d4af37'; borderWidth = 1.5;
+        } else if (info.group === 'general') {
+            // Gold-Rand + diagonales Flechtmuster
+            braidSvg = '<path d="M4,10 L28,10 M4,22 L28,22" stroke="#d4af37" stroke-width="1.5"/>';
+            borderColor = '#d4af37'; borderWidth = 2;
+        }
+
+        const positions = _pipPositions(info.pipCount);
+        const starR = info.pipCount <= 2 ? 4 : (info.pipCount <= 4 ? 3.2 : 2.6);
+        const pipsSvg = positions.map(p =>
+            `<path d="${_starPath(p.x, p.y, starR)}" fill="${pipColor}" stroke="#4a3a0a" stroke-width="0.3"/>`
+        ).join('');
+
+        // San-Kennzeichen (rotes Kreuz unten rechts) fuer Sanitaets-Offiziere
+        const medicCross = info.medic ? '<g transform="translate(22,22)"><rect x="-3" y="-1" width="6" height="2" fill="#dc2020"/><rect x="-1" y="-3" width="2" height="6" fill="#dc2020"/></g>' : '';
+
+        return `<svg viewBox="0 0 32 32" width="32" height="32" style="display:block">
+            <rect x="1" y="1" width="30" height="30" rx="4" fill="${bg}" stroke="${borderColor}" stroke-width="${borderWidth}"/>
+            ${braidSvg}
+            ${pipsSvg}
+            ${medicCross}
+        </svg>`;
+    }
+
     function renderPatientCards() {
         const entries = Object.values(patients);
         const count = entries.length;
@@ -5519,10 +5683,20 @@
                 // MIFARE-Karten sind vs. welche noch offen.
                 const hasRfidWritten = (p.timeline || []).some(ev => ev.event === 'rfid_written');
 
+                // Phase 0 (BAT): Dienstgradabzeichen statt Triage-Dot, weil
+                // Triage erst in der Rettungsstation vergeben wird. Role 1+:
+                // Triage-Farbe + Code. Kein Rang? -> leere graue Box als
+                // Platzhalter (statt "--"-Text in grauem Dot, sieht nach
+                // "fehlend" aus).
+                const showRankBadge = isPhase0;
+                const rankBadgeHtml = showRankBadge
+                    ? `<div class="rank-badge" title="${(p.rank || '').replace(/"/g,'&quot;') || 'Dienstgrad unbekannt'}">${rankToBadgeSvg(p.rank)}</div>`
+                    : `<div class="triage-dot" style="background:${color}">${p.triage || '--'}</div>`;
+
                 return `
                 <details class="patient-card-details ${isActive ? 'active-patient' : ''} ${analyzingPids.has(p.patient_id) ? 'analyzing' : ''}" data-pid="${p.patient_id}" ${isOpen ? 'open' : ''} onclick="if(event.target.closest('summary'))selectPatient('${p.patient_id}')">
                     <summary>
-                        <div class="triage-dot" style="background:${color}">${p.triage || '--'}</div>
+                        ${rankBadgeHtml}
                         <span class="p-name">${p.name || 'Unbekannt'}${p.rank ? ' (' + p.rank + ')' : ''}</span>
                         <div class="p-badges">
                             ${isNlPatient ? '<span class="badge-sm" style="background:rgba(93,173,226,0.2);color:#5DADE2">&#9992; 9-Liner</span>' : ''}
