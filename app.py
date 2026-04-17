@@ -3119,6 +3119,25 @@ async def get_devices():
 @app.post("/api/devices/select")
 async def select_device(body: dict):
     state.audio_device = body.get("device_id")
+    # Device-Namen auch persistieren (audio.preferred_device_name in
+    # config.json), damit beim naechsten Boot derselbe Dongle bevorzugt
+    # wird — auch wenn sich die PortAudio-ID durch Hot-Plug verschoben hat.
+    try:
+        devices = state.audio_devices()
+        chosen = next((d for d in devices if d.get("id") == state.audio_device), None)
+        if chosen:
+            cfg = load_config()
+            audio_cfg = cfg.setdefault("audio", {})
+            audio_cfg["preferred_device_name"] = chosen.get("name", "")
+            save_config(cfg)
+            # Modul-Globalen Cache aktualisieren damit _config die neue
+            # Einstellung sofort sieht (wird u.a. beim Hot-Plug genutzt).
+            global _config
+            _config = cfg
+            print(f"[AUDIO] Bevorzugtes Device gespeichert: {chosen.get('name')}", flush=True)
+    except Exception as e:
+        print(f"[AUDIO] Persistierung fehlgeschlagen: {e}", flush=True)
+
     # Persistenten Stream mit neuem Device neu starten
     if state.persistent_stream or state.vosk_enabled:
         stop_persistent_stream()
@@ -5314,15 +5333,36 @@ async def startup():
             print("FEHLER: Kein Whisper-Modell konnte geladen werden!")
             oled_menu.show_status("FEHLER", "Whisper fehlgeschlagen")
 
-    # Audio-Device automatisch erkennen: bevorzugt USB-Mikrofon
+    # Audio-Device bestimmen:
+    #   1. Wenn config.audio.preferred_device_name gesetzt und das Device
+    #      noch existiert -> nehmen (User-Wahl aus letzter Session)
+    #   2. Sonst erstes USB/Logitech/Jabra/etc. Device (USB-Heuristik)
+    #   3. Sonst Default von PortAudio
     oled_menu.show_status("SAFIR", "Audio suchen...", 70)
     devices = state.audio_devices()
-    usb_device = next((d for d in devices if "USB" in d["name"] or "Logitech" in d["name"]), None)
-    if usb_device:
-        state.audio_device = usb_device["id"]
-        print(f"Audio-Device: [{usb_device['id']}] {usb_device['name']} ({usb_device['samplerate']}Hz)")
+    preferred_name = (_config.get("audio", {}) or {}).get("preferred_device_name", "")
+    chosen = None
+    if preferred_name:
+        # Exakter Match zuerst, dann Prefix-Match (PortAudio haengt
+        # manchmal Suffixe wie 'Mono' oder '(hw:1,0)' an)
+        chosen = next((d for d in devices if d["name"] == preferred_name), None)
+        if not chosen:
+            chosen = next((d for d in devices if preferred_name in d["name"]
+                           or d["name"] in preferred_name), None)
+        if chosen:
+            print(f"Audio-Device (gespeichert): [{chosen['id']}] {chosen['name']} "
+                  f"({chosen['samplerate']}Hz)")
+    if not chosen:
+        # Fallback: USB-/Bluetooth-Headset-Heuristik
+        usb_keywords = ("USB", "Logitech", "Jabra", "Plantronics", "Sennheiser", "Poly")
+        chosen = next((d for d in devices if any(kw in d["name"] for kw in usb_keywords)), None)
+        if chosen:
+            print(f"Audio-Device (Auto-USB): [{chosen['id']}] {chosen['name']} "
+                  f"({chosen['samplerate']}Hz)")
+    if chosen:
+        state.audio_device = chosen["id"]
     else:
-        print("Kein USB-Mikrofon gefunden, verwende Default")
+        print("Kein Audio-Device gefunden, verwende PortAudio-Default")
 
     # Persistenten Audio-Stream starten (für Vosk)
     if state.vosk_enabled:
