@@ -5148,10 +5148,10 @@
 
         const flowBadge = document.getElementById('active-patient-flow-badge');
         const flowText = FLOW_LABELS[patient.flow_status] || patient.flow_status || 'Registriert';
-        const syncText = patient.synced ? ' · übermittelt' : '';
+        const syncText = patient.synced ? ' · gemeldet' : '';
         const badges = [];
         if (patient.analyzed) badges.push('<span style="color:#5DADE2;margin-left:6px">✓ analysiert</span>');
-        if (patient.synced) badges.push('<span style="color:#2ECC71;margin-left:6px">✓ übermittelt</span>');
+        if (patient.synced) badges.push('<span style="color:#2ECC71;margin-left:6px">✓ gemeldet</span>');
         flowBadge.innerHTML = flowText + badges.join('');
 
         const created = patient.timestamp_created ? new Date(patient.timestamp_created).toLocaleTimeString('de-DE') : '--';
@@ -5404,7 +5404,7 @@
                         <div class="p-badges">
                             ${isNlPatient ? '<span class="badge-sm" style="background:rgba(93,173,226,0.2);color:#5DADE2">&#9992; 9-Liner</span>' : ''}
                             ${p.analyzed ? '<span class="badge-sm" style="background:rgba(93,173,226,0.15);color:#5DADE2">analysiert</span>' : ''}
-                            ${p.synced ? '<span class="badge-sm" style="background:rgba(46,204,113,0.15);color:#2ECC71">übermittelt</span>' : ''}
+                            ${p.synced ? '<span class="badge-sm" style="background:rgba(46,204,113,0.15);color:#2ECC71">gemeldet</span>' : ''}
                         </div>
                         ${deleteIcon}
                         <span class="patient-card-chevron">&#9654;</span>

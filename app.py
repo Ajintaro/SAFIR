@@ -936,18 +936,31 @@ async def _lock_system(reason: str = "manual"):
     print(f"[LOCK] System gesperrt (reason={reason})", flush=True)
     try:
         await broadcast({"type": "system_locked", "reason": reason})
+        # Zusaetzlich Vosk-Status-Update damit das Frontend-Badge
+        # sofort auf 'Sprache aus/pausiert' umschaltet ohne Polling.
+        await broadcast({
+            "type": "vosk_status",
+            "enabled": state.vosk_enabled,
+            "listening": state.vosk_listening,
+        })
     except Exception:
         pass
 
 
 async def _unlock_system(reason: str = "manual"):
-    """Entsperrt und reaktiviert Voice. Setzt Activity-Timer zurueck."""
+    """Entsperrt und reaktiviert Voice. Setzt Activity-Timer zurueck.
+    Falls Vosk vor dem Lock an war (oder Vosk-Recognizer existiert), wird es
+    wieder aktiviert + listening gesetzt."""
     was_locked = state.locked
     state.locked = False
     state.last_activity = time.monotonic()
-    # Voice wieder aktivieren falls Vosk initialisiert ist
-    if state.vosk_enabled and state.vosk_recognizer is not None:
-        state.vosk_listening = True
+    # Voice wieder aktivieren wenn Vosk initialisiert ist.
+    # Auch vosk_enabled auf True setzen — der User erwartet dass nach Login
+    # Vosk wieder laeuft (Ruecksetzung auf Default-Verhalten).
+    if state.vosk_recognizer is not None:
+        state.vosk_enabled = True
+        if not state.recording and not state.transcribing:
+            state.vosk_listening = True
     # OLED zurueck auf Menu-Ansicht
     try:
         oled_menu.set_locked(False)
@@ -957,6 +970,13 @@ async def _unlock_system(reason: str = "manual"):
         print(f"[LOCK] System entsperrt (reason={reason})", flush=True)
     try:
         await broadcast({"type": "system_unlocked", "reason": reason})
+        # Vosk-Status-Update mitliefern damit Frontend-Badge korrekt auf
+        # 'Sprache aktiv' umschaltet ohne /api/status zu pollen.
+        await broadcast({
+            "type": "vosk_status",
+            "enabled": state.vosk_enabled,
+            "listening": state.vosk_listening,
+        })
     except Exception:
         pass
 
@@ -3608,7 +3628,13 @@ async def data_test_generate():
             [],
             {},
             flow_status="registered", analyzed=False, synced=False,
-            transcript_text="Patient Hoffmann hat sich eine Knie-Verletzung beim Sturz zugezogen, ist ansprechbar.",
+            transcript_text=(
+                "Patient ist Hauptgefreiter Markus Hoffmann, 26 Jahre alt. "
+                "Beim Absitzen vom Transporter ist er ungluecklich auf das "
+                "rechte Knie gefallen. Schwellung deutlich sichtbar, "
+                "Schmerzen beim Beugen aber belastbar. Ansprechbar, orientiert. "
+                "Keine sonstigen Verletzungen erkennbar."
+            ),
         ),
         # 2. Frisch registriert, noch nicht analysiert
         _mk_patient(
@@ -3616,14 +3642,27 @@ async def data_test_generate():
             [],
             {},
             flow_status="registered", analyzed=False, synced=False,
-            transcript_text="Soldatin Wenzel mit oberflaechlicher Schnittwunde am Unterarm, blutet leicht.",
+            transcript_text=(
+                "Soldatin Andrea Wenzel, 23 Jahre, hat sich beim Hantieren mit dem "
+                "Spaten eine oberflaechliche Schnittwunde am linken Unterarm "
+                "zugezogen. Circa acht Zentimeter lang, leicht blutend, aber "
+                "kein pulsierender Blutaustritt. Druckverband angelegt, "
+                "Kreislauf stabil."
+            ),
         ),
-        # 3. Analysiert, noch nicht gemeldet
+        # 3. Analysiert, noch nicht gemeldet — Transkript passt zu Analyse
         _mk_patient(
             "Stefan Becker", "Stabsunteroffizier",
             ["Splitterverletzung re. Oberschenkel", "moderate Blutung"],
             {"pulse": "98", "spo2": "94", "bp": "110/70"},
             flow_status="analyzed", analyzed=True, synced=False,
+            transcript_text=(
+                "Verwundeter ist Stabsunteroffizier Stefan Becker, 31 Jahre. "
+                "Splitterverletzung am rechten Oberschenkel, moderate Blutung "
+                "am Ausgang. Druckverband direkt angelegt, kein Tourniquet noetig. "
+                "Puls 98, Sauerstoff 94 Prozent, Blutdruck 110 zu 70. "
+                "Patient ist ansprechbar und orientiert."
+            ),
         ),
         # 4. Analysiert, noch nicht gemeldet
         _mk_patient(
@@ -3631,6 +3670,13 @@ async def data_test_generate():
             ["Prellung Brustkorb", "Atemnot"],
             {"pulse": "115", "spo2": "89", "resp_rate": "24"},
             flow_status="analyzed", analyzed=True, synced=False,
+            transcript_text=(
+                "Hauptgefreite Lea Schwarz, 24 Jahre. Thoraxprellung links nach "
+                "Sturz gegen den Turmkranz. Starke Atemnot, Atemfrequenz bei 24, "
+                "Sauerstoff nur 89 Prozent. Puls tachykard 115, keine sichtbare "
+                "offene Verletzung. Verdacht auf Pneumothorax, sofortige "
+                "Sauerstoffgabe eingeleitet."
+            ),
         ),
         # 5. An Surface gemeldet (BAT-Sicht), Phase 0, noch keine Triage
         _mk_patient(
@@ -3638,6 +3684,14 @@ async def data_test_generate():
             ["Schussverletzung li. Unterschenkel", "Tourniquet angelegt"],
             {"pulse": "132", "spo2": "92", "bp": "95/60"},
             flow_status="reported", analyzed=True, synced=True,
+            transcript_text=(
+                "Feldwebel Tobias Krueger, 34 Jahre. Schussverletzung am linken "
+                "Unterschenkel, starke arterielle Blutung am Durchschuss. "
+                "Tourniquet oberhalb der Verletzung angelegt, Blutung "
+                "kontrolliert. Puls 132 tachykard, Blutdruck 95 zu 60, "
+                "Sauerstoffsaettigung 92 Prozent. Dringend, Abtransport "
+                "erforderlich."
+            ),
         ),
         # 6. In Role 1 angekommen, Triage T2 gesetzt
         _mk_patient(
@@ -3646,17 +3700,82 @@ async def data_test_generate():
             {"pulse": "88", "spo2": "97", "bp": "120/80", "gcs": "14"},
             flow_status="reported", analyzed=True, synced=True,
             triage="T2", current_role="role1",
+            transcript_text=(
+                "Oberleutnant Julia Mueller, 29 Jahre. Nach Fahrzeugunfall "
+                "Kopfprellung mit kurzer Bewusstlosigkeit, jetzt wieder "
+                "ansprechbar, GCS 14. Zusaetzlich geschlossene Fraktur am "
+                "rechten Unterschenkel. Puls 88, Sauerstoff 97 Prozent, "
+                "Blutdruck 120 zu 80 stabil. Schiene angelegt."
+            ),
         ),
     ]
 
     for p in test_patients:
         state.patients[p["patient_id"]] = p
 
+    # Zusaetzlich zwei pending Transkripte mit je 2 Patienten — damit der
+    # LLM-Analyse-Flow getestet werden kann (Segmenter splittet das
+    # Transkript, Qwen extrahiert 9-Liner-Felder, Post-Merge 3 merged).
+    import uuid as _uuid_p
+    pending_texts = [
+        # Pending 1: Zwei Patienten in einem Diktat
+        (
+            "Erster Patient ist Oberstabsgefreiter Benjamin Richter, maennlich, "
+            "27 Jahre. Schussverletzung am rechten Oberarm mit Durchschuss, "
+            "starke Blutung. Druckverband angelegt, Blutung unter Kontrolle. "
+            "Puls 118 tachykard, Sauerstoff 93 Prozent, Blutdruck 100 zu 60. "
+            "Patient ansprechbar aber blass. "
+            "Als naechstes haben wir Stabsunteroffizierin Maria Lange, "
+            "weiblich, 32 Jahre. Verbrennung zweiten Grades an der linken "
+            "Handflaeche, etwa 3 Prozent der Koerperoberflaeche. "
+            "Schmerzen stark, Vitalwerte stabil, Puls 96, Sauerstoff 97 Prozent, "
+            "Blutdruck 130 zu 85. Kuehlung mit steriler Kompresse angelegt."
+        ),
+        # Pending 2: Nochmal zwei Patienten
+        (
+            "Erster Patient: Obergefreiter Kevin Weigel, 22 Jahre. Nach Sturz "
+            "von der Ladeflaeche Verdacht auf Platzwunde am Hinterkopf, "
+            "blutet staerker. Druckverband am Kopf angelegt. Patient wirkt "
+            "benommen, GCS 13. Puls 92, Sauerstoff 96 Prozent, Blutdruck "
+            "115 zu 75. Vorsichtige Lagerung bis zum Transport. "
+            "Nachdem wir Weigel versorgt haben, zweiter Patient: Leutnant "
+            "Katharina Vogel, 28 Jahre. Distorsion des rechten Sprunggelenks "
+            "mit deutlicher Schwellung. Keine offene Verletzung, Durchblutung "
+            "und Sensibilitaet am Fuss intakt. Vitalwerte unauffaellig, "
+            "Puls 78, Sauerstoff 98 Prozent. Schiene angelegt, Schmerzen "
+            "moderat."
+        ),
+    ]
+    created_pending = []
+    for idx, full_text in enumerate(pending_texts, start=1):
+        pending_id = f"TEST-P{idx:02d}-{_uuid_p.uuid4().hex[:6].upper()}"
+        entry = {
+            "id": pending_id,
+            "full_text": full_text,
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "datetime": now,
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "duration": round(45.0 + idx * 7, 1),  # Plausible Audio-Dauer
+            "analyzed": False,
+            "analyzing": False,
+            "created_patient_ids": [],
+            "is_nine_liner": False,
+        }
+        state.pending_transcripts.append(entry)
+        created_pending.append(pending_id)
+
     await broadcast({"type": "init", "patients": list(state.patients.values()),
                      "backend_reachable": state.backend_reachable})
-    print(f"Test-Daten generiert: {len(test_patients)} Patient(en) (TEST-* Prefix)")
+    # Die pending transcripts auch broadcasten damit UI sie sofort sieht
+    for entry in state.pending_transcripts[-len(created_pending):]:
+        await broadcast({"type": "transcription_result",
+                         "pending_analysis": True, "pending_entry": entry})
+    print(f"Test-Daten generiert: {len(test_patients)} Patient(en) + "
+          f"{len(created_pending)} pending Transkript(e)")
     return {"status": "ok", "created": len(test_patients),
-            "patient_ids": [p["patient_id"] for p in test_patients]}
+            "patient_ids": [p["patient_id"] for p in test_patients],
+            "pending_created": len(created_pending),
+            "pending_ids": created_pending}
 
 
 # ---------------------------------------------------------------------------
