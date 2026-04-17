@@ -293,6 +293,10 @@ class AppState:
         self.recording = False
         self.transcribing = False
         self.audio_device = None
+        # Input-Gain fuer Mikrofon: Multiplikator fuer aufgenommene Samples.
+        # Default 1.0 = keine Aenderung. Werte 2-3 sind typisch fuer leise
+        # USB-Dongles (Jabra SPEAK). Clipping wird im Callback verhindert.
+        self.input_gain: float = 1.0
         self.audio_chunks = []
         self.stream = None
         self.sessions = {}
@@ -1243,12 +1247,23 @@ def resample_to_16k(audio: np.ndarray, orig_rate: int) -> np.ndarray:
 
 
 def persistent_audio_callback(indata, frames, time_info, status):
-    """Audio-Callback für persistenten Stream — füttert Vosk und Recording."""
-    # Recording-Buffer füllen (native Rate)
+    """Audio-Callback für persistenten Stream — füttert Vosk und Recording.
+
+    Wendet Input-Gain an (state.input_gain, Default 1.0). Mit np.clip
+    gegen Clipping bei >1.0 geschuetzt — ueber 1.0 wird die Amplitude
+    mathematisch verstaerkt, Werte > 1.0 werden auf +/-1.0 gekappt.
+    Fuer leise Dongles wie das Jabra SPEAK reicht meist Gain 2-3.
+    """
+    gain = getattr(state, "input_gain", 1.0)
+    if gain != 1.0:
+        indata = np.clip(indata * gain, -1.0, 1.0)
+
+    # Recording-Buffer füllen (native Rate, verstaerkt)
     if state.recording:
         state.audio_chunks.append(indata.copy())
 
-    # Immer letzten Chunk für Level-Messung speichern
+    # Immer letzten Chunk für Level-Messung speichern (auch verstaerkt,
+    # damit der VU-Meter im Settings-UI direkt sieht was Whisper bekommt)
     state._mic_test_chunks.append(indata.copy())
     if len(state._mic_test_chunks) > 10:
         state._mic_test_chunks.pop(0)
@@ -3401,6 +3416,40 @@ async def select_device(body: dict):
 async def set_language(body: dict):
     state.language = body.get("language", "de")
     return {"status": "ok", "language": state.language}
+
+
+@app.post("/api/audio/gain")
+async def set_audio_gain(body: dict):
+    """Setzt den Mikrofon-Input-Gain (Softwareverstaerkung im Audio-Callback).
+    Range 0.5 - 5.0. Werte > 1.0 verstaerken das Signal, bei Clipping wird
+    hart auf +/- 1.0 gekappt. Wird in config.audio.input_gain persistiert."""
+    try:
+        gain = float(body.get("gain", 1.0))
+    except (TypeError, ValueError):
+        return {"error": "Ungueltiger Gain-Wert"}
+    # Sicherheits-Clipping: zu hohe Werte sind nutzlos (nur Rauschen),
+    # zu niedrige machen alles unhoerbar
+    gain = max(0.5, min(5.0, gain))
+    state.input_gain = gain
+
+    # Persistieren in config.json
+    try:
+        cfg = load_config()
+        audio_cfg = cfg.setdefault("audio", {})
+        audio_cfg["input_gain"] = gain
+        save_config(cfg)
+        global _config
+        _config = cfg
+        print(f"[AUDIO] Gain auf {gain:.1f}x gesetzt (persistiert)", flush=True)
+    except Exception as e:
+        print(f"[AUDIO] Gain-Persistierung fehlgeschlagen: {e}", flush=True)
+
+    return {"status": "ok", "gain": gain}
+
+
+@app.get("/api/audio/gain")
+async def get_audio_gain():
+    return {"gain": getattr(state, "input_gain", 1.0)}
 
 
 @app.post("/api/session/create")
@@ -5601,6 +5650,14 @@ async def startup():
         if not loaded:
             print("FEHLER: Kein Whisper-Modell konnte geladen werden!")
             oled_menu.show_status("FEHLER", "Whisper fehlgeschlagen")
+
+    # Mikrofon-Gain aus config.json (persistiert via /api/audio/gain)
+    try:
+        state.input_gain = float(_config.get("audio", {}).get("input_gain", 1.0))
+        if state.input_gain != 1.0:
+            print(f"Mikrofon-Gain: {state.input_gain:.1f}x")
+    except Exception:
+        state.input_gain = 1.0
 
     # Audio-Device bestimmen:
     #   1. Wenn config.audio.preferred_device_name gesetzt und das Device

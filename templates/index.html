@@ -2896,6 +2896,21 @@
             </div>
         </div>
         <div class="field">
+            <label>Mikrofon-Empfindlichkeit <span id="mic-gain-val" style="color:var(--cgi-red);font-weight:600">1.0&times;</span></label>
+            <input type="range" id="mic-gain-slider" min="0.5" max="5.0" step="0.1" value="1.0"
+                   style="width:100%;margin:4px 0"
+                   oninput="document.getElementById('mic-gain-val').innerHTML = parseFloat(this.value).toFixed(1) + '&times;'"
+                   onchange="setMicGain(this.value)">
+            <div style="display:flex;justify-content:space-between;font-size:var(--fs-body-sm);color:var(--text-dim)">
+                <span>0.5&times; (leiser)</span>
+                <span>1.0&times; (Standard)</span>
+                <span>5.0&times; (laut)</span>
+            </div>
+            <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:4px">
+                Software-Verst&auml;rkung vor der Aufnahme. F&uuml;r leise USB-Headsets (z.B. Jabra) meist 2-3&times;. Clipping wird verhindert.
+            </div>
+        </div>
+        <div class="field">
             <label>Sprache</label>
             <select id="lang-select" onchange="setLanguage(this.value)">
                 <option value="de" selected>Deutsch</option>
@@ -4635,6 +4650,33 @@
         }
     }
 
+    // Mikrofon-Gain (Input-Empfindlichkeit)
+    async function setMicGain(value) {
+        const gain = parseFloat(value);
+        try {
+            const res = await api('/api/audio/gain', 'POST', { gain });
+            if (res.error) {
+                showToast('Gain: ' + res.error, '&#9888;');
+                return;
+            }
+            // Server kann den Wert ggf. clampen (0.5-5.0), UI nachziehen
+            const actual = res.gain ?? gain;
+            document.getElementById('mic-gain-slider').value = actual;
+            document.getElementById('mic-gain-val').innerHTML = actual.toFixed(1) + '&times;';
+        } catch (e) {
+            showToast('Gain-Fehler: ' + e.message, '&#9888;');
+        }
+    }
+
+    async function loadMicGain() {
+        try {
+            const res = await api('/api/audio/gain');
+            const g = parseFloat(res.gain ?? 1.0);
+            document.getElementById('mic-gain-slider').value = g;
+            document.getElementById('mic-gain-val').innerHTML = g.toFixed(1) + '&times;';
+        } catch (e) { /* noop */ }
+    }
+
     async function startMicTest() {
         // Persistenten Stream starten falls noch nicht aktiv
         await api('/api/mic/test', 'POST', {action: 'start'});
@@ -4852,6 +4894,8 @@
         } else {
             dlg.show();  // show() = non-modal, kein Backdrop-Block
             btn.classList.add('active');
+            // Mikrofon-Gain aus Backend synchronisieren wenn Overlay oeffnet
+            try { loadMicGain(); } catch (e) {}
         }
     }
 

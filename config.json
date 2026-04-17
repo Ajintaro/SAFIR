@@ -182,6 +182,10 @@
         "language": "de",
         "server_port": 8178
     },
+    "audio": {
+        "preferred_device_name": "Jabra SPEAK 510 USB: Audio (hw:1,0)",
+        "input_gain": 2.0
+    },
     "ollama": {
         "url": "http://127.0.0.1:11434",
         "model": "qwen2.5:1.5b",
