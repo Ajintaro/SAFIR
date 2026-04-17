@@ -5646,6 +5646,18 @@
                         : `<div class="rank-badge rank-badge-empty" title="Dienstgrad unbekannt"></div>`)
                     : `<div class="triage-dot" style="background:${color}">${p.triage || '--'}</div>`;
 
+                // Plausibility-Warnings (Messe-Hardening A2): LLM hat unplausible
+                // Vitals extrahiert ("Puls 5000", "BP -10/80") oder unlogische
+                // Werte. Die warnings werden vom Backend via validate_vitals()
+                // gesetzt. Ein Warnsymbol im Badge-Bereich zeigt das an; beim
+                // Klick/Hover werden die einzelnen Warnungen im Card-Body
+                // angezeigt.
+                const warnings = Array.isArray(p.warnings) ? p.warnings : [];
+                const warningsTitle = warnings.join('\n').replace(/"/g, '&quot;');
+                const warningsBadge = warnings.length
+                    ? `<span class="badge-sm" style="background:rgba(212,135,26,0.2);color:var(--mil-amber,#d4871a)" title="${warningsTitle}">&#9888; ${warnings.length}</span>`
+                    : '';
+
                 return `
                 <details class="patient-card-details ${isActive ? 'active-patient' : ''} ${analyzingPids.has(p.patient_id) ? 'analyzing' : ''}" data-pid="${p.patient_id}" ${isOpen ? 'open' : ''} onclick="if(event.target.closest('summary'))selectPatient('${p.patient_id}')">
                     <summary>
@@ -5653,6 +5665,7 @@
                         <span class="p-name">${p.name || 'Unbekannt'}${p.rank ? ' (' + p.rank + ')' : ''}</span>
                         <div class="p-badges">
                             ${isNlPatient ? '<span class="badge-sm" style="background:rgba(93,173,226,0.2);color:#5DADE2">&#9992; 9-Liner</span>' : ''}
+                            ${warningsBadge}
                             ${p.analyzed ? '<span class="badge-sm" style="background:rgba(93,173,226,0.15);color:#5DADE2">analysiert</span>' : ''}
                             ${hasRfidWritten ? '<span class="badge-sm" style="background:rgba(200,184,120,0.2);color:#c8b878" title="RFID-Karte geschrieben">&#128179; RFID</span>' : ''}
                             ${p.synced ? '<span class="badge-sm" style="background:rgba(46,204,113,0.15);color:#2ECC71">gemeldet</span>' : ''}
@@ -5663,6 +5676,7 @@
                     <div class="patient-card-body">
                         <div class="patient-transcripts" data-pid="${p.patient_id}">${transcriptsHtml}</div>
                         ${nineLinerHtml}
+                        ${warnings.length ? `<div style="margin-top:8px;padding:6px 8px;background:rgba(212,135,26,0.1);border-left:3px solid var(--mil-amber,#d4871a);font-size:var(--fs-body-sm);color:var(--mil-amber,#d4871a)"><strong>&#9888; Plausibility-Warnungen (${warnings.length}):</strong><ul style="margin:4px 0 0 16px;padding:0">${warnings.map(w => `<li>${(w||'').replace(/</g,'&lt;')}</li>`).join('')}</ul></div>` : ''}
                         ${injuriesHtml}${vitalsHtml}
                         ${fzEditHtml}
                     </div>

@@ -4809,6 +4809,12 @@ async def _segment_and_create_patients(full_text: str, record_time: str, is_nine
                 for src, dst in (("pulse", "pulse"), ("bp", "bp"), ("resp_rate", "resp_rate"), ("spo2", "spo2")):
                     if enrichment.get(src):
                         vitals[dst] = enrichment[src]
+                # Plausibility-Warnings vom Vitals-Validator uebernehmen.
+                # Diese landen am Patient-Record und werden im Frontend als
+                # Warn-Icon (⚠) gerendert. Messe-User sieht damit sofort wo
+                # die Extraktion unsicher oder unplausibel war.
+                if enrichment.get("warnings"):
+                    patient["warnings"] = list(enrichment["warnings"])
                 patient["analyzed"] = True
         except Exception as e:
             print(f"[SEGMENT] Enrichment fehlgeschlagen für {pid}: {e}", flush=True)
@@ -4875,14 +4881,22 @@ JSON:"""
 def run_patient_enrichment(text: str) -> dict:
     """Extrahiert Patientendaten aus Transkript-Text via Ollama LLM.
 
-    Post-Processing: Der extrahierte `rank`-String wird gegen die
-    BW-Dienstgrad-Whitelist (shared/bundeswehr_ranks.py) fuzzy-gematcht.
-    Whisper verhaspelt sich bei langen Dienstgraden (z.B. "Oberstabselwebel"
-    statt "Oberstabsfeldwebel"), das Gemma extrahiert dann genau den
-    Hoerfehler. Hier korrigieren wir das post-hoc. Kostet ~1 ms pro Patient.
+    Post-Processing (in dieser Reihenfolge):
+      1. Dienstgrad-Normalisierung (bundeswehr_ranks.py): Whisper verhaspelt
+         sich bei langen Dienstgraden ("Oberstabselwebel" statt
+         "Oberstabsfeldwebel"). Gemma extrahiert wortgetreu, wir matchen
+         gegen die BW-Whitelist fuzzy.
+      2. Vitals-Plausibility (shared/vitals.py): Out-of-Range-Werte
+         ("Puls 5000", "BP -10/80") werden geleert + Warning hinzugefuegt
+         zu result["warnings"]. Verhindert unsinnige Werte im Patient-
+         Record, besonders wichtig bei Messe-Besuchern die gezielt Unsinn
+         diktieren.
+    Kostet zusammen ~2 ms pro Patient — vernachlaessigbar.
     """
     prompt = build_patient_enrichment_prompt(text)
     result = _call_ollama(prompt, "Patienten-Anreicherung")
+
+    # Schritt 1: Dienstgrad-Normalisierung
     try:
         from shared.bundeswehr_ranks import normalize_rank
         raw_rank = (result.get("rank") or "").strip() if result else ""
@@ -4894,14 +4908,39 @@ def run_patient_enrichment(text: str) -> dict:
                 result["rank_normalized_from"] = raw_rank
                 result["rank_confidence"] = conf
             elif conf == 1.0 and fixed == raw_rank:
-                # Exact-Match, nichts zu tun
                 result["rank_confidence"] = 1.0
             else:
-                # Kein Match gefunden — markieren als unsicher damit das UI
-                # ggf. ein Warn-Icon zeigen kann. Originalwert bleibt.
                 result["rank_confidence"] = round(conf, 3)
     except Exception as e:
         print(f"[RANK-NORM] Fehler bei Dienstgrad-Normalisierung: {e}", flush=True)
+
+    # Schritt 2: Vitals-Plausibility. Das LLM liefert Vitals direkt im
+    # Top-Level result (pulse, bp, spo2, ...) — validate_vitals erwartet ein
+    # verschachteltes Dict, also wrappen wir die betroffenen Keys kurz.
+    try:
+        from shared.vitals import validate_vitals
+        vitals_keys = ("pulse", "bp", "resp_rate", "spo2", "temp", "gcs")
+        vitals_in = {k: result.get(k) for k in vitals_keys if k in result}
+        age_in = result.get("age")
+        cleaned, warnings = validate_vitals(vitals_in, age=age_in)
+        # Gereinigte Werte zurueckschreiben
+        for k, v in cleaned.items():
+            result[k] = v
+        if warnings:
+            # Unplausible Alter auch geleert (konservativ)
+            if any("Alter" in w for w in warnings):
+                result["age"] = ""
+            # Warnings an result anhaengen (wird im Patient-Record
+            # persistiert, Frontend kann darauf reagieren).
+            existing = result.get("warnings") or []
+            if not isinstance(existing, list):
+                existing = []
+            result["warnings"] = existing + warnings
+            for w in warnings:
+                print(f"[VITALS] {w}", flush=True)
+    except Exception as e:
+        print(f"[VITALS] Fehler bei Vitals-Validation: {e}", flush=True)
+
     return result
 
 
@@ -4983,6 +5022,14 @@ async def _run_analysis_for_session(sid: str) -> dict:
             val = enriched.get(src, "")
             if val and not patient["vitals"].get(dst):
                 patient["vitals"][dst] = str(val)
+        # Vitals-Plausibility-Warnings (Messe-Hardening A2) — anhaengen an
+        # bestehende warnings. Dedupe gegen Duplikate bei Re-Analyse.
+        if enriched.get("warnings"):
+            existing_w = patient.get("warnings") or []
+            for w in enriched["warnings"]:
+                if w not in existing_w:
+                    existing_w.append(w)
+            patient["warnings"] = existing_w
         # Verletzungsmechanismus in Template-Daten
         if enriched.get("mechanism"):
             session["template_data"]["mechanism"] = enriched["mechanism"]

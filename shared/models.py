@@ -126,6 +126,11 @@ PATIENT_SCHEMA = {
 
     # Verlauf
     "timeline": [],             # [{time, role, event, details}]
+
+    # Plausibility-Warnings vom Vitals-Validator und anderen Post-LLM-Checks.
+    # Liste von Strings, z.B. "Puls=5000 unplausibel (erwartet 20-250)".
+    # Frontend zeigt ein Warnsymbol an der Patient-Karte wenn > 0 Warnungen.
+    "warnings": [],
 }
 
 
