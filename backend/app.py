@@ -744,10 +744,18 @@ async def update_patient(patient_id: str, body: dict):
 
 
 @app.post("/api/data/reset")
-async def data_reset():
+async def data_reset(body: dict | None = None):
     """Löscht ALLE Patientendaten, Transporte, Positionen, Events und
     den Peer-Cache. Für einen sauberen Demo-Neustart. WebSocket-Clients
-    werden bewusst NICHT angefasst, sonst brechen aktive Browser-Sessions ab."""
+    werden bewusst NICHT angefasst, sonst brechen aktive Browser-Sessions ab.
+
+    body.cascade=True (Default): Ruft den Reset-Endpoint aller bekannten
+    Peers (Jetson-BATs) auf, damit sie ebenfalls ihren lokalen State
+    leeren. Wird vom Jetson selbst mit cascade=False aufgerufen um
+    Rekursion zu vermeiden.
+    """
+    cascade = True if body is None else bool(body.get("cascade", True))
+
     # Alle Patienten-Dateien löschen
     count = len(state.patients)
     peer_count = len(state.peers)
@@ -759,6 +767,7 @@ async def data_reset():
     state.transports.clear()
     state.positions.clear()
     state.events.clear()
+    peer_snapshot = list(state.peers.values())
     state.peers.clear()
 
     # state.json zurücksetzen
@@ -773,8 +782,28 @@ async def data_reset():
         "events": [],
     })
 
-    print(f"Daten-Reset: {count} Patienten, {peer_count} Peers gelöscht")
-    return {"status": "ok", "removed": count, "peers_removed": peer_count}
+    # Cascade an alle bekannten Jetson-Peers — damit die ihren lokalen
+    # State ebenfalls leeren. Ohne das landet beim naechsten Heartbeat-
+    # Sync alte Jetson-Daten wieder hier.
+    cascaded_count = 0
+    if cascade:
+        import httpx
+        for peer in peer_snapshot:
+            peer_url = peer.get("url") or ""
+            if not peer_url:
+                continue
+            try:
+                r = httpx.post(f"{peer_url}/api/data/reset",
+                               json={"cascade": False}, timeout=3)
+                if r.status_code == 200:
+                    cascaded_count += 1
+            except Exception as e:
+                print(f"[RESET] Cascade an {peer_url} fehlgeschlagen: {e}")
+
+    print(f"Daten-Reset: {count} Patienten, {peer_count} Peers gelöscht"
+          + (f", {cascaded_count} Peer(s) kaskadiert" if cascade else ""))
+    return {"status": "ok", "removed": count, "peers_removed": peer_count,
+            "cascaded": cascaded_count if cascade else 0}
 
 
 @app.post("/api/data/test-generate")

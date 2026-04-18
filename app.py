@@ -282,6 +282,19 @@ RECORD_TEMPLATES = {
 # ---------------------------------------------------------------------------
 class AppState:
     def __init__(self):
+        # Reset-Timestamp aus .reset_marker laden (ueberlebt Service-Neustart)
+        # damit nach einem /api/data/reset die Patienten nicht via naechstem
+        # WS-Init-Snapshot wieder reinkommen.
+        self.reset_timestamp: str | None = None
+        try:
+            _marker = PROJECT_DIR / ".reset_marker"
+            if _marker.exists():
+                self.reset_timestamp = _marker.read_text(encoding="utf-8").strip() or None
+                if self.reset_timestamp:
+                    print(f"[RESET] Marker geladen: {self.reset_timestamp}", flush=True)
+        except Exception as e:
+            print(f"[RESET] Marker lesen fehlgeschlagen: {e}", flush=True)
+
         self.current_model = None
         self.model_path = None
         # GPU-Swap-Mode: 'coexist' (beide geladen) / 'recording' (Whisper aktiv)
@@ -4404,12 +4417,25 @@ async def _handle_backend_event(msg: dict):
     if mtype == "init":
         # Snapshot beim Connect — alle Patienten vom Backend übernehmen.
         # Lokale Patienten die das Backend nicht kennt bleiben erhalten.
+        # Safety-Net gegen alte Patienten nach Reset: Wenn state.reset_
+        # timestamp gesetzt ist, werden Patienten die davor erstellt
+        # wurden komplett ignoriert — sonst tauchen alte Patienten nach
+        # jedem Service-Restart wieder auf weil der Jetson beim WS-
+        # Reconnect den alten Surface-Snapshot kriegt.
         remote_pts = msg.get("patients", [])
+        reset_ts = getattr(state, "reset_timestamp", None)
         added = 0
+        skipped_pre_reset = 0
         for p in remote_pts:
             pid = p.get("patient_id")
             if not pid:
                 continue
+            # Pre-Reset-Patient uebergehen
+            if reset_ts:
+                p_created = p.get("timestamp_created") or ""
+                if p_created and p_created < reset_ts:
+                    skipped_pre_reset += 1
+                    continue
             if pid not in state.patients:
                 state.patients[pid] = p
                 rfid_tag = p.get("rfid_tag_id")
@@ -4421,7 +4447,8 @@ async def _handle_backend_event(msg: dict):
                 local = state.patients[pid]
                 if (p.get("timestamp_updated") or "") > (local.get("timestamp_updated") or ""):
                     state.patients[pid] = p
-        print(f"[BACKEND-WS] init: {len(remote_pts)} Patienten vom Backend, {added} neu", flush=True)
+        skip_info = f", {skipped_pre_reset} pre-reset ignoriert" if skipped_pre_reset else ""
+        print(f"[BACKEND-WS] init: {len(remote_pts)} Patienten vom Backend, {added} neu{skip_info}", flush=True)
         # Jetson-Clients informieren
         await broadcast({"type": "backend_init", "patient_count": len(remote_pts), "added": added})
 
@@ -4586,13 +4613,37 @@ async def receive_position(body: dict):
 
 
 @app.post("/api/data/reset")
-async def data_reset():
+async def data_reset(body: dict | None = None):
     """Löscht ALLE Patientendaten, Pending-Aufnahmen, Sessions, Operator-State
     und Peer-Cache für einen sauberen Demo-Neustart. Hardware-/Whisper-/Vosk-
-    State bleibt unangetastet, sonst müsste der Service neu starten."""
+    State bleibt unangetastet, sonst müsste der Service neu starten.
+
+    Zusaetzlich: Cascade-Reset an das Surface-Backend (body.cascade=True,
+    Default). Ohne den wird der Jetson bei der naechsten WS-Reconnect
+    einen init-Snapshot vom Surface empfangen und die alten Patienten
+    wieder reinmergen. Mit cascade=True ruft Jetson das Surface-Reset auf,
+    Surface broadcastet "init" mit [], Jetson bleibt leer.
+
+    Plus: state.reset_timestamp wird gesetzt — beim naechsten backend-init
+    werden Patienten mit timestamp_created < reset_timestamp ignoriert
+    (safety-net gegen Race-Conditions bei parallelen Writes).
+    """
+    cascade = True if body is None else bool(body.get("cascade", True))
     count = len(state.patients)
     pending_count = len(state.pending_transcripts)
     session_count = len(state.sessions)
+
+    # Reset-Timestamp damit backend-init alte Patienten filtern kann.
+    # PERSISTENT in Datei speichern, sonst ueberlebt er keinen Service-
+    # Restart — und die Patienten wuerden beim naechsten WS-init wieder
+    # aufploppen.
+    reset_ts = datetime.now().isoformat()
+    state.reset_timestamp = reset_ts
+    try:
+        _reset_marker_path = PROJECT_DIR / ".reset_marker"
+        _reset_marker_path.write_text(reset_ts, encoding="utf-8")
+    except Exception as e:
+        print(f"[RESET] Marker-Datei konnte nicht geschrieben werden: {e}", flush=True)
 
     # Patient-Daten + RFID-Mapping
     state.patients.clear()
@@ -4633,11 +4684,44 @@ async def data_reset():
         f"Daten-Reset: {count} Patient(en), {pending_count} Pending-Transcript(s), "
         f"{session_count} Session(s) gelöscht; Operator/Peers/Voice-Queue geleert"
     )
+
+    # Cascade-Reset: auch Surface-Backend triggern damit es nicht via
+    # naechstem WS-Reconnect einen init-Snapshot mit alten Patienten
+    # zurueckschickt. cascade=False wird dem Surface mitgegeben damit es
+    # nicht rekursiv zu uns zurueck callt.
+    cascade_result: dict = {}
+    if cascade:
+        backend_url = (_config.get("backend") or {}).get("url", "")
+        if backend_url:
+            try:
+                r = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: httpx.post(
+                            f"{backend_url}/api/data/reset",
+                            json={"cascade": False},
+                            timeout=5,
+                        ),
+                    ),
+                    timeout=6.0,
+                )
+                if r.status_code == 200:
+                    cascade_result = r.json()
+                    print(f"[RESET] Cascade an Surface OK: {cascade_result}", flush=True)
+                else:
+                    cascade_result = {"status": "error",
+                                      "http_status": r.status_code}
+            except Exception as e:
+                cascade_result = {"status": "error", "error": str(e)[:100]}
+                print(f"[RESET] Cascade fehlgeschlagen: {e}", flush=True)
+
     return {
         "status": "ok",
         "removed": count,
         "pending_removed": pending_count,
         "sessions_removed": session_count,
+        "cascaded": bool(cascade_result),
+        "surface_result": cascade_result if cascade_result else None,
     }
 
 
