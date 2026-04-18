@@ -542,6 +542,48 @@ async def _oled_analyze_pending():
         await asyncio.sleep(2)
         oled_menu.clear_status()
         return
+    # Content-Filter im Voice-Pfad: nicht-medizinische Transkripte werden
+    # hier NICHT interaktiv abgefragt (kein Dialog via Sprache moeglich),
+    # sondern uebersprungen mit TTS-Hinweis. Spart peinliche "Unbekannter
+    # Patient"-Eintraege wenn der User z.B. ueber Kaffee und Motorradfahren
+    # spricht und der Voice-Command "alle analysieren" trotzdem triggert.
+    try:
+        from shared.content_filter import is_medical_transcript
+    except Exception:
+        is_medical_transcript = None
+
+    to_analyze = []
+    skipped_non_medical = 0
+    if is_medical_transcript is not None:
+        for pt in todo:
+            text = pt.get("full_text") or ""
+            is_med, kw_count, _kws = is_medical_transcript(text)
+            if is_med:
+                to_analyze.append(pt)
+            else:
+                # Pending nicht discarden — bleibt sichtbar, Nutzer kann ihn
+                # manuell via GUI-Dialog forcieren oder verwerfen.
+                pt["content_filter_skipped"] = True
+                skipped_non_medical += 1
+                print(f"[VOICE-ANALYZE] Skip pending '{pt.get('id')}' — kein "
+                      f"medizinischer Inhalt ({kw_count} keywords): "
+                      f"{text[:80]!r}", flush=True)
+    else:
+        to_analyze = list(todo)
+
+    if not to_analyze:
+        if skipped_non_medical > 0:
+            tts.speak("Aufnahme scheint nicht medizinisch. "
+                      "Analyse uebersprungen. Bitte erneut aufnehmen oder "
+                      "manuell ueber die GUI bestaetigen.")
+            oled_menu.show_status("UEBERSPRUNGEN", "kein Med-Inhalt")
+        else:
+            tts.speak("Kein Transkript zum Analysieren")
+            oled_menu.show_status("KEINS", "nichts zu tun")
+        await asyncio.sleep(2.5)
+        oled_menu.clear_status()
+        return
+
     # Swap-Mode-Handling: Wenn Whisper + Qwen nicht koexistieren, jetzt
     # Whisper rausschmeissen damit Qwen auf GPU kann.
     if getattr(state, "swap_mode", "coexist") != "coexist":
@@ -549,12 +591,13 @@ async def _oled_analyze_pending():
         await _enter_analysis_mode(reason="analyze_pending")
     tts.speak("Analyse gestartet")
     total_created = 0
+    total_useful = 0  # Patienten die wenigstens name/rank/injury/vital haben
     batch_started = time.monotonic()
-    for idx, pt in enumerate(todo):
+    for idx, pt in enumerate(to_analyze):
         pt["analyzing"] = True
         full_text = pt["full_text"]
         record_time = pt.get("time") or datetime.now().strftime("%H:%M:%S")
-        oled_menu.show_status("ANALYSE", f"Aufnahme {idx + 1}/{len(todo)}", int((idx + 1) / len(todo) * 100))
+        oled_menu.show_status("ANALYSE", f"Aufnahme {idx + 1}/{len(to_analyze)}", int((idx + 1) / len(to_analyze) * 100))
         await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
         session_started = time.monotonic()
         try:
@@ -566,6 +609,20 @@ async def _oled_analyze_pending():
         pt["analysis_duration_s"] = session_duration
         pt["created_patient_ids"] = created
         total_created += len(created)
+        # Zaehle nur Patienten mit wirklich nutzbarem Content (analog
+        # zur _patient_is_empty-Logik in analyze_pending_transcript).
+        for pid in created:
+            p = state.patients.get(pid)
+            if not p:
+                continue
+            has_content = (
+                (p.get("name") and p["name"] != "Unbekannt")
+                or p.get("rank")
+                or p.get("injuries")
+                or any((p.get("vitals") or {}).get(k) for k in ("pulse", "bp", "spo2"))
+            )
+            if has_content:
+                total_useful += 1
         await broadcast({
             "type": "analysis_complete",
             "pending_id": pt["id"],
@@ -579,12 +636,25 @@ async def _oled_analyze_pending():
     # pro Session und insgesamt anzeigen.
     await broadcast({
         "type": "batch_analysis_complete",
-        "analyzed": len(todo),
+        "analyzed": len(to_analyze),
         "total": len(todo),
         "created_total": total_created,
         "duration_s": total_duration,
     })
-    tts.speak(f"{total_created} Patient angelegt" if total_created == 1 else f"{total_created} Patienten angelegt")
+    # TTS-Feedback differenziert nach Ergebnis:
+    # - Mindestens 1 Patient mit nutzbarem Content -> normale Ansage
+    # - 0 nutzbare (nur "Unbekannt"-Records entstanden) -> Coaching-Hinweis
+    # - Zusaetzliche Info wenn non-medical Transkripte uebersprungen wurden
+    if total_useful == 0 and total_created > 0:
+        tts.speak("Analyse hat keine Patientendaten erkannt. "
+                  "Tipp: mit Erster Patient ist beginnen.")
+    elif total_useful == 1:
+        tts.speak("Ein Patient angelegt")
+    else:
+        tts.speak(f"{total_useful} Patienten angelegt")
+    if skipped_non_medical > 0:
+        tts.speak(f"{skipped_non_medical} Aufnahme uebersprungen, "
+                  "kein medizinischer Inhalt")
     await asyncio.sleep(2)
     oled_menu.clear_status()
     # Swap zurueck auf Recording-Mode im Hintergrund, damit der User nach
@@ -2372,6 +2442,13 @@ async def _enter_analysis_mode(reason: str = "") -> bool:
     print(f"[SWAP] Analyse-Mode: Whisper raus, Qwen rein (reason={reason})", flush=True)
     await broadcast({"type": "model_swap", "target": "qwen",
                      "note": "Whisper wird entladen, Qwen kommt rein ..."})
+    # TTS-Feedback damit der User ohne GUI die ~10s Cold-Load nicht als
+    # stumme Pause erlebt. Wichtig fuer Voice-Commands wo der User
+    # sonst gar nicht weiss dass das System arbeitet.
+    try:
+        tts.speak("Analyse wird vorbereitet")
+    except Exception:
+        pass
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, stop_whisper_server)
     await asyncio.sleep(0.8)
