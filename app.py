@@ -550,8 +550,9 @@ async def _oled_analyze_pending():
         skipped_count = sum(1 for p in state.pending_transcripts
                             if p.get("content_filter_skipped") and not p.get("analyzed"))
         if skipped_count > 0:
-            tts.speak(f"{skipped_count} Aufnahme bereits als nicht-medizinisch "
-                      "markiert. Bitte verwerfen oder neu aufnehmen.")
+            # Kurze Message — lange TTS-Ansagen erhoehen Race-Window fuer
+            # parallele Audio-Library-Zugriffe. Details stehen im OLED.
+            tts.speak("Schon als nicht medizinisch markiert, bitte verwerfen")
             oled_menu.show_status("SKIP", f"{skipped_count} uebersprungen")
         else:
             tts.speak("Kein Transkript vorhanden")
@@ -593,9 +594,9 @@ async def _oled_analyze_pending():
 
     if not to_analyze:
         if skipped_non_medical > 0:
-            tts.speak("Aufnahme scheint nicht medizinisch. "
-                      "Analyse uebersprungen. Bitte erneut aufnehmen oder "
-                      "manuell ueber die GUI bestaetigen.")
+            # Kurze Ansage statt lang verschachtelt — lange TTS-Wiedergabe
+            # erhoeht Race-Window fuer parallele ALSA-Zugriffe. Details im OLED.
+            tts.speak("Kein medizinischer Inhalt, uebersprungen")
             oled_menu.show_status("UEBERSPRUNGEN", "kein Med-Inhalt")
         else:
             tts.speak("Kein Transkript zum Analysieren")
@@ -675,20 +676,17 @@ async def _oled_analyze_pending():
         "created_total": total_created,
         "duration_s": total_duration,
     })
-    # TTS-Feedback differenziert nach Ergebnis:
-    # - Mindestens 1 Patient mit nutzbarem Content -> normale Ansage
-    # - 0 nutzbare (nur "Unbekannt"-Records entstanden) -> Coaching-Hinweis
-    # - Zusaetzliche Info wenn non-medical Transkripte uebersprungen wurden
+    # TTS-Feedback differenziert nach Ergebnis. Kurz und pragnant.
     if total_useful == 0 and total_created > 0:
-        tts.speak("Analyse hat keine Patientendaten erkannt. "
-                  "Tipp: mit Erster Patient ist beginnen.")
+        tts.speak("Kein Patient erkannt, bitte neu aufnehmen")
+    elif total_useful == 0:
+        tts.speak("Keine Patienten angelegt")
     elif total_useful == 1:
         tts.speak("Ein Patient angelegt")
     else:
         tts.speak(f"{total_useful} Patienten angelegt")
     if skipped_non_medical > 0:
-        tts.speak(f"{skipped_non_medical} Aufnahme uebersprungen, "
-                  "kein medizinischer Inhalt")
+        tts.speak(f"{skipped_non_medical} Aufnahme uebersprungen")
     await asyncio.sleep(2)
     oled_menu.clear_status()
     # Swap zurueck auf Recording-Mode im Hintergrund, damit der User nach

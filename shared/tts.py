@@ -108,15 +108,58 @@ def is_enabled() -> bool:
     return _enabled and _voice is not None
 
 
+import queue as _queue
+_tts_queue: _queue.Queue = _queue.Queue()
+_tts_worker_thread: threading.Thread | None = None
+_tts_worker_lock = threading.Lock()
+
+
+def _tts_worker():
+    """Einziger Worker-Thread der TTS-Messages sequentiell abarbeitet.
+    Verhindert double-free im Piper-/ALSA-Code-Pfad wenn mehrere
+    tts.speak()-Aufrufe sich zeitlich ueberlappen — der Crash-Report
+    vom 18.04.2026 ('double free or corruption (out)' im Runtime) kam
+    genau aus so einer Race-Condition zwischen zwei parallelen Piper-
+    Threads die gleichzeitig ALSA-Output-Devices oeffneten."""
+    while True:
+        try:
+            text = _tts_queue.get()
+        except Exception:
+            continue
+        if text is None:
+            break
+        try:
+            _speak_internal(text)
+        except Exception as e:
+            print(f"TTS-Worker Fehler: {e}")
+        finally:
+            _tts_queue.task_done()
+
+
+def _ensure_worker():
+    global _tts_worker_thread
+    with _tts_worker_lock:
+        if _tts_worker_thread is None or not _tts_worker_thread.is_alive():
+            _tts_worker_thread = threading.Thread(
+                target=_tts_worker, daemon=True, name="tts-worker")
+            _tts_worker_thread.start()
+
+
 def speak(text: str, blocking: bool = False):
-    """Spricht Text aus. Non-blocking per Default (eigener Thread)."""
+    """Spricht Text aus. Non-blocking per Default (queue-basiert).
+
+    Einzelner Worker-Thread serialisiert alle Ausgaben — kein
+    paralleler Piper-Zugriff mehr moeglich. Bei blocking=True wird
+    _speak_internal direkt aufgerufen (z.B. fuer kritische Fehler-
+    meldungen die synchron raus muessen).
+    """
     if not _enabled or _voice is None:
         return
     if blocking:
         _speak_internal(text)
     else:
-        t = threading.Thread(target=_speak_internal, args=(text,), daemon=True)
-        t.start()
+        _ensure_worker()
+        _tts_queue.put(text)
 
 
 def _pick_output_rate(device, piper_rate: int) -> int:
