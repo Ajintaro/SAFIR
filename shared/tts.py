@@ -17,11 +17,12 @@ _PIPER_DIR = Path(__file__).parent.parent / "models" / "piper"
 # Verfuegbare Stimmen. Gender "m"/"w" fuer UI-Dropdown. Thorsten
 # ist der urspruengliche Default, Kerstin die weibliche Alternative.
 AVAILABLE_VOICES: dict[str, dict] = {
+    "de_DE-thorsten-high":   {"gender": "m", "label": "Thorsten (maennlich, high-quality)"},
     "de_DE-thorsten-medium": {"gender": "m", "label": "Thorsten (maennlich, medium)"},
     "de_DE-thorsten-low":    {"gender": "m", "label": "Thorsten (maennlich, schnell)"},
     "de_DE-kerstin-low":     {"gender": "w", "label": "Kerstin (weiblich, schnell)"},
 }
-DEFAULT_VOICE = "de_DE-thorsten-medium"
+DEFAULT_VOICE = "de_DE-thorsten-high"
 
 # Wird zur Laufzeit auf den gewaehlten Voice-Path gesetzt.
 PIPER_MODEL = _PIPER_DIR / f"{DEFAULT_VOICE}.onnx"

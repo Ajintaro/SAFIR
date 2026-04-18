@@ -187,7 +187,7 @@
         "input_gain": 2.0
     },
     "tts": {
-        "voice": "de_DE-thorsten-medium"
+        "voice": "de_DE-thorsten-high"
     },
     "ollama": {
         "url": "http://127.0.0.1:11434",
