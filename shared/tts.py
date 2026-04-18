@@ -218,29 +218,36 @@ _tts_worker_lock = threading.Lock()
 def _tts_worker():
     """Einziger Worker-Thread der TTS-Messages sequentiell abarbeitet.
     Verhindert double-free im Piper-/ALSA-Code-Pfad wenn mehrere
-    tts.speak()-Aufrufe sich zeitlich ueberlappen — der Crash-Report
-    vom 18.04.2026 ('double free or corruption (out)' im Runtime) kam
-    genau aus so einer Race-Condition zwischen zwei parallelen Piper-
-    Threads die gleichzeitig ALSA-Output-Devices oeffneten."""
+    tts.speak()-Aufrufe sich zeitlich ueberlappen."""
+    print("[TTS-WORKER] started", flush=True)
     while True:
         try:
-            text = _tts_queue.get()
+            text = _tts_queue.get(timeout=30)
         except Exception:
+            # Timeout oder andere Queue-Fehler — weiter warten, Worker nicht sterben
             continue
         if text is None:
+            print("[TTS-WORKER] received stop signal", flush=True)
             break
         try:
+            preview = (text[:60] + "...") if len(text) > 60 else text
+            print(f"[TTS-WORKER] speaking: {preview!r}", flush=True)
             _speak_internal(text)
         except Exception as e:
-            print(f"TTS-Worker Fehler: {e}")
+            print(f"[TTS-WORKER] Fehler: {e}", flush=True)
         finally:
-            _tts_queue.task_done()
+            try:
+                _tts_queue.task_done()
+            except Exception:
+                pass
 
 
 def _ensure_worker():
     global _tts_worker_thread
     with _tts_worker_lock:
         if _tts_worker_thread is None or not _tts_worker_thread.is_alive():
+            if _tts_worker_thread is not None:
+                print(f"[TTS-WORKER] thread tot, starte neu (queue={_tts_queue.qsize()})", flush=True)
             _tts_worker_thread = threading.Thread(
                 target=_tts_worker, daemon=True, name="tts-worker")
             _tts_worker_thread.start()
@@ -255,12 +262,16 @@ def speak(text: str, blocking: bool = False):
     meldungen die synchron raus muessen).
     """
     if not _enabled or _voice is None:
+        print(f"[TTS] dropped (enabled={_enabled}, voice-loaded={_voice is not None}): {text[:60]!r}", flush=True)
         return
     if blocking:
         _speak_internal(text)
     else:
         _ensure_worker()
+        qsize_before = _tts_queue.qsize()
         _tts_queue.put(text)
+        if qsize_before > 2:
+            print(f"[TTS] queue-backlog {qsize_before}, enqueue: {text[:40]!r}", flush=True)
 
 
 def _pick_output_rate(device, piper_rate: int) -> int:

@@ -133,6 +133,18 @@
                 "auf karte speichern"
             ]
         },
+        "rfid_write_cancel": {
+            "label": "Karten-Schreiben abbrechen",
+            "triggers": [
+                "abbrechen",
+                "schreiben abbrechen",
+                "schreiben stoppen",
+                "karten stopp",
+                "karten stop",
+                "stop schreiben",
+                "karten schreiben abbrechen"
+            ]
+        },
         "mic_test": {
             "label": "Mikrofon-/Audio-Test",
             "triggers": [

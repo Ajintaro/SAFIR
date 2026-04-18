@@ -608,7 +608,7 @@ async def _oled_analyze_pending():
     # Swap-Mode-Handling: Wenn Whisper + Qwen nicht koexistieren, jetzt
     # Whisper rausschmeissen damit Qwen auf GPU kann.
     if getattr(state, "swap_mode", "coexist") != "coexist":
-        oled_menu.show_status("SWAP", "Qwen laden...", 10)
+        oled_menu.show_status("SWAP", "LLM laden...", 10)
         await _enter_analysis_mode(reason="analyze_pending")
     tts.speak("Analyse gestartet")
     total_created = 0
@@ -1520,6 +1520,14 @@ async def process_vosk_commands():
                     await broadcast({"type": "voice_command", "action": "export_docx"})
                 elif action == "rfid_write_patient":
                     await voice_write_card()
+                elif action == "rfid_write_cancel":
+                    # Abbruch-Flag setzen; laufende Schleife prueft es
+                    # am naechsten Schleifen-Anfang bzw. nach await_rfid_scan
+                    if getattr(state, "rfid_write_active", False):
+                        state.rfid_write_cancel = True
+                        tts.speak("Karten-Schreiben wird abgebrochen")
+                    else:
+                        tts.speak("Kein RFID-Schreiben aktiv")
                 elif action == "mic_test":
                     await voice_mic_test()
                 elif action == "bat_return_to_station":
@@ -1803,8 +1811,19 @@ async def voice_write_card():
     # Flag sicher wieder freigegeben wird (sonst wuerden Patient-Scans
     # dauerhaft stumm bleiben).
     state.rfid_write_active = True
+    # Cancel-Flag: wenn gesetzt, bricht die Schleife beim nächsten Patient ab.
+    # Der User kann das via Voice-Command "abbrechen" / "stopp" oder via
+    # GUI-Button setzen (POST /api/rfid/cancel). Wir pruefen das sowohl vor
+    # jedem Schleifen-Durchgang als auch wenn ein Timeout eintritt.
+    state.rfid_write_cancel = False
     try:
         for idx, patient in enumerate(todo):
+            # Cancel-Check am Schleifen-Anfang
+            if state.rfid_write_cancel:
+                tts.speak(f"Abgebrochen nach {written} von {total}")
+                oled_menu.show_status("ABGEBROCHEN", f"{written}/{total}")
+                await asyncio.sleep(2.0)
+                break
             name = (patient.get("name") or "Unbekannt").strip()
             pid = patient["patient_id"]
             label_idx = f"{idx + 1}/{total}"
@@ -1815,6 +1834,13 @@ async def voice_write_card():
             tts.speak(f"Karte {idx + 1}. {name}")
 
             uid = await hardware_service.await_rfid_scan(timeout=15.0)
+            # Nochmal Cancel-Check nach dem await — User koennte waehrend
+            # der Wartezeit via Voice-Command abgebrochen haben
+            if state.rfid_write_cancel:
+                tts.speak(f"Abgebrochen nach {written} von {total}")
+                oled_menu.show_status("ABGEBROCHEN", f"{written}/{total}")
+                await asyncio.sleep(2.0)
+                break
             if uid is None:
                 oled_menu.show_status("TIMEOUT", f"{label_idx} uebersprungen")
                 tts.speak("Zeit abgelaufen, weiter")
@@ -2522,9 +2548,9 @@ async def _enter_analysis_mode(reason: str = "") -> bool:
         return True
 
     # current_mode == "recording" -> wirklich swappen
-    print(f"[SWAP] Analyse-Mode: Whisper raus, Qwen rein (reason={reason})", flush=True)
-    await broadcast({"type": "model_swap", "target": "qwen",
-                     "note": "Whisper wird entladen, Qwen kommt rein ..."})
+    print(f"[SWAP] Analyse-Mode: Whisper raus, LLM rein (reason={reason})", flush=True)
+    await broadcast({"type": "model_swap", "target": "llm",
+                     "note": "Whisper wird entladen, LLM kommt rein ..."})
     # TTS-Feedback damit der User ohne GUI die ~10s Cold-Load nicht als
     # stumme Pause erlebt. Wichtig fuer Voice-Commands wo der User
     # sonst gar nicht weiss dass das System arbeitet.
@@ -2552,9 +2578,9 @@ async def _enter_recording_mode() -> bool:
         return state.model_loaded
 
     # current_mode == "analyzing" -> swap zurueck
-    print(f"[SWAP] Recording-Mode: Qwen raus, Whisper rein", flush=True)
+    print(f"[SWAP] Recording-Mode: LLM raus, Whisper rein", flush=True)
     await broadcast({"type": "model_swap", "target": "whisper",
-                     "note": "Qwen wird entladen, Whisper kommt rein ..."})
+                     "note": "LLM wird entladen, Whisper kommt rein ..."})
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _unload_ollama_model)
     await asyncio.sleep(0.8)
@@ -4261,6 +4287,21 @@ async def rfid_batch_write():
     identisch zu OLED-Menü 'RFID schreiben' und Sprachbefehl."""
     asyncio.create_task(voice_write_card())
     return {"status": "started"}
+
+
+@app.post("/api/rfid/cancel")
+async def rfid_batch_cancel():
+    """Bricht ein laufendes Karten-Schreiben ab. User kann das per Voice
+    ('abbrechen') oder GUI-Button triggern. Der Flag state.rfid_write_cancel
+    wird von voice_write_card in der Haupt-Schleife geprueft — Abbruch
+    erfolgt am naechsten Schleifen-Anfang oder spaetestens nach dem
+    naechsten await_rfid_scan-Timeout.
+    """
+    if not getattr(state, "rfid_write_active", False):
+        return {"status": "error", "error": "Kein RFID-Schreiben aktiv"}
+    state.rfid_write_cancel = True
+    tts.speak("Karten-Schreiben wird abgebrochen")
+    return {"status": "ok"}
 
 
 @app.post("/api/rfid/scan")

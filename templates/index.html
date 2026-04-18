@@ -2061,6 +2061,7 @@
                     <button class="btn" onclick="analyzeSession()" style="padding:8px 14px;font-size:var(--fs-body)" id="btn-analyze">&#129504; Analyse</button>
                     <button class="btn" onclick="sendToBackend()" style="padding:8px 14px;font-size:var(--fs-body);background:#2ECC71;border-color:#2ECC71;color:#fff" id="btn-send-backend">&#9889; Alle melden</button>
                     <button class="btn" onclick="rfidBatchWrite()" style="padding:8px 14px;font-size:var(--fs-body);background:var(--mil-tan,#c8b878);border-color:var(--mil-tan,#c8b878);color:#000" id="btn-rfid-batch" title="Alle Patienten ohne RFID-Karte nacheinander auf Karten schreiben">&#128179; RFID-Batch</button>
+                    <button class="btn" onclick="rfidBatchCancel()" style="padding:8px 14px;font-size:var(--fs-body);color:var(--cgi-red,#cc2222);border-color:var(--cgi-red,#cc2222)" id="btn-rfid-cancel" title="Laufendes RFID-Schreiben abbrechen">&#9888; Abbruch</button>
                     <button class="btn" onclick="exportDocx()" style="padding:8px 14px;font-size:var(--fs-body)">&#128196; Export</button>
                 </div>
 
@@ -4730,10 +4731,20 @@
             showToast('Alle Patienten haben schon eine Karte', '&#128179;');
             return;
         }
-        if (!confirm(`${notWritten.length} Patient${notWritten.length === 1 ? '' : 'en'} auf Karten schreiben?\n\nHalte die Karten bereit und lege sie nacheinander auf den Reader.`)) return;
+        if (!confirm(`${notWritten.length} Patient${notWritten.length === 1 ? '' : 'en'} auf Karten schreiben?\n\nHalte die Karten bereit und lege sie nacheinander auf den Reader.\n\nAbbrechen jederzeit möglich via Voice-Command "abbrechen" oder Button "Abbruch".`)) return;
         const res = await api('/api/rfid/batch', 'POST', {});
         if (res.status === 'started') {
-            showToast(`RFID-Batch gestartet: ${notWritten.length} Karte(n)`, '&#128179;');
+            showToast(`RFID-Batch gestartet: ${notWritten.length} Karte(n). Zum Abbrechen: Sprachbefehl "abbrechen" oder Button "Abbruch"`, '&#128179;');
+        }
+    }
+
+    // Abbruch eines laufenden RFID-Batch-Schreib-Vorgangs.
+    async function rfidBatchCancel() {
+        const res = await api('/api/rfid/cancel', 'POST', {});
+        if (res.status === 'ok') {
+            showToast('Karten-Schreiben wird abgebrochen', '&#9888;');
+        } else {
+            showToast(res.error || 'Kein Schreiben aktiv', '&#9888;');
         }
     }
 
