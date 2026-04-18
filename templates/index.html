@@ -5925,6 +5925,15 @@
     // stellt den Row-Filter so ein dass der Treffer sichtbar ist,
     // scrollt zu ihm und lässt ihn in Cyan aufblinken.
     function handleRfidScanResult(msg) {
+        // BAT-Geraete (Jetson im Feld) haben keinen Omnikey-Leser. Remote-
+        // Scans vom Surface sollen dort weder Toast-Meldung noch Navigations-
+        // Sprung ausloesen — am Jetson-GUI hat man mit dem Role-1-Scan
+        // nichts zu tun. Nur auf dem Surface (unit_role="ROLE1" o.ae.)
+        // reagieren wir auf rfid_scan_result.
+        const role = (window.UNIT_ROLE || '').toUpperCase();
+        if (role === 'BAT' || role === 'PHASE0') {
+            return;
+        }
         const uid = (msg.uid || '').toUpperCase();
 
         if (!msg.found || !msg.patient_id) {
@@ -7160,12 +7169,15 @@
 
         refreshFiles();
 
-        // Einheit im Header anzeigen + Peers laden
+        // Einheit im Header anzeigen + Peers laden. Zusaetzlich unit_role
+        // global setzen, damit wir Remote-RFID-Scans ignorieren koennen
+        // wenn dieses Geraet eh kein RFID-Lesegeraet hat (Jetson/BAT).
         try {
             const cfg = await api('/api/config');
             if (cfg.unit_name) {
                 document.getElementById('header-unit-name').textContent = cfg.unit_name;
             }
+            window.UNIT_ROLE = cfg.unit_role || '';
         } catch(e) {}
         try { refreshPeers(); } catch(e) {}
 

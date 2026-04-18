@@ -535,11 +535,28 @@ async def _oled_analyze_pending():
     Whisper aus dem VRAM genommen und Qwen reingeladen. Nach der Analyse
     wird der Ruecktausch als Hintergrund-Task ausgeloest (User sieht die
     fertigen Patienten sofort, Whisper laedt unsichtbar wieder)."""
-    todo = [p for p in state.pending_transcripts if not p.get("analyzed") and not p.get("analyzing")]
+    # Pendings die bereits vom Content-Filter uebersprungen wurden (flag
+    # content_filter_skipped) werden NICHT erneut in die todo-Liste
+    # aufgenommen — sonst wuerde bei jedem "alle analysieren"-Command
+    # der gleiche Non-Medical-Transkript wieder den Filter durchlaufen.
+    # Der User kann sie weiterhin via GUI-Dialog (force_analysis) oder
+    # via Verwerfen-Button beseitigen.
+    todo = [p for p in state.pending_transcripts
+            if not p.get("analyzed")
+            and not p.get("analyzing")
+            and not p.get("content_filter_skipped")]
     if not todo:
-        tts.speak("Kein Transkript vorhanden")
-        oled_menu.show_status("KEIN TRANSKRIPT", "Erst aufnehmen")
-        await asyncio.sleep(2)
+        # Pruefen ob was uebersprungenes rumliegt und dem User erklaeren
+        skipped_count = sum(1 for p in state.pending_transcripts
+                            if p.get("content_filter_skipped") and not p.get("analyzed"))
+        if skipped_count > 0:
+            tts.speak(f"{skipped_count} Aufnahme bereits als nicht-medizinisch "
+                      "markiert. Bitte verwerfen oder neu aufnehmen.")
+            oled_menu.show_status("SKIP", f"{skipped_count} uebersprungen")
+        else:
+            tts.speak("Kein Transkript vorhanden")
+            oled_menu.show_status("KEIN TRANSKRIPT", "Erst aufnehmen")
+        await asyncio.sleep(2.5)
         oled_menu.clear_status()
         return
     # Content-Filter im Voice-Pfad: nicht-medizinische Transkripte werden
@@ -568,6 +585,9 @@ async def _oled_analyze_pending():
                 print(f"[VOICE-ANALYZE] Skip pending '{pt.get('id')}' — kein "
                       f"medizinischer Inhalt ({kw_count} keywords): "
                       f"{text[:80]!r}", flush=True)
+                # Broadcast damit Frontend die Card als "skipped" rendern kann
+                await broadcast({"type": "pending_skipped", "pending_id": pt["id"],
+                                 "reason": "content_filter"})
     else:
         to_analyze = list(todo)
 
@@ -609,20 +629,34 @@ async def _oled_analyze_pending():
         pt["analysis_duration_s"] = session_duration
         pt["created_patient_ids"] = created
         total_created += len(created)
-        # Zaehle nur Patienten mit wirklich nutzbarem Content (analog
-        # zur _patient_is_empty-Logik in analyze_pending_transcript).
+        # Zaehle nur Patienten mit wirklich nutzbarem Content. STRIKTER als
+        # vorher: Ein Rang ALLEIN reicht nicht ("Hier spricht Oberfeldarzt
+        # Hugendubel" => LLM extrahiert rank=Oberfeldarzt, aber Name=
+        # Unbekannt + keine Verletzung/Vitals = nicht nutzbar).
+        # Nutzbar heisst: entweder ein konkreter Name ODER medizinische
+        # Info (Verletzung, Vital). Rang ist Bonus, nicht Mindest-Kriterium.
         for pid in created:
             p = state.patients.get(pid)
             if not p:
                 continue
-            has_content = (
-                (p.get("name") and p["name"] != "Unbekannt")
-                or p.get("rank")
-                or p.get("injuries")
-                or any((p.get("vitals") or {}).get(k) for k in ("pulse", "bp", "spo2"))
-            )
-            if has_content:
+            has_name = bool(p.get("name") and p["name"] != "Unbekannt")
+            has_injury = bool(p.get("injuries"))
+            has_vital = any((p.get("vitals") or {}).get(k)
+                            for k in ("pulse", "bp", "spo2", "temp", "gcs", "resp_rate"))
+            if has_name or has_injury or has_vital:
                 total_useful += 1
+            else:
+                # Leerer Patient — aus State + rfid_map entfernen, damit er
+                # nicht in der Patient-Liste oder RFID-Batch-Queue landet.
+                # Der Transkript-Text bleibt weiterhin im pending-Record
+                # (analyzed=True), also ist die Info nicht verloren.
+                print(f"[VOICE-ANALYZE] Leerer Patient {pid} verworfen "
+                      f"(nur rank='{p.get('rank','')}', nichts sonst)", flush=True)
+                rfid = p.get("rfid_tag_id", "")
+                if rfid and rfid in state.rfid_map:
+                    del state.rfid_map[rfid]
+                state.patients.pop(pid, None)
+                await broadcast({"type": "patient_deleted", "patient_id": pid})
         await broadcast({
             "type": "analysis_complete",
             "pending_id": pt["id"],
@@ -1723,14 +1757,36 @@ async def voice_write_card():
     from shared.rfid import rc522_write_patient_to_card
     from jetson.hardware import LedPattern
 
-    # Alle Patienten die noch keine Karte haben, in Anlegungsreihenfolge
-    todo = [
-        p for p in state.patients.values()
-        if not _patient_has_written_rfid(p)
-    ]
+    # Alle Patienten die noch keine Karte haben UND nutzbaren Inhalt
+    # haben. Leere "Unbekannt"-Patienten (ohne Name, Verletzung, Vitals)
+    # uebersprungen — es hat keinen Sinn die auf eine MIFARE-Karte zu
+    # schreiben, der Sanitaeter wuerde auf der Karte nur einen leeren
+    # Record finden. Typisches Szenario: "Hier spricht Oberfeldarzt X"
+    # wurde als Patient extrahiert, Rang=Oberfeldarzt aber sonst nix.
+    def _patient_has_useful_content(p: dict) -> bool:
+        if p.get("name") and p["name"] != "Unbekannt":
+            return True
+        if p.get("injuries"):
+            return True
+        v = p.get("vitals") or {}
+        if any(v.get(k) for k in ("pulse", "bp", "spo2", "temp", "gcs", "resp_rate")):
+            return True
+        return False
+
+    all_candidates = [p for p in state.patients.values() if not _patient_has_written_rfid(p)]
+    todo = [p for p in all_candidates if _patient_has_useful_content(p)]
+    skipped_empty = len(all_candidates) - len(todo)
+    if skipped_empty > 0:
+        print(f"[RFID-BATCH] {skipped_empty} leere Patient-Records "
+              f"uebersprungen (kein Name/Injury/Vital)", flush=True)
+
     if not todo:
-        tts.speak("Alle Patienten schon auf Karten")
-        oled_menu.show_status("KEINE TODO", "Alle RFID belegt")
+        if skipped_empty > 0:
+            tts.speak("Keine nutzbaren Patientendaten zum Schreiben")
+            oled_menu.show_status("KEINS", f"{skipped_empty} leer")
+        else:
+            tts.speak("Alle Patienten schon auf Karten")
+            oled_menu.show_status("KEINE TODO", "Alle RFID belegt")
         await asyncio.sleep(2.0)
         oled_menu.clear_status()
         return
@@ -3091,21 +3147,41 @@ async def analyze_pending_transcript(body: dict):
     #   - LLM-Timeout / JSON-Parse-Fehler (returnt {})
     # Wir geben dem User explizit ein coaching-Hint + Beispiel-Saetze.
     def _patient_is_empty(pid: str) -> bool:
+        """Strikt: Patient ist NUR dann nicht-leer wenn er echten Inhalt
+        hat. Rang ALLEIN reicht nicht (z.B. "Hier spricht Oberfeldarzt
+        Hugendubel" extrahiert nur rank, ist aber kein Patient sondern
+        Sanitaeter-Intro)."""
         p = state.patients.get(pid)
         if not p:
             return True
         if p.get("name") and p["name"] != "Unbekannt":
             return False
-        if p.get("rank"):
-            return False
         if p.get("injuries"):
             return False
         v = p.get("vitals") or {}
-        if any(v.get(k) for k in ("pulse", "bp", "spo2", "temp", "gcs")):
+        if any(v.get(k) for k in ("pulse", "bp", "spo2", "temp", "gcs", "resp_rate")):
             return False
+        # Rang alleine zaehlt bewusst nicht als "nutzbar"
         return True
 
-    all_empty = count == 0 or all(_patient_is_empty(pid) for pid in created)
+    # Leere Patienten aus dem State entfernen (sonst landen sie in der
+    # Patient-Liste und im RFID-Batch-Write)
+    empty_pids = [pid for pid in created if _patient_is_empty(pid)]
+    for pid in empty_pids:
+        p = state.patients.get(pid)
+        if not p:
+            continue
+        rfid = p.get("rfid_tag_id", "")
+        if rfid and rfid in state.rfid_map:
+            del state.rfid_map[rfid]
+        state.patients.pop(pid, None)
+        print(f"[ANALYZE] Leerer Patient {pid} verworfen", flush=True)
+        await broadcast({"type": "patient_deleted", "patient_id": pid})
+    # created-Liste konsistent halten — leere raus
+    created = [pid for pid in created if pid not in empty_pids]
+    count = len(created)
+
+    all_empty = count == 0
     coaching_hint = None
     if all_empty and not is_nine_liner:
         coaching_hint = {
