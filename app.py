@@ -3963,6 +3963,55 @@ async def get_devices():
     return {"devices": state.audio_devices(), "current": state.audio_device}
 
 
+@app.post("/api/audio/rescan")
+async def audio_rescan():
+    """Manuelles PortAudio-Rescan: Bei Boot-Races (Service startet vor
+    USB-Enumeration) sieht Python 0 Audio-Devices und cacht das. Dieser
+    Endpoint zwingt einen vollen PortAudio-Reinit + Device-Neu-Scan +
+    ggf. Persistent-Stream-Restart. Der User kann im Settings-UI per
+    Button ausloesen wenn das Mikro oder ein Lautsprecher 'verschwunden'
+    ist ohne Service-Restart noetig zu haben."""
+    import time as _t
+    import importlib as _il
+    global sd  # noqa: F824
+    vosk_was_listening = state.vosk_listening
+    try:
+        stop_persistent_stream()
+    except Exception as e:
+        print(f"[AUDIO-RESCAN] stop_persistent Fehler: {e}", flush=True)
+    _t.sleep(0.3)
+    # PortAudio hart re-initialisieren
+    try:
+        sd._terminate()
+    except Exception:
+        pass
+    _t.sleep(0.3)
+    try:
+        import sounddevice as _sd_module
+        _il.reload(_sd_module)
+        globals()["sd"] = _sd_module
+        import shared.tts as _tts_module
+        _tts_module.sd = _sd_module
+    except Exception as e:
+        print(f"[AUDIO-RESCAN] reload Fehler: {e}", flush=True)
+    _t.sleep(0.5)
+    # Neu scannen
+    devices_after = state.audio_devices()
+    tts_n = tts.rescan_devices(max_retries=0)  # wir haben eh schon reinit gemacht
+    # Persistent-Stream fuer Vosk/Whisper wieder hoch
+    if vosk_was_listening:
+        try:
+            start_persistent_stream()
+        except Exception as e:
+            print(f"[AUDIO-RESCAN] start_persistent Fehler: {e}", flush=True)
+    print(f"[AUDIO-RESCAN] {len(devices_after)} Input-Device(s), {tts_n} Speaker-Device(s)", flush=True)
+    return {
+        "status": "ok",
+        "input_devices": devices_after,
+        "speaker_count": tts_n,
+    }
+
+
 @app.post("/api/devices/select")
 async def select_device(body: dict):
     state.audio_device = body.get("device_id")

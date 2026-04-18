@@ -58,10 +58,9 @@ def _is_speaker_device(name: str) -> bool:
     return any(kw in n for kw in speaker_keywords)
 
 
-def rescan_devices() -> int:
-    """Scannt alle Speaker-Output-Devices neu und befuellt _output_devices.
-    Wird beim init_tts und vom Hot-Plug-Watcher (app.py) aufgerufen.
-    Gibt die Anzahl der gefundenen Devices zurueck."""
+def _rescan_once() -> int:
+    """Ein einzelner rescan-Versuch — siehe rescan_devices fuer die
+    Retry-Wrapper-Variante."""
     global _output_devices, _output_device
     _output_devices.clear()
     try:
@@ -85,8 +84,48 @@ def rescan_devices() -> int:
         _output_device = _output_devices[0]
     else:
         _output_device = None
-    n = len(_output_devices)
-    print(f"TTS: {n} Speaker-Device(s) — {'Multi-Output' if n > 1 else 'Single-Output' if n == 1 else 'KEIN Output'}")
+    return len(_output_devices)
+
+
+def rescan_devices(max_retries: int = 5, retry_delay: float = 1.0) -> int:
+    """Scannt alle Speaker-Output-Devices neu und befuellt _output_devices.
+    Mit Retry-Loop: wenn beim ersten Versuch 0 Devices gefunden werden
+    (typischer Boot-Race — Service startet bevor PortAudio USB-Enumeration
+    abgeschlossen hat), werden max_retries weitere Versuche mit
+    retry_delay Sekunden Abstand durchgefuehrt. Zwischen den Versuchen
+    wird PortAudio komplett re-initialisiert (sd._terminate + reimport),
+    da ein blosses query_devices() sonst den alten leeren Cache liefert."""
+    import time as _t
+    import importlib as _il
+    global sd  # noqa: F824  — global alias darf ausgetauscht werden
+
+    n = _rescan_once()
+    if n > 0 or max_retries <= 0:
+        print(f"TTS: {n} Speaker-Device(s) — "
+              f"{'Multi-Output' if n > 1 else 'Single-Output' if n == 1 else 'KEIN Output'}")
+        return n
+
+    # Retry-Schleife: PortAudio hard-reinit und nochmal probieren
+    for attempt in range(1, max_retries + 1):
+        print(f"TTS: 0 Devices gefunden, retry {attempt}/{max_retries} "
+              f"nach {retry_delay:.1f}s (PortAudio-Reinit) ...")
+        _t.sleep(retry_delay)
+        try:
+            sd._terminate()
+        except Exception:
+            pass
+        try:
+            import sounddevice as _sd_module
+            _il.reload(_sd_module)
+            globals()["sd"] = _sd_module
+        except Exception as e:
+            print(f"TTS sounddevice-reload Fehler: {e}")
+        _t.sleep(0.3)
+        n = _rescan_once()
+        if n > 0:
+            break
+    print(f"TTS: {n} Speaker-Device(s) — "
+          f"{'Multi-Output' if n > 1 else 'Single-Output' if n == 1 else 'KEIN Output'}")
     return n
 
 

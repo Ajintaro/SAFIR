@@ -2568,6 +2568,10 @@
                                 <label>Eingabegerät (Mikrofon für Whisper + Vosk)</label>
                                 <select id="settings-audio-device" onchange="selectDevice(this.value)"></select>
                             </div>
+                            <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <button class="btn" onclick="rescanAudio()" style="padding:5px 10px;font-size:var(--fs-body-sm)">&#8635; Audio neu scannen</button>
+                                <span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Falls ein USB-Gerät "verschwunden" ist nach Hot-Plug oder Boot-Race.</span>
+                            </div>
                         </div>
                         <div class="settings-card">
                             <div class="settings-card-title">TTS-Stimme</div>
@@ -5249,6 +5253,24 @@
     }
     async function unloadModel() { if (!confirm('Modell entladen? GPU-Speicher wird freigegeben.')) return; await api('/api/models/unload', 'POST'); }
     async function selectDevice(id) { await api('/api/devices/select', 'POST', { device_id: parseInt(id) }); }
+
+    async function rescanAudio() {
+        showToast('Audio-Rescan läuft...', '&#8635;');
+        try {
+            const res = await api('/api/audio/rescan', 'POST', {});
+            if (res && res.status === 'ok') {
+                const n = (res.input_devices || []).length;
+                const sp = res.speaker_count || 0;
+                showToast(`${n} Mikrofon(e), ${sp} Lautsprecher gefunden`, '&#9989;');
+                // Dropdown + aktive Auswahl neu rendern
+                setTimeout(() => loadSettings(), 500);
+            } else {
+                showToast('Rescan fehlgeschlagen', '&#9888;');
+            }
+        } catch(e) {
+            showToast('Rescan-Fehler: ' + e.message, '&#9888;');
+        }
+    }
 
     async function setTtsVoice(voiceName) {
         try {
