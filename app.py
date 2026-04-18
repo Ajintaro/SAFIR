@@ -4646,6 +4646,113 @@ async def data_test_generate(body: dict | None = None):
 
 
 # ---------------------------------------------------------------------------
+# Tailscale-WireGuard-Status (Live-Beweis der Transport-Verschluesselung)
+# ---------------------------------------------------------------------------
+# Liefert einen kompakten Tailscale-Status-Snapshot an das Frontend, damit
+# der Messe-Besucher live sieht dass:
+#   - tailscale0-Interface aktiv ist (WireGuard-Tunnel hoch)
+#   - Peer-Verbindung zum Surface/Backend wirklich direct/relay ist
+#   - Bytes-Counter live mitlaufen (= echter Traffic durch den Tunnel)
+# Ohne diese Anzeige muesste man "glauben" dass Tailscale aktiv ist — hier
+# sieht man es und kann den tx/rx-Counter durch Refresh wachsen sehen.
+
+def _get_tailscale_status_summary() -> dict:
+    """Fuehrt `tailscale status --json` aus und reduziert die Antwort auf
+    die pitch-relevanten Felder. Kein Crash wenn Tailscale fehlt/runter —
+    dann einfach available=False zuruecken.
+    """
+    import subprocess as _sp
+    import json as _json
+    try:
+        r = _sp.run(["tailscale", "status", "--json"],
+                    capture_output=True, text=True, timeout=5)
+        if r.returncode != 0 or not r.stdout.strip():
+            return {"available": False,
+                    "error": (r.stderr or "tailscale-CLI nicht verfuegbar")[:200]}
+        data = _json.loads(r.stdout)
+    except FileNotFoundError:
+        return {"available": False, "error": "tailscale-CLI nicht installiert"}
+    except Exception as e:
+        return {"available": False, "error": str(e)[:200]}
+
+    self_info = data.get("Self") or {}
+    peers = list((data.get("Peer") or {}).values())
+
+    # Peer der unserem Backend entspricht herausfiltern (via config-URL)
+    cfg = load_config()
+    backend_url = (cfg.get("backend") or {}).get("url", "")
+    backend_host = ""
+    if backend_url:
+        import re as _re
+        m = _re.search(r"https?://([^:/]+)", backend_url)
+        if m:
+            backend_host = m.group(1)
+
+    def _peer_matches_backend(p: dict) -> bool:
+        if not backend_host:
+            return False
+        if backend_host in (p.get("TailscaleIPs") or []):
+            return True
+        # HostName-Match (case-insensitive)
+        if backend_host.lower() == (p.get("HostName") or "").lower():
+            return True
+        return False
+
+    backend_peer = next((p for p in peers if _peer_matches_backend(p)), None)
+
+    def _peer_brief(p: dict) -> dict:
+        if not p:
+            return {}
+        # Connection-Typ: wenn CurAddr gesetzt -> direct, sonst ueber DERP-Relay
+        cur_addr = p.get("CurAddr") or ""
+        is_direct = bool(cur_addr)
+        conn_type = "direct" if is_direct else "relay (DERP)"
+        return {
+            "hostname": p.get("HostName") or p.get("DNSName", "").split(".")[0],
+            "tailscale_ip": (p.get("TailscaleIPs") or [""])[0],
+            "online": bool(p.get("Online")),
+            "active": bool(p.get("Active")),
+            "connection_type": conn_type,
+            "is_direct": is_direct,
+            "current_address": cur_addr,
+            "relay_region": p.get("Relay", ""),
+            "tx_bytes": int(p.get("TxBytes", 0)),
+            "rx_bytes": int(p.get("RxBytes", 0)),
+            "last_handshake": p.get("LastHandshake", ""),
+        }
+
+    summary = {
+        "available": True,
+        "self": {
+            "hostname": self_info.get("HostName", ""),
+            "tailscale_ip": (self_info.get("TailscaleIPs") or [""])[0],
+            "os": self_info.get("OS", ""),
+        },
+        "backend_peer": _peer_brief(backend_peer) if backend_peer else None,
+        "all_peers": [_peer_brief(p) for p in peers],
+        "peer_count": len(peers),
+        "backend_host_searched": backend_host,
+        "crypto": {
+            # Statisch — WireGuard nutzt immer diese Primitive, unabhaengig
+            # vom aktuellen State. Fuers Frontend-Label praktisch zu haben.
+            "kex": "Curve25519 (ECDH)",
+            "aead": "ChaCha20-Poly1305",
+            "hash": "Blake2s",
+            "protocol": "WireGuard (Noise IK Handshake)",
+            "rekey_after": "2 min / 60 MB",
+        },
+    }
+    return summary
+
+
+@app.get("/api/security/tailscale-status")
+async def api_security_tailscale_status():
+    """Live-Status der WireGuard-Verschluesselung. Keine Auth-Requirement —
+    der Status ist nicht geheim, er ist der Beweis der Verschluesselung."""
+    return _get_tailscale_status_summary()
+
+
+# ---------------------------------------------------------------------------
 # C3 Robustheits-Live-Demo (Messe-Hardening Phase C)
 # ---------------------------------------------------------------------------
 # Einziger Endpoint der Adversarial-Tests live auf dem Jetson ausfuehrt.

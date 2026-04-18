@@ -2754,6 +2754,22 @@
                             </table>
                         </div>
 
+                        <!-- Live-Beweis: WireGuard-Verschlüsselung ist tatsächlich aktiv.
+                             Refresht alle 5s wenn die Security-Section sichtbar ist;
+                             zeigt Bytes-Counter damit man live sieht dass Traffic läuft. -->
+                        <div class="settings-card" style="border:1px solid var(--mil-green,#5a9e3a)" id="tailscale-live-card">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+                                <div class="settings-card-title" style="color:var(--mil-green,#5a9e3a);margin:0">&#128274; WireGuard-Verschlüsselung — Live-Status</div>
+                                <button class="btn" onclick="refreshTailscaleStatus()" style="padding:4px 10px;font-size:var(--fs-body-sm)">&#8635; Aktualisieren</button>
+                            </div>
+                            <div id="tailscale-status-body" style="font-size:var(--fs-body);color:var(--text-secondary);line-height:1.55">
+                                <div style="color:var(--text-dim);font-style:italic">Lädt …</div>
+                            </div>
+                            <div style="margin-top:10px;padding:8px 10px;background:rgba(90,158,58,0.06);border-left:3px solid var(--mil-green,#5a9e3a);font-size:var(--fs-body-sm);color:var(--text-secondary);line-height:1.55">
+                                <strong>So liest sich diese Anzeige:</strong> <em>direct</em> = Peer-to-Peer WireGuard-Tunnel ohne Relay. Die Bytes-Counter wachsen live während SAFIR Heartbeats + Patient-Updates überträgt — jeder byte durchläuft die ChaCha20-Poly1305-Verschlüsselung.
+                            </div>
+                        </div>
+
                         <div class="settings-card" style="border:1px solid var(--info,#5DADE2)">
                             <div class="settings-card-title" style="color:var(--info,#5DADE2)">&#128260; Demo-Transport vs. Produktions-Transport</div>
                             <div style="font-size:var(--fs-body);color:var(--text-secondary);line-height:1.6">
@@ -3912,6 +3928,111 @@
 
         const nav = document.querySelector(`.settings-nav-item[data-settings="${sectionId}"]`);
         if (nav) nav.classList.add('active');
+
+        // Tailscale-Live-Status Auto-Refresh in der Security-Section:
+        // Beim Betreten der Section sofort laden + Intervall starten,
+        // beim Verlassen stoppen (spart unnötige Polls).
+        if (sectionId === 'security') {
+            refreshTailscaleStatus();
+            _startTailscaleAutoRefresh();
+        } else {
+            _stopTailscaleAutoRefresh();
+        }
+    }
+
+    // ==================== WIREGUARD LIVE-STATUS (Security-Section) ====================
+    // Ruft /api/security/tailscale-status auf, rendert eine kompakte Peer-Tabelle mit
+    // Connection-Type-Indikator (direct = gruen, relay = gelb, offline = rot) und
+    // Bytes-Counter (tx/rx). Beweist dem Messe-Besucher live dass WireGuard aktiv
+    // verschluesselt — der Bytes-Counter waechst sichtbar bei jedem Refresh.
+    let _tailscaleRefreshTimer = null;
+    function _startTailscaleAutoRefresh() {
+        if (_tailscaleRefreshTimer) return;
+        _tailscaleRefreshTimer = setInterval(refreshTailscaleStatus, 5000);
+    }
+    function _stopTailscaleAutoRefresh() {
+        if (_tailscaleRefreshTimer) {
+            clearInterval(_tailscaleRefreshTimer);
+            _tailscaleRefreshTimer = null;
+        }
+    }
+    function _formatBytes(n) {
+        if (!n || n < 0) return '0 B';
+        if (n < 1024) return n + ' B';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+        if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(2) + ' MB';
+        return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    }
+    function _formatHandshake(iso) {
+        if (!iso || iso.startsWith('0001-')) return '—';
+        try {
+            const d = new Date(iso);
+            const now = new Date();
+            const diffSec = Math.round((now - d) / 1000);
+            if (diffSec < 60)  return `vor ${diffSec}s`;
+            if (diffSec < 3600) return `vor ${Math.round(diffSec/60)} min`;
+            return d.toLocaleString('de-DE', {dateStyle: 'short', timeStyle: 'short'});
+        } catch(e) { return iso; }
+    }
+    async function refreshTailscaleStatus() {
+        const body = document.getElementById('tailscale-status-body');
+        if (!body) return;
+        try {
+            const s = await api('/api/security/tailscale-status');
+            if (!s || !s.available) {
+                body.innerHTML = `<div style="color:var(--cgi-red,#cc2222)">&#9888; Tailscale nicht verfügbar${s && s.error ? ': ' + s.error.replace(/</g,'&lt;') : ''}</div>`;
+                return;
+            }
+            // Self + Crypto-Info
+            const self = s.self || {};
+            const crypto = s.crypto || {};
+            const bp = s.backend_peer;
+            // Haupt-Peer-Tile: Backend
+            let backendTile;
+            if (bp) {
+                const stateColor = bp.online && bp.is_direct ? 'var(--mil-green,#5a9e3a)'
+                                 : bp.online ? 'var(--mil-amber,#d4871a)'
+                                 : 'var(--cgi-red,#cc2222)';
+                const stateLabel = bp.online && bp.is_direct ? 'DIRECT — WireGuard P2P'
+                                 : bp.online ? 'RELAY via ' + (bp.relay_region || 'DERP')
+                                 : 'OFFLINE';
+                const statePill = `<span style="display:inline-block;padding:2px 8px;background:${stateColor};color:#000;border-radius:3px;font-weight:800;letter-spacing:0.06em;font-size:var(--fs-body-sm)">${stateLabel}</span>`;
+                backendTile = `
+                    <div style="padding:12px;background:var(--bg-elevated);border-left:3px solid ${stateColor};margin-bottom:10px">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+                            <span style="font-weight:700;color:var(--text-primary)">&#9673; ${bp.hostname || bp.tailscale_ip}</span>
+                            <span style="font-family:monospace;color:var(--text-dim);font-size:var(--fs-body-sm)">${bp.tailscale_ip}</span>
+                            ${statePill}
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px 16px;font-size:var(--fs-body-sm);color:var(--text-secondary)">
+                            <div><span style="color:var(--text-dim)">Endpunkt:</span> <span style="font-family:monospace">${bp.current_address || '—'}</span></div>
+                            <div><span style="color:var(--text-dim)">Letzter Handshake:</span> ${_formatHandshake(bp.last_handshake)}</div>
+                            <div><span style="color:var(--text-dim)">TX (verschlüsselt raus):</span> <strong style="color:var(--mil-green,#5a9e3a);font-family:monospace">${_formatBytes(bp.tx_bytes)}</strong></div>
+                            <div><span style="color:var(--text-dim)">RX (verschlüsselt rein):</span> <strong style="color:var(--mil-green,#5a9e3a);font-family:monospace">${_formatBytes(bp.rx_bytes)}</strong></div>
+                        </div>
+                    </div>`;
+            } else {
+                backendTile = `<div style="padding:10px;background:var(--bg-elevated);border-left:3px solid var(--warning);margin-bottom:10px;font-size:var(--fs-body-sm);color:var(--warning)">&#9888; Backend-Peer im Tailscale-Mesh nicht gefunden (gesucht nach: ${s.backend_host_searched || '—'})</div>`;
+            }
+            // Andere Peers kompakt auflisten
+            const otherPeers = (s.all_peers || []).filter(p => !bp || p.tailscale_ip !== bp.tailscale_ip);
+            const otherHtml = otherPeers.length
+                ? `<div style="margin-top:4px;font-size:var(--fs-body-sm);color:var(--text-dim)">Weitere Peers im Mesh: ${otherPeers.map(p => `<span style="padding:1px 6px;background:var(--bg-elevated);border-radius:3px;margin-right:4px">${p.hostname || p.tailscale_ip}<span style="color:${p.online ? 'var(--mil-green,#5a9e3a)' : 'var(--cgi-red,#cc2222)'};margin-left:4px">●</span></span>`).join('')}</div>`
+                : '';
+            // Crypto-Zeile
+            const cryptoLine = `
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px 14px;padding:8px 10px;background:var(--bg-elevated);border-radius:3px;font-size:var(--fs-body-sm);color:var(--text-secondary);margin-top:8px">
+                    <div><span style="color:var(--text-dim)">Protokoll:</span> <span style="font-family:monospace">${crypto.protocol || '—'}</span></div>
+                    <div><span style="color:var(--text-dim)">AEAD:</span> <span style="font-family:monospace">${crypto.aead || '—'}</span></div>
+                    <div><span style="color:var(--text-dim)">Key-Exchange:</span> <span style="font-family:monospace">${crypto.kex || '—'}</span></div>
+                    <div><span style="color:var(--text-dim)">Re-Key:</span> <span style="font-family:monospace">${crypto.rekey_after || '—'}</span></div>
+                </div>`;
+            // Self-Info-Zeile
+            const selfLine = `<div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:10px">Dieses Gerät: <strong style="color:var(--text-primary)">${self.hostname || '?'}</strong> (${self.tailscale_ip || '?'}) · ${self.os || '?'}</div>`;
+            body.innerHTML = selfLine + backendTile + otherHtml + cryptoLine;
+        } catch(e) {
+            body.innerHTML = `<div style="color:var(--cgi-red,#cc2222)">&#9888; Fehler: ${e.message}</div>`;
+        }
     }
 
     // ---- WebSocket ----
