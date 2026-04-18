@@ -2960,8 +2960,42 @@ async def analyze_pending_transcript(body: dict):
     is_nine_liner = bool(pt.get("is_nine_liner")) or bool((body or {}).get("force_nine_liner"))
     await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
     session_started = time.monotonic()
+    # B3 Auto-Recovery: Wenn die Segmentierung mit einer Exception crashed
+    # (LLM-Timeout, Ollama-Service tot, JSON-Parse-Fehler etc.), darf der
+    # Pending nicht im "analyzing"-Zustand haengenbleiben. Wir setzen den
+    # Flag zurueck, markieren analyzed=False + analysis_failed=True mit
+    # Error-String, und broadcasten ein analysis_failed-Event damit das
+    # Frontend einen Retry-Button anzeigen kann statt eines toten Spinners.
     try:
         created = await _segment_and_create_patients(full_text, record_time, is_nine_liner=is_nine_liner)
+    except Exception as e:
+        pt["analyzing"] = False
+        pt["analyzed"] = False
+        err_msg = str(e)[:300]
+        pt["analysis_error"] = err_msg
+        # Rate-Limit-Slot zuruecksetzen, damit der Retry nicht zusaetzlich
+        # geblockt wird — war ja kein User-Fehler.
+        _last_analysis_ts.pop(pt["id"], None)
+        print(f"[ANALYSIS-FAIL] pending={pt['id']}: {err_msg}", flush=True)
+        await broadcast({
+            "type": "analysis_failed",
+            "pending_id": pt["id"],
+            "error": err_msg,
+        })
+        try:
+            tts.speak("Analyse fehlgeschlagen. Bitte erneut versuchen.")
+        except Exception:
+            pass
+        # Swap-Mode-Recovery damit Whisper beim Retry wieder verfuegbar ist
+        if getattr(state, "swap_mode", "coexist") == "analyzing":
+            asyncio.create_task(_enter_recording_mode())
+        return {
+            "status": "error",
+            "error": f"Analyse fehlgeschlagen: {err_msg}",
+            "analysis_failed": True,
+            "pending_id": pt["id"],
+            "can_retry": True,
+        }
     finally:
         pt["analyzing"] = False
     session_duration = round(time.monotonic() - session_started, 1)
@@ -2969,6 +3003,60 @@ async def analyze_pending_transcript(body: dict):
     pt["analysis_duration_s"] = session_duration
     pt["created_patient_ids"] = created
     count = len(created)
+
+    # B2 Coaching-Hinweis: Wenn 0 Patienten oder alle erzeugten Patienten
+    # komplett leer (kein Name, kein Rang, keine Verletzungen, keine Vitals),
+    # haben wir zwar "technisch" analysiert aber nichts Brauchbares gefunden.
+    # Das passiert bei:
+    #   - Stille / nur Hintergrundrauschen
+    #   - Nicht-medizinischen Transkripten die via force_analysis trotzdem
+    #     durchgerutscht sind
+    #   - LLM-Timeout / JSON-Parse-Fehler (returnt {})
+    # Wir geben dem User explizit ein coaching-Hint + Beispiel-Saetze.
+    def _patient_is_empty(pid: str) -> bool:
+        p = state.patients.get(pid)
+        if not p:
+            return True
+        if p.get("name") and p["name"] != "Unbekannt":
+            return False
+        if p.get("rank"):
+            return False
+        if p.get("injuries"):
+            return False
+        v = p.get("vitals") or {}
+        if any(v.get(k) for k in ("pulse", "bp", "spo2", "temp", "gcs")):
+            return False
+        return True
+
+    all_empty = count == 0 or all(_patient_is_empty(pid) for pid in created)
+    coaching_hint = None
+    if all_empty and not is_nine_liner:
+        coaching_hint = {
+            "title": "Kein Patient erkannt",
+            "body": (
+                "SAFIR konnte aus dem Transkript keine Patientendaten "
+                "extrahieren. Versuchen Sie es mit einem klaren "
+                "Patienten-Start-Signal."
+            ),
+            "start_signals": [
+                '"Erster Patient ist ..."',
+                '"Nächster Verwundeter ist ..."',
+                '"Weiter mit dem nächsten ..."',
+                '"Als nächstes eine Frau/Soldatin ..."',
+            ],
+            "example": (
+                "Erster Patient Oberstabsgefreiter Müller, "
+                "Schussverletzung Oberschenkel, Puls 130, "
+                "Blutdruck 90 zu 60, Sauerstoff 92 Prozent."
+            ),
+        }
+        pt["coaching_hint"] = coaching_hint
+        print(f"[COACHING] 0/{count} nutzbare Patienten aus '{full_text[:100]}'", flush=True)
+        try:
+            tts.speak("Kein Patient erkannt. Bitte mit Erster Patient ist beginnen.")
+        except Exception:
+            pass
+
     # A5: Wenn Transkript truncated wurde, Warning dem ersten Patienten
     # anhaengen (sichtbar im Warn-Badge + Card-Body-Liste) und am
     # pending_transcript persistieren (damit Frontend es auch dort zeigen
@@ -2984,7 +3072,9 @@ async def analyze_pending_transcript(body: dict):
                 await broadcast({"type": "patient_update", "patient": first})
     # Bei 9-Liner wird der TTS-Text schon in der 9-Liner-Branch gesagt,
     # hier nur noch fuer Standard-Segmentierung ansagen.
-    if not is_nine_liner:
+    # Wenn coaching_hint aktiv: keine TTS "X Patienten angelegt" (oben
+    # schon spezifischere Ansage gemacht).
+    if not is_nine_liner and not coaching_hint:
         tts.speak(f"{count} Patient angelegt" if count == 1 else f"{count} Patienten angelegt")
     await broadcast({
         "type": "analysis_complete",
@@ -2992,6 +3082,7 @@ async def analyze_pending_transcript(body: dict):
         "count": count,
         "created_patient_ids": created,
         "duration_s": session_duration,
+        **({"coaching_hint": coaching_hint} if coaching_hint else {}),
     })
     # Swap zurueck auf Recording-Mode im Hintergrund
     if getattr(state, "swap_mode", "coexist") == "analyzing":
@@ -3002,6 +3093,7 @@ async def analyze_pending_transcript(body: dict):
         "count": count,
         "pending_id": pt["id"],
         **({"length_warning": length_warning} if length_warning else {}),
+        **({"coaching_hint": coaching_hint} if coaching_hint else {}),
     }
 
 
@@ -4230,14 +4322,24 @@ async def data_reset():
 
 
 @app.post("/api/data/test-generate")
-async def data_test_generate():
+async def data_test_generate(body: dict | None = None):
     """Erzeugt einen realistischen Mix von Test-Patienten in verschiedenen
     Zustaenden, damit der komplette Patient-Flow demonstriert werden kann
     ohne vorher diktieren zu muessen. Patient-IDs haben das Prefix TEST-
-    damit sie via /api/data/reset oder gezielt entfernt werden koennen."""
+    damit sie via /api/data/reset oder gezielt entfernt werden koennen.
+
+    B4 Preset-Demo-Szenarien: body.scenario waehlt ein vordefiniertes
+    Setup (fuer Messe-Demos wenn Live-Diktat schiefgeht). Unterstuetzte
+    Werte:
+      "standard"    (Default) - Mix aus registriert/analysiert/gemeldet
+      "mass_cas"    Massenanfall 10 Patienten, Triage-Mix rot/gelb/gruen
+      "nine_liner"  9-Liner MEDEVAC-Demo (1 Patient mit vollem 9-Liner)
+      "role1"       2 Patienten schon analyzed + synced (Uebergabe-Szene)
+    """
     require_unlocked()  # Phase 11
     import copy as _copy
     import uuid as _uuid
+    scenario = (body or {}).get("scenario", "standard")
 
     cfg = load_config()
     device_id = cfg.get("device_id", "jetson-01")
@@ -4280,131 +4382,237 @@ async def data_test_generate():
             }]
         return p
 
-    test_patients = [
-        # 1. Frisch registriert, noch nicht analysiert (Entwurf)
-        _mk_patient(
-            "Markus Hoffmann", "Hauptgefreiter",
-            [],
-            {},
-            flow_status="registered", analyzed=False, synced=False,
-            transcript_text=(
-                "Patient ist Hauptgefreiter Markus Hoffmann, 26 Jahre alt. "
-                "Beim Absitzen vom Transporter ist er ungluecklich auf das "
-                "rechte Knie gefallen. Schwellung deutlich sichtbar, "
-                "Schmerzen beim Beugen aber belastbar. Ansprechbar, orientiert. "
-                "Keine sonstigen Verletzungen erkennbar."
-            ),
-        ),
-        # 2. Frisch registriert, noch nicht analysiert
-        _mk_patient(
-            "Andrea Wenzel", "Soldatin",
-            [],
-            {},
-            flow_status="registered", analyzed=False, synced=False,
-            transcript_text=(
-                "Soldatin Andrea Wenzel, 23 Jahre, hat sich beim Hantieren mit dem "
-                "Spaten eine oberflaechliche Schnittwunde am linken Unterarm "
-                "zugezogen. Circa acht Zentimeter lang, leicht blutend, aber "
-                "kein pulsierender Blutaustritt. Druckverband angelegt, "
-                "Kreislauf stabil."
-            ),
-        ),
-        # 3. Analysiert, noch nicht gemeldet — Transkript passt zu Analyse
-        _mk_patient(
-            "Stefan Becker", "Stabsunteroffizier",
-            ["Splitterverletzung re. Oberschenkel", "moderate Blutung"],
-            {"pulse": "98", "spo2": "94", "bp": "110/70"},
-            flow_status="analyzed", analyzed=True, synced=False,
-            transcript_text=(
-                "Verwundeter ist Stabsunteroffizier Stefan Becker, 31 Jahre. "
-                "Splitterverletzung am rechten Oberschenkel, moderate Blutung "
-                "am Ausgang. Druckverband direkt angelegt, kein Tourniquet noetig. "
-                "Puls 98, Sauerstoff 94 Prozent, Blutdruck 110 zu 70. "
-                "Patient ist ansprechbar und orientiert."
-            ),
-        ),
-        # 4. Analysiert, noch nicht gemeldet
-        _mk_patient(
-            "Lea Schwarz", "Hauptgefreite",
-            ["Prellung Brustkorb", "Atemnot"],
-            {"pulse": "115", "spo2": "89", "resp_rate": "24"},
-            flow_status="analyzed", analyzed=True, synced=False,
-            transcript_text=(
-                "Hauptgefreite Lea Schwarz, 24 Jahre. Thoraxprellung links nach "
-                "Sturz gegen den Turmkranz. Starke Atemnot, Atemfrequenz bei 24, "
-                "Sauerstoff nur 89 Prozent. Puls tachykard 115, keine sichtbare "
-                "offene Verletzung. Verdacht auf Pneumothorax, sofortige "
-                "Sauerstoffgabe eingeleitet."
-            ),
-        ),
-        # 5. An Surface gemeldet (BAT-Sicht), Phase 0, noch keine Triage
-        _mk_patient(
-            "Tobias Krueger", "Feldwebel",
-            ["Schussverletzung li. Unterschenkel", "Tourniquet angelegt"],
-            {"pulse": "132", "spo2": "92", "bp": "95/60"},
-            flow_status="reported", analyzed=True, synced=True,
-            transcript_text=(
-                "Feldwebel Tobias Krueger, 34 Jahre. Schussverletzung am linken "
-                "Unterschenkel, starke arterielle Blutung am Durchschuss. "
-                "Tourniquet oberhalb der Verletzung angelegt, Blutung "
-                "kontrolliert. Puls 132 tachykard, Blutdruck 95 zu 60, "
-                "Sauerstoffsaettigung 92 Prozent. Dringend, Abtransport "
-                "erforderlich."
-            ),
-        ),
-        # 6. In Role 1 angekommen, Triage T2 gesetzt
-        _mk_patient(
-            "Julia Mueller", "Oberleutnant",
-            ["Kopfprellung", "Beinfraktur"],
-            {"pulse": "88", "spo2": "97", "bp": "120/80", "gcs": "14"},
-            flow_status="reported", analyzed=True, synced=True,
-            triage="T2", current_role="role1",
-            transcript_text=(
-                "Oberleutnant Julia Mueller, 29 Jahre. Nach Fahrzeugunfall "
-                "Kopfprellung mit kurzer Bewusstlosigkeit, jetzt wieder "
-                "ansprechbar, GCS 14. Zusaetzlich geschlossene Fraktur am "
-                "rechten Unterschenkel. Puls 88, Sauerstoff 97 Prozent, "
-                "Blutdruck 120 zu 80 stabil. Schiene angelegt."
-            ),
-        ),
-    ]
+    # B4: Szenario-spezifische Patienten-Listen. Der "standard"-Zweig
+    # enthaelt die urspruengliche 6-Patient-Demo + 2 pending Transkripte
+    # (bleibt unveraendert). Andere Szenarien definieren eigene Listen.
+    if scenario == "mass_cas":
+        # Massenanfall von Verletzten: 10 Patienten in Role 1 mit
+        # Triage-Mix (rot/gelb/gruen), verschiedenen Verletzungen. Demo
+        # zeigt Triage-Counter + taktische Karte mit allen Markern.
+        test_patients = [
+            _mk_patient("Lars Neumann", "Unteroffizier",
+                ["Splitterverletzung Thorax", "Pneumothorax"],
+                {"pulse": "140", "spo2": "84", "bp": "85/50", "resp_rate": "32"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T1", current_role="role1",
+                transcript_text="Unteroffizier Neumann, Thorax-Splitter, Pneumothorax, Puls 140, SpO2 84 Prozent, kritisch."),
+            _mk_patient("Sandra Wolf", "Hauptgefreite",
+                ["Schussverletzung Abdomen", "starke Blutung"],
+                {"pulse": "128", "spo2": "88", "bp": "90/55"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T1", current_role="role1",
+                transcript_text="Hauptgefreite Wolf, Bauchschuss, starke innere Blutung, Puls 128, Blutdruck 90 zu 55."),
+            _mk_patient("Martin Fischer", "Stabsgefreiter",
+                ["Amputation Unterschenkel links", "Tourniquet"],
+                {"pulse": "135", "spo2": "91", "bp": "100/60"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T1", current_role="role1",
+                transcript_text="Stabsgefreiter Fischer, Unterschenkel-Amputation links, Tourniquet gesetzt."),
+            _mk_patient("Elena Krause", "Feldwebelin",
+                ["Oberschenkelfraktur", "Schocksymptomatik"],
+                {"pulse": "118", "spo2": "93", "bp": "105/65"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T2", current_role="role1",
+                transcript_text="Feldwebelin Krause, Oberschenkelfraktur, Schocksymptomatik, Puls 118."),
+            _mk_patient("Thomas Richter", "Obergefreiter",
+                ["Verbrennung 2. Grades Arm"],
+                {"pulse": "105", "spo2": "96", "bp": "130/80"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T2", current_role="role1",
+                transcript_text="Obergefreiter Richter, Verbrennung zweiten Grades rechter Arm, circa 8 Prozent."),
+            _mk_patient("Nina Berger", "Leutnant",
+                ["Kopfplatzwunde", "GCS 13"],
+                {"pulse": "95", "spo2": "97", "bp": "125/75", "gcs": "13"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T2", current_role="role1",
+                transcript_text="Leutnant Berger, Kopfplatzwunde, GCS 13, orientiert aber benommen."),
+            _mk_patient("Peter Schmitt", "Hauptmann",
+                ["Rippenprellung"],
+                {"pulse": "85", "spo2": "98", "bp": "130/82"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T3", current_role="role1",
+                transcript_text="Hauptmann Schmitt, Rippenprellung links, ansprechbar, stabil."),
+            _mk_patient("Anne Klein", "Soldatin",
+                ["Schnittwunde Hand"],
+                {"pulse": "78", "spo2": "99", "bp": "120/80"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T3", current_role="role1",
+                transcript_text="Soldatin Klein, Schnittwunde linke Hand, Druckverband, stabil."),
+            _mk_patient("Daniel Walter", "Gefreiter",
+                ["Distorsion Sprunggelenk"],
+                {"pulse": "80", "spo2": "98", "bp": "122/78"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T3", current_role="role1",
+                transcript_text="Gefreiter Walter, Sprunggelenks-Distorsion, Schiene angelegt."),
+            _mk_patient("Sabine Hoffmann", "Oberfeldwebel",
+                ["Finaler Zustand, keine Reaktion"],
+                {"pulse": "0", "spo2": ""},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T4", current_role="role1",
+                transcript_text="Oberfeldwebel Hoffmann, keine Vitalzeichen, schwarze Sichtung."),
+        ]
+        pending_texts = []
 
+    elif scenario == "nine_liner":
+        # 1 Patient mit vollstaendigem 9-Liner (kein pending Diktat, direkt
+        # als analyzed Patient mit template_type=9liner hingelegt).
+        p9 = _mk_patient("MEDEVAC Request", "", [],
+            {}, flow_status="analyzed", analyzed=True, synced=False,
+            current_role="phase0",
+            transcript_text=(
+                "Neun liner starten. Zeile eins MGRS drei zwei uniform mike charlie "
+                "eins zwei drei vier fuenf sechs sieben acht. Zeile zwei Funkfrequenz "
+                "vierzig komma zwei fuenf null Megahertz, Rufzeichen alpha zwei sechs. "
+                "Zeile drei zwei Patienten Dringlichkeit alpha. Zeile vier bravo, Winde. "
+                "Zeile fuenf beide liegend. Zeile sechs papa. Zeile sieben charlie, Rauch. "
+                "Zeile acht charlie NATO. Zeile neun november, offenes Gelaende."
+            ))
+        p9["template_type"] = "9liner"
+        p9["nine_liner"] = {
+            "line1": "32U MC 12345678",
+            "line2": "40.250 MHz, Alpha 2-6",
+            "line3": "2 A",
+            "line4": "B — Winde",
+            "line5": "L2",
+            "line6": "P — moeglicher Feind",
+            "line7": "C — Rauch",
+            "line8": "C — NATO",
+            "line9": "N — keine, offenes Gelaende",
+        }
+        test_patients = [p9]
+        pending_texts = []
+
+    elif scenario == "role1":
+        # 2 Patienten die schon in Role 1 angekommen + analyzed + synced
+        # sind. Demo-Szene fuer Role-1-Uebergabe / Triage-Entscheidungen.
+        test_patients = [
+            _mk_patient("Christian Braun", "Hauptfeldwebel",
+                ["Schussverletzung Oberschenkel", "Tourniquet"],
+                {"pulse": "112", "spo2": "94", "bp": "105/65"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T1", current_role="role1",
+                transcript_text="Hauptfeldwebel Braun, Schussverletzung Oberschenkel, Tourniquet seit 45 Minuten."),
+            _mk_patient("Monika Weber", "Oberfeldwebelin",
+                ["Stichverletzung Abdomen"],
+                {"pulse": "102", "spo2": "96", "bp": "115/70"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T2", current_role="role1",
+                transcript_text="Oberfeldwebelin Weber, Stichverletzung rechter Oberbauch, stabil."),
+        ]
+        pending_texts = []
+
+    else:  # "standard" — Default: urspruengliche 6er-Demo + 2 Pending
+        test_patients = [
+            _mk_patient(
+                "Markus Hoffmann", "Hauptgefreiter", [], {},
+                flow_status="registered", analyzed=False, synced=False,
+                transcript_text=(
+                    "Patient ist Hauptgefreiter Markus Hoffmann, 26 Jahre alt. "
+                    "Beim Absitzen vom Transporter ist er ungluecklich auf das "
+                    "rechte Knie gefallen. Schwellung deutlich sichtbar, "
+                    "Schmerzen beim Beugen aber belastbar. Ansprechbar, orientiert. "
+                    "Keine sonstigen Verletzungen erkennbar."
+                ),
+            ),
+            _mk_patient(
+                "Andrea Wenzel", "Soldatin", [], {},
+                flow_status="registered", analyzed=False, synced=False,
+                transcript_text=(
+                    "Soldatin Andrea Wenzel, 23 Jahre, hat sich beim Hantieren mit dem "
+                    "Spaten eine oberflaechliche Schnittwunde am linken Unterarm "
+                    "zugezogen. Circa acht Zentimeter lang, leicht blutend, aber "
+                    "kein pulsierender Blutaustritt. Druckverband angelegt, "
+                    "Kreislauf stabil."
+                ),
+            ),
+            _mk_patient(
+                "Stefan Becker", "Stabsunteroffizier",
+                ["Splitterverletzung re. Oberschenkel", "moderate Blutung"],
+                {"pulse": "98", "spo2": "94", "bp": "110/70"},
+                flow_status="analyzed", analyzed=True, synced=False,
+                transcript_text=(
+                    "Verwundeter ist Stabsunteroffizier Stefan Becker, 31 Jahre. "
+                    "Splitterverletzung am rechten Oberschenkel, moderate Blutung "
+                    "am Ausgang. Druckverband direkt angelegt, kein Tourniquet noetig. "
+                    "Puls 98, Sauerstoff 94 Prozent, Blutdruck 110 zu 70. "
+                    "Patient ist ansprechbar und orientiert."
+                ),
+            ),
+            _mk_patient(
+                "Lea Schwarz", "Hauptgefreite",
+                ["Prellung Brustkorb", "Atemnot"],
+                {"pulse": "115", "spo2": "89", "resp_rate": "24"},
+                flow_status="analyzed", analyzed=True, synced=False,
+                transcript_text=(
+                    "Hauptgefreite Lea Schwarz, 24 Jahre. Thoraxprellung links nach "
+                    "Sturz gegen den Turmkranz. Starke Atemnot, Atemfrequenz bei 24, "
+                    "Sauerstoff nur 89 Prozent. Puls tachykard 115, keine sichtbare "
+                    "offene Verletzung. Verdacht auf Pneumothorax, sofortige "
+                    "Sauerstoffgabe eingeleitet."
+                ),
+            ),
+            _mk_patient(
+                "Tobias Krueger", "Feldwebel",
+                ["Schussverletzung li. Unterschenkel", "Tourniquet angelegt"],
+                {"pulse": "132", "spo2": "92", "bp": "95/60"},
+                flow_status="reported", analyzed=True, synced=True,
+                transcript_text=(
+                    "Feldwebel Tobias Krueger, 34 Jahre. Schussverletzung am linken "
+                    "Unterschenkel, starke arterielle Blutung am Durchschuss. "
+                    "Tourniquet oberhalb der Verletzung angelegt, Blutung "
+                    "kontrolliert. Puls 132 tachykard, Blutdruck 95 zu 60, "
+                    "Sauerstoffsaettigung 92 Prozent. Dringend, Abtransport "
+                    "erforderlich."
+                ),
+            ),
+            _mk_patient(
+                "Julia Mueller", "Oberleutnant",
+                ["Kopfprellung", "Beinfraktur"],
+                {"pulse": "88", "spo2": "97", "bp": "120/80", "gcs": "14"},
+                flow_status="reported", analyzed=True, synced=True,
+                triage="T2", current_role="role1",
+                transcript_text=(
+                    "Oberleutnant Julia Mueller, 29 Jahre. Nach Fahrzeugunfall "
+                    "Kopfprellung mit kurzer Bewusstlosigkeit, jetzt wieder "
+                    "ansprechbar, GCS 14. Zusaetzlich geschlossene Fraktur am "
+                    "rechten Unterschenkel. Puls 88, Sauerstoff 97 Prozent, "
+                    "Blutdruck 120 zu 80 stabil. Schiene angelegt."
+                ),
+            ),
+        ]
+        pending_texts = [
+            (
+                "Erster Patient ist Oberstabsgefreiter Benjamin Richter, maennlich, "
+                "27 Jahre. Schussverletzung am rechten Oberarm mit Durchschuss, "
+                "starke Blutung. Druckverband angelegt, Blutung unter Kontrolle. "
+                "Puls 118 tachykard, Sauerstoff 93 Prozent, Blutdruck 100 zu 60. "
+                "Patient ansprechbar aber blass. "
+                "Als naechstes haben wir Stabsunteroffizierin Maria Lange, "
+                "weiblich, 32 Jahre. Verbrennung zweiten Grades an der linken "
+                "Handflaeche, etwa 3 Prozent der Koerperoberflaeche. "
+                "Schmerzen stark, Vitalwerte stabil, Puls 96, Sauerstoff 97 Prozent, "
+                "Blutdruck 130 zu 85. Kuehlung mit steriler Kompresse angelegt."
+            ),
+            (
+                "Erster Patient: Obergefreiter Kevin Weigel, 22 Jahre. Nach Sturz "
+                "von der Ladeflaeche Verdacht auf Platzwunde am Hinterkopf, "
+                "blutet staerker. Druckverband am Kopf angelegt. Patient wirkt "
+                "benommen, GCS 13. Puls 92, Sauerstoff 96 Prozent, Blutdruck "
+                "115 zu 75. Vorsichtige Lagerung bis zum Transport. "
+                "Nachdem wir Weigel versorgt haben, zweiter Patient: Leutnant "
+                "Katharina Vogel, 28 Jahre. Distorsion des rechten Sprunggelenks "
+                "mit deutlicher Schwellung. Keine offene Verletzung, Durchblutung "
+                "und Sensibilitaet am Fuss intakt. Vitalwerte unauffaellig, "
+                "Puls 78, Sauerstoff 98 Prozent. Schiene angelegt, Schmerzen "
+                "moderat."
+            ),
+        ]
+
+    # Gemeinsamer Code: Patienten in state ablegen, pending anlegen
     for p in test_patients:
         state.patients[p["patient_id"]] = p
 
-    # Zusaetzlich zwei pending Transkripte mit je 2 Patienten — damit der
-    # LLM-Analyse-Flow getestet werden kann (Segmenter splittet das
-    # Transkript, Qwen extrahiert 9-Liner-Felder, Post-Merge 3 merged).
     import uuid as _uuid_p
-    pending_texts = [
-        # Pending 1: Zwei Patienten in einem Diktat
-        (
-            "Erster Patient ist Oberstabsgefreiter Benjamin Richter, maennlich, "
-            "27 Jahre. Schussverletzung am rechten Oberarm mit Durchschuss, "
-            "starke Blutung. Druckverband angelegt, Blutung unter Kontrolle. "
-            "Puls 118 tachykard, Sauerstoff 93 Prozent, Blutdruck 100 zu 60. "
-            "Patient ansprechbar aber blass. "
-            "Als naechstes haben wir Stabsunteroffizierin Maria Lange, "
-            "weiblich, 32 Jahre. Verbrennung zweiten Grades an der linken "
-            "Handflaeche, etwa 3 Prozent der Koerperoberflaeche. "
-            "Schmerzen stark, Vitalwerte stabil, Puls 96, Sauerstoff 97 Prozent, "
-            "Blutdruck 130 zu 85. Kuehlung mit steriler Kompresse angelegt."
-        ),
-        # Pending 2: Nochmal zwei Patienten
-        (
-            "Erster Patient: Obergefreiter Kevin Weigel, 22 Jahre. Nach Sturz "
-            "von der Ladeflaeche Verdacht auf Platzwunde am Hinterkopf, "
-            "blutet staerker. Druckverband am Kopf angelegt. Patient wirkt "
-            "benommen, GCS 13. Puls 92, Sauerstoff 96 Prozent, Blutdruck "
-            "115 zu 75. Vorsichtige Lagerung bis zum Transport. "
-            "Nachdem wir Weigel versorgt haben, zweiter Patient: Leutnant "
-            "Katharina Vogel, 28 Jahre. Distorsion des rechten Sprunggelenks "
-            "mit deutlicher Schwellung. Keine offene Verletzung, Durchblutung "
-            "und Sensibilitaet am Fuss intakt. Vitalwerte unauffaellig, "
-            "Puls 78, Sauerstoff 98 Prozent. Schiene angelegt, Schmerzen "
-            "moderat."
-        ),
-    ]
     created_pending = []
     for idx, full_text in enumerate(pending_texts, start=1):
         pending_id = f"TEST-P{idx:02d}-{_uuid_p.uuid4().hex[:6].upper()}"

@@ -2840,6 +2840,34 @@
                                 <button class="btn" style="background:var(--warning);color:#000" onclick="resetAllData()">Alle Daten löschen</button>
                             </div>
                         </div>
+
+                        <!-- B4 Preset-Demo-Szenarien — Safety-Net wenn Live-Diktat schiefgeht.
+                             1 Klick laedt ein vordefiniertes Patient-Set.
+                             Jeder Preset triggert reset + test-generate mit scenario-Param. -->
+                        <div class="settings-card" style="border:1px solid var(--mil-tan,#c8b878)">
+                            <div class="settings-card-title" style="color:var(--mil-tan,#c8b878)">&#127914; Demo-Szenarien</div>
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:12px">
+                                Vordefinierte Patient-Sets fuer Messe-Vorfuehrungen. 1 Klick laedt Daten + zeigt sie auf Karte + Liste. Vorheriger Bestand wird vorher geloescht.
+                            </div>
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
+                                <button class="btn" onclick="loadDemoScenario('standard')" style="padding:12px;text-align:left;line-height:1.4">
+                                    <div style="font-weight:700;font-size:var(--fs-body)">&#128203; Standard-Mix</div>
+                                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:2px">6 Patienten (Entwurf / analysiert / gemeldet) + 2 Pending-Transkripte fuer Live-Analyse</div>
+                                </button>
+                                <button class="btn" onclick="loadDemoScenario('mass_cas')" style="padding:12px;text-align:left;line-height:1.4">
+                                    <div style="font-weight:700;font-size:var(--fs-body)">&#9876; Massenanfall</div>
+                                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:2px">10 Patienten in Role 1, Triage-Mix rot/gelb/gruen/schwarz</div>
+                                </button>
+                                <button class="btn" onclick="loadDemoScenario('nine_liner')" style="padding:12px;text-align:left;line-height:1.4">
+                                    <div style="font-weight:700;font-size:var(--fs-body)">&#128760; 9-Liner MEDEVAC</div>
+                                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:2px">1 Patient mit vollstaendig ausgefuelltem NATO-9-Liner</div>
+                                </button>
+                                <button class="btn" onclick="loadDemoScenario('role1')" style="padding:12px;text-align:left;line-height:1.4">
+                                    <div style="font-weight:700;font-size:var(--fs-body)">&#127973; Role-1-Uebergabe</div>
+                                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:2px">2 Patienten schon analysiert + gemeldet, Triage gesetzt</div>
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                 </div>
@@ -3333,6 +3361,34 @@
         }
     }
 
+    // B4 Preset-Demo-Szenarien. Reset + test-generate mit scenario-Param.
+    // Der Reset ist bewusst vor dem Generate, damit nicht zwei Presets
+    // zusammen in der Liste landen (Demo-Szene soll immer sauber aussehen).
+    async function loadDemoScenario(scenario) {
+        const SCENARIO_LABELS = {
+            'standard':   'Standard-Mix (6 Patienten + 2 Pending)',
+            'mass_cas':   'Massenanfall (10 Patienten)',
+            'nine_liner': '9-Liner MEDEVAC',
+            'role1':      'Role-1-Uebergabe (2 Patienten)',
+        };
+        const label = SCENARIO_LABELS[scenario] || scenario;
+        if (!confirm(`Demo-Szenario "${label}" laden?\n\nAlle bestehenden Patienten auf diesem Geraet werden vorher geloescht.`)) return;
+        try {
+            await api('/api/data/reset', 'POST');
+            const res = await api('/api/data/test-generate', 'POST', { scenario });
+            if (res && res.error) {
+                showToast('Fehler: ' + res.error, '&#9888;');
+                return;
+            }
+            const n = (res && res.created) || 0;
+            const np = (res && res.pending_created) || 0;
+            const suffix = np > 0 ? ` + ${np} Pending` : '';
+            showToast(`Demo geladen: ${n} Patient${n === 1 ? '' : 'en'}${suffix}`, '&#9989;');
+        } catch(e) {
+            showToast('Demo-Szenario konnte nicht geladen werden: ' + e.message, '&#9888;');
+        }
+    }
+
     // Phase 6 — Export in DOCX/PDF/JSON/XML.
     // JSON + XML: GET (Browser kann direkt via <a href> herunterladen)
     // DOCX + PDF: POST (Backend generiert Datei, FileResponse). Für POST
@@ -3732,6 +3788,22 @@
                 document.querySelectorAll('.patient-card-details.analyzing').forEach(el => el.classList.remove('analyzing'));
                 document.querySelectorAll(`.patient-card-details[data-pid="${msg.patient_id}"]`).forEach(el => el.classList.add('analyzing'));
                 { const p = patients[msg.patient_id]; if (p) updateActivityDetail(`${p.name || msg.patient_id}...`); }
+                break;
+            case 'analysis_failed':
+                // B3 Auto-Recovery: Analyse ist gecrasht (LLM-Timeout, Ollama-
+                // Crash, JSON-Parse-Error). Pending-Card bekommt einen Error-
+                // Zustand mit Retry-Button statt hangender Spinner.
+                {
+                    const entry = pendingTranscripts[msg.pending_id];
+                    if (entry) {
+                        entry.analyzing = false;
+                        entry.analyzed = false;
+                        entry.analysis_failed = true;
+                        entry.analysis_error = msg.error || 'unbekannt';
+                        renderPendingCards();
+                    }
+                    showToast('Analyse fehlgeschlagen — Retry moeglich', '&#9888;');
+                }
                 break;
             case 'model_swap':
                 // GPU-Swap beginnt: Qwen kommt rein, Whisper raus (oder umgekehrt)
@@ -4205,7 +4277,13 @@
             const ts = e.date && e.time ? `${e.date} ${e.time}` : (e.time || '');
             const chars = (e.full_text || '').length;
             let statusBadge, borderColor;
-            if (e.analyzing) {
+            // B3 Auto-Recovery: Error-Zustand hat hoechste Prio in der
+            // Status-Anzeige, damit der User sieht dass Retry moeglich ist.
+            if (e.analysis_failed) {
+                const errShort = (e.analysis_error || 'unbekannter Fehler').slice(0, 60);
+                statusBadge = `<span style="display:inline-block;padding:2px 8px;background:rgba(204,34,34,0.2);color:var(--cgi-red,#cc2222);border-radius:4px;font-size:var(--fs-body-sm);font-weight:700" title="${errShort.replace(/"/g,'&quot;')}">&#9888; ANALYSE FEHLGESCHLAGEN</span>`;
+                borderColor = 'var(--cgi-red,#cc2222)';
+            } else if (e.analyzing) {
                 statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(93,173,226,0.18);color:#5DADE2;border-radius:4px;font-size:var(--fs-body-sm);font-weight:700">WIRD ANALYSIERT…</span>';
                 borderColor = '#5DADE2';
             } else if (e.analyzed) {
@@ -4220,8 +4298,16 @@
                 borderColor = 'var(--mil-tan,#c8b878)';
             }
             const safeText = (e.full_text || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+            // B3: Bei analysis_failed ist Retry = "nochmal versuchen" Label,
+            // Button wird NICHT disabled. Bei Erfolg/analyzing weiterhin disabled.
             const analyzeDisabled = (e.analyzing || e.analyzed) ? 'disabled style="opacity:0.4;cursor:not-allowed"' : '';
-            const analyzeLabel = e.analyzed ? '&#9989; Analysiert' : '&#129504; KI-Analyse';
+            let analyzeLabel;
+            if (e.analyzed) analyzeLabel = '&#9989; Analysiert';
+            else if (e.analysis_failed) analyzeLabel = '&#8635; Erneut versuchen';
+            else analyzeLabel = '&#129504; KI-Analyse';
+            const errorBlock = e.analysis_failed && e.analysis_error
+                ? `<div style="margin-top:8px;padding:6px 10px;background:rgba(204,34,34,0.1);border-left:3px solid var(--cgi-red,#cc2222);font-size:var(--fs-body-sm);color:var(--cgi-red,#cc2222)"><strong>Fehler:</strong> ${(e.analysis_error || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>`
+                : '';
             return `
             <details class="pending-entry" style="background:var(--bg-surface);border:1px solid ${borderColor};border-radius:var(--radius);overflow:hidden" data-pid="${e.id}">
                 <summary style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
@@ -4232,6 +4318,7 @@
                 </summary>
                 <div style="padding:10px 12px;border-top:1px solid var(--border);background:var(--bg-surface2)">
                     <div style="max-height:220px;overflow-y:auto;font-size:var(--fs-body);line-height:1.5;white-space:pre-wrap;color:var(--text-primary);padding:6px;background:var(--bg-elevated);border-radius:var(--radius)">${safeText}</div>
+                    ${errorBlock}
                     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
                         <button class="btn btn-cgi" onclick="analyzePendingById('${e.id}')" ${analyzeDisabled} style="padding:6px 12px;font-size:var(--fs-body-sm);font-weight:700">${analyzeLabel}</button>
                         <button class="btn" onclick="discardPendingById('${e.id}')" style="padding:6px 12px;font-size:var(--fs-body-sm);color:var(--cgi-red);border-color:var(--cgi-red)">Verwerfen</button>
@@ -4382,13 +4469,80 @@
             return;
         }
         if (res.status !== 'ok') {
+            // B3: Wenn Backend ein analysis_failed mit can_retry schickt,
+            // local state im Pending-Eintrag direkt setzen damit das UI
+            // den Retry-Button zeigt — auch ohne WebSocket-Roundtrip.
+            if (res.analysis_failed && res.pending_id) {
+                const entry = pendingTranscripts[res.pending_id];
+                if (entry) {
+                    entry.analyzing = false;
+                    entry.analyzed = false;
+                    entry.analysis_failed = true;
+                    entry.analysis_error = res.error || 'unbekannt';
+                    renderPendingCards();
+                }
+            }
             showToast('Analyse-Fehler: ' + (res.error || 'unbekannt'), '&#9888;');
             return;
+        }
+        // B3: Retry-Erfolg — analysis_failed-Flag zuruecksetzen
+        const entry = pendingTranscripts[id];
+        if (entry && entry.analysis_failed) {
+            entry.analysis_failed = false;
+            entry.analysis_error = null;
         }
         // A5: Truncation-Warning ausgeben falls vorhanden
         if (res.length_warning) {
             showToast(res.length_warning, '&#9888;');
         }
+        // B2: Coaching-Hinweis bei leerem Ergebnis. Analyse war "erfolgreich"
+        // (kein Fehler) aber hat keine nutzbaren Patientendaten extrahiert.
+        // Zeigen wir dem User einen hilfreichen Dialog mit Beispiel-Saetzen
+        // statt ihn im Unklaren zu lassen ("analyzed: true, 0 patients").
+        if (res.coaching_hint) {
+            showCoachingDialog(res.coaching_hint, id);
+        }
+    }
+
+    // B2: Coaching-Modal-Dialog bei leerem Extraktionsergebnis.
+    // Erscheint in der Mitte des Screens mit Schatten-Overlay. Enthaelt:
+    //   - Titel + Begruendung
+    //   - Liste der erkannten Start-Signale
+    //   - Konkretes Beispiel-Diktat
+    //   - "Nochmal versuchen"-Button (verwirft Pending + startet Aufnahme)
+    //   - "Ignorieren"-Button (schliesst nur den Dialog)
+    function showCoachingDialog(hint, pendingId) {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        const esc = s => (s || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        const signalsHtml = (hint.start_signals || []).map(s => `<li>${esc(s)}</li>`).join('');
+        modal.innerHTML = `
+            <div style="background:var(--bg-surface);border:2px solid var(--mil-amber,#d4871a);border-radius:var(--radius);max-width:540px;width:100%;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                    <span style="font-size:28px">&#128161;</span>
+                    <h2 style="margin:0;color:var(--mil-amber,#d4871a);font-size:var(--fs-h2);letter-spacing:0.08em;text-transform:uppercase">${esc(hint.title || 'Tipp')}</h2>
+                </div>
+                <p style="margin:0 0 14px;color:var(--text-primary);font-size:var(--fs-body)">${esc(hint.body || '')}</p>
+                ${signalsHtml ? `
+                    <div style="margin-bottom:14px">
+                        <div style="font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;font-size:var(--fs-body-sm);margin-bottom:6px">Start-Signale die SAFIR erkennt:</div>
+                        <ul style="margin:0;padding-left:20px;color:var(--text-primary);font-size:var(--fs-body-sm);line-height:1.6">${signalsHtml}</ul>
+                    </div>
+                ` : ''}
+                ${hint.example ? `
+                    <div style="margin-bottom:18px;padding:10px 12px;background:var(--bg-elevated);border-left:3px solid var(--mil-green,#5a9e3a);font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm);color:var(--text-primary);line-height:1.5">
+                        <div style="color:var(--mil-green,#5a9e3a);font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px">Beispiel:</div>
+                        "${esc(hint.example)}"
+                    </div>
+                ` : ''}
+                <div style="display:flex;gap:8px;justify-content:flex-end">
+                    <button class="btn" onclick="this.closest('.modal-overlay').remove()" style="padding:8px 16px">Schließen</button>
+                    <button class="btn btn-cgi" onclick="this.closest('.modal-overlay').remove(); discardPendingById('${pendingId}')" style="padding:8px 16px;font-weight:700">Pending verwerfen & neu aufnehmen</button>
+                </div>
+            </div>`;
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
     }
 
     // A4: Countdown-Disable fuer Analyse-Button im Pending-Card. Findet alle
