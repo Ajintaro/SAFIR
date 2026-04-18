@@ -1529,6 +1529,31 @@
             background: repeating-linear-gradient(135deg, #3a3a3a, #3a3a3a 3px, #2e2e2e 3px, #2e2e2e 6px);
             border-radius: 3px;
         }
+
+        /* Confidence-Dots (Messe-Hardening B1): Kleine farbige Punkte neben
+           jedem extrahierten Feld. Gruen=hoch (>=0.9), Gelb=mittel (0.6-0.9),
+           Rot=niedrig (<0.6). Tooltip mit genauem Wert + Erklaerung. */
+        .cf-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+            vertical-align: middle;
+            box-shadow: 0 0 3px currentColor;
+            flex-shrink: 0;
+        }
+        .cf-dot.cf-high { background: #2ECC71; color: #2ECC71; }  /* gruen */
+        .cf-dot.cf-med  { background: #d4871a; color: #d4871a; }  /* amber */
+        .cf-dot.cf-low  { background: #cc2222; color: #cc2222; }  /* rot */
+        /* Legende am Card-Body */
+        .cf-legend {
+            display: inline-flex; gap: 12px; align-items: center;
+            font-size: var(--fs-body-sm);
+            color: var(--text-dim);
+            margin-top: 6px;
+            letter-spacing: 0.05em;
+        }
+        .cf-legend .cf-legend-item { display: inline-flex; align-items: center; }
         .patient-card-details summary .p-name {
             font-weight: var(--fw-semibold);
             font-size: var(--fs-body);
@@ -5507,6 +5532,39 @@
         }).join('');
     }
 
+    // ==================== CONFIDENCE-BADGES (B1) ====================
+    // Rendert einen kleinen farbigen Punkt neben jedem extrahierten Feld,
+    // der auf einen Blick zeigt wie sicher das System sich bei diesem
+    // Wert ist. Gruen >=0.9, Gelb 0.6-0.9, Rot <0.6.
+    //
+    // Verwendung:
+    //   cfDot(p.confidences?.name)               -> HTML-String oder ''
+    //   cfDot(p.confidences?.vitals?.pulse, 'P') -> zusaetzlicher Label fuers Tooltip
+    //
+    // Das Tooltip enthaelt den exakten Score + eine kurze Erklaerung,
+    // damit der Messe-Besucher nachvollziehen kann warum das System
+    // skeptisch ist. Kein separater Click-Handler noetig — der native
+    // Browser-Tooltip erscheint bei Hover.
+    function cfClass(score) {
+        if (score == null || isNaN(score)) return '';
+        if (score >= 0.9) return 'cf-high';
+        if (score >= 0.6) return 'cf-med';
+        return 'cf-low';
+    }
+    function cfLabel(score) {
+        if (score == null || isNaN(score)) return 'unbekannt';
+        if (score >= 0.9) return 'hohe Konfidenz';
+        if (score >= 0.6) return 'mittlere Konfidenz — bitte pruefen';
+        return 'niedrige Konfidenz — bitte manuell verifizieren';
+    }
+    function cfDot(score, hint) {
+        if (score == null || isNaN(score)) return '';
+        const cls = cfClass(score);
+        const pct = Math.round(Number(score) * 100);
+        const title = (hint ? hint + ': ' : '') + pct + '% — ' + cfLabel(score);
+        return `<span class="cf-dot ${cls}" title="${title.replace(/"/g, '&quot;')}"></span>`;
+    }
+
     // ==================== BUNDESWEHR-DIENSTGRAD-ABZEICHEN ====================
     // Zeigt das OFFIZIELLE Schulterstueck-Abzeichen der Bundeswehr (Heer)
     // fuer den uebergebenen Dienstgrad. Die SVGs stammen von Wikimedia
@@ -5643,15 +5701,25 @@
                     ? transcripts.map(t => `<div class="pt-entry"><div class="pt-time">${t.time || ''}</div><div class="pt-text">${(t.text || '').replace(/</g,'&lt;')}</div></div>`).join('')
                     : '<div style="font-size:var(--fs-body-sm);color:var(--text-dim);padding:4px 0">Keine Aufnahmen</div>';
 
+                // Confidence-Dicts aus Backend (Messe-Hardening B1).
+                // Fehlen bei alten/testdaten-Patienten -> einfach undefined,
+                // cfDot() rendert dann nichts.
+                const cf = (p.confidences && typeof p.confidences === 'object') ? p.confidences : {};
+                const cfVitals = cf.vitals || {};
+                const cfInjuries = Array.isArray(cf.injuries) ? cf.injuries : [];
+
                 const injuriesHtml = (p.injuries || []).length
-                    ? '<div class="pt-meta">' + p.injuries.map(i => `<span>${i}</span>`).join('') + '</div>'
+                    ? '<div class="pt-meta">' + p.injuries.map((inj, idx) => {
+                        const dot = cfDot(cfInjuries[idx], 'Verletzung ' + (idx + 1));
+                        return `<span>${dot}${inj}</span>`;
+                      }).join('') + '</div>'
                     : '';
 
                 const vitalsHtml = (p.vitals && (p.vitals.pulse || p.vitals.bp || p.vitals.spo2))
                     ? '<div class="pt-meta">' +
-                      (p.vitals.pulse ? `<span>P: ${p.vitals.pulse}</span>` : '') +
-                      (p.vitals.bp ? `<span>RR: ${p.vitals.bp}</span>` : '') +
-                      (p.vitals.spo2 ? `<span>SpO2: ${p.vitals.spo2}</span>` : '') +
+                      (p.vitals.pulse ? `<span>${cfDot(cfVitals.pulse, 'Puls')}P: ${p.vitals.pulse}</span>` : '') +
+                      (p.vitals.bp    ? `<span>${cfDot(cfVitals.bp, 'Blutdruck')}RR: ${p.vitals.bp}</span>` : '') +
+                      (p.vitals.spo2  ? `<span>${cfDot(cfVitals.spo2, 'SpO2')}SpO2: ${p.vitals.spo2}</span>` : '') +
                       '</div>' : '';
 
                 // 9-Liner Kompakt-Anzeige — nur wenn template_type=9liner ODER
@@ -5726,11 +5794,18 @@
                     ? `<span class="badge-sm" style="background:rgba(212,135,26,0.2);color:var(--mil-amber,#d4871a)" title="${warningsTitle}">&#9888; ${warnings.length}</span>`
                     : '';
 
+                // Name + Rank mit Confidence-Dots. Wenn kein Name da,
+                // auch kein Dot (sonst wuerde "Unbekannt" einen roten Dot
+                // bekommen was falsch waere — es ist nicht "unsicher", es
+                // ist "nicht extrahiert").
+                const nameDot = p.name ? cfDot(cf.name, 'Name') : '';
+                const rankDot = p.rank ? cfDot(cf.rank, 'Dienstgrad') : '';
+
                 return `
                 <details class="patient-card-details ${isActive ? 'active-patient' : ''} ${analyzingPids.has(p.patient_id) ? 'analyzing' : ''}" data-pid="${p.patient_id}" ${isOpen ? 'open' : ''} onclick="if(event.target.closest('summary'))selectPatient('${p.patient_id}')">
                     <summary>
                         ${rankBadgeHtml}
-                        <span class="p-name">${p.name || 'Unbekannt'}${p.rank ? ' (' + p.rank + ')' : ''}</span>
+                        <span class="p-name">${nameDot}${p.name || 'Unbekannt'}${p.rank ? ' ' + rankDot + '(' + p.rank + ')' : ''}</span>
                         <div class="p-badges">
                             ${isNlPatient ? '<span class="badge-sm" style="background:rgba(93,173,226,0.2);color:#5DADE2">&#9992; 9-Liner</span>' : ''}
                             ${warningsBadge}
@@ -5746,6 +5821,7 @@
                         ${nineLinerHtml}
                         ${warnings.length ? `<div style="margin-top:8px;padding:6px 8px;background:rgba(212,135,26,0.1);border-left:3px solid var(--mil-amber,#d4871a);font-size:var(--fs-body-sm);color:var(--mil-amber,#d4871a)"><strong>&#9888; Plausibility-Warnungen (${warnings.length}):</strong><ul style="margin:4px 0 0 16px;padding:0">${warnings.map(w => `<li>${(w||'').replace(/</g,'&lt;')}</li>`).join('')}</ul></div>` : ''}
                         ${injuriesHtml}${vitalsHtml}
+                        ${Object.keys(cf).length ? `<div class="cf-legend"><span class="cf-legend-item"><span class="cf-dot cf-high"></span>hohe Konfidenz</span><span class="cf-legend-item"><span class="cf-dot cf-med"></span>mittlere — bitte pruefen</span><span class="cf-legend-item"><span class="cf-dot cf-low"></span>niedrige — bitte verifizieren</span></div>` : ''}
                         ${fzEditHtml}
                     </div>
                 </details>`;

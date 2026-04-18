@@ -131,6 +131,15 @@ PATIENT_SCHEMA = {
     # Liste von Strings, z.B. "Puls=5000 unplausibel (erwartet 20-250)".
     # Frontend zeigt ein Warnsymbol an der Patient-Karte wenn > 0 Warnungen.
     "warnings": [],
+
+    # Confidence-Scores pro Feld (Messe-Hardening B1). Dict-Form:
+    #   {"name": 0.95, "rank": 1.0, "mechanism": 0.95,
+    #    "injuries": [0.95, 0.80], "injuries_avg": 0.88,
+    #    "vitals": {"pulse": 0.95, "bp": 0.75, "spo2": 0.95}}
+    # Werte zwischen 0.0 und 1.0 — >=0.9 gruen, 0.6-0.9 gelb, <0.6 rot.
+    # Frontend rendert kleine farbige Punkte neben jedem Feld im Patient-
+    # Card, damit Messe-Besucher sofort sehen wo das System unsicher ist.
+    "confidences": {},
 }
 
 

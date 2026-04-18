@@ -4956,6 +4956,12 @@ async def _segment_and_create_patients(full_text: str, record_time: str, is_nine
                 # die Extraktion unsicher oder unplausibel war.
                 if enrichment.get("warnings"):
                     patient["warnings"] = list(enrichment["warnings"])
+                # B1 Confidence-Scores pro Feld (🟢🟡🔴 im Frontend).
+                # Das Dict hat {name, rank, mechanism, injuries[], injuries_avg,
+                # vitals{pulse, bp, ...}}. Wird vom renderPatientCards auf
+                # kleine farbige Punkte neben jedem Feld gemappt.
+                if enrichment.get("confidences"):
+                    patient["confidences"] = enrichment["confidences"]
                 patient["analyzed"] = True
         except Exception as e:
             print(f"[SEGMENT] Enrichment fehlgeschlagen für {pid}: {e}", flush=True)
@@ -5082,6 +5088,19 @@ def run_patient_enrichment(text: str) -> dict:
     except Exception as e:
         print(f"[VITALS] Fehler bei Vitals-Validation: {e}", flush=True)
 
+    # Schritt 3 (B1 Messe-Hardening): Confidence-Scores pro Feld berechnen.
+    # Laeuft NACH Vitals-Validation damit nur die nach der Bereinigung noch
+    # stehenden Werte scored werden (sonst bekaemen geleerte Felder
+    # Null-Scores und wuerden im UI als rot angezeigt obwohl sie einfach
+    # "fehlen"). Pure-Python, ~0.5 ms, kein externer Call.
+    try:
+        from shared.confidence import compute_confidences
+        conf = compute_confidences(result)
+        if conf:
+            result["confidences"] = conf
+    except Exception as e:
+        print(f"[CONFIDENCE] Fehler bei Confidence-Berechnung: {e}", flush=True)
+
     return result
 
 
@@ -5171,6 +5190,10 @@ async def _run_analysis_for_session(sid: str) -> dict:
                 if w not in existing_w:
                     existing_w.append(w)
             patient["warnings"] = existing_w
+        # B1 Confidence-Scores — ueberschreibt bei Re-Analyse, weil die
+        # neue Extraktion moeglicherweise andere/bessere Werte hat.
+        if enriched.get("confidences"):
+            patient["confidences"] = enriched["confidences"]
         # Verletzungsmechanismus in Template-Daten
         if enriched.get("mechanism"):
             session["template_data"]["mechanism"] = enriched["mechanism"]
