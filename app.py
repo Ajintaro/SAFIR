@@ -4576,7 +4576,7 @@ async def data_test_generate(body: dict | None = None):
                 ["Kopfprellung", "Beinfraktur"],
                 {"pulse": "88", "spo2": "97", "bp": "120/80", "gcs": "14"},
                 flow_status="reported", analyzed=True, synced=True,
-                triage="T2", current_role="role1",
+                triage="", current_role="role1",
                 transcript_text=(
                     "Oberleutnant Julia Mueller, 29 Jahre. Nach Fahrzeugunfall "
                     "Kopfprellung mit kurzer Bewusstlosigkeit, jetzt wieder "
