@@ -2754,15 +2754,27 @@
                             </table>
                         </div>
 
-                        <div class="settings-card" style="border:1px solid var(--warning)">
-                            <div class="settings-card-title" style="color:var(--warning)">Transparente Limits</div>
+                        <div class="settings-card" style="border:1px solid var(--info,#5DADE2)">
+                            <div class="settings-card-title" style="color:var(--info,#5DADE2)">&#128260; Demo-Transport vs. Produktions-Transport</div>
                             <div style="font-size:var(--fs-body);color:var(--text-secondary);line-height:1.6">
-                                Die aktuelle Demo-Konfiguration hat bewusst einige Härtungen <em>nicht</em> aktiv:
-                                <ul style="margin:8px 0 0;padding-left:20px">
-                                    <li>Keine App-Layer-Verschlüsselung <em>zusätzlich</em> zu WireGuard (könnte für Defense-in-Depth ergänzt werden)</li>
+                                Tailscale ist hier eine <strong>bewusste Entwickler-Entscheidung für Demos und Tests</strong> — nicht die finale Produktions-Übertragungsschicht.
+                                <ul style="margin:10px 0;padding-left:20px">
+                                    <li><strong>Warum Tailscale in der Demo?</strong> Sofort einsatzbereit, WireGuard-basiert, nutzt auditierte Industrie-Crypto (ChaCha20-Poly1305). Keine eigene Infrastruktur, keine Setup-Komplexität — perfekt für Vorführung.</li>
+                                    <li><strong>Warum nicht in der Produktion?</strong> Drittanbieter-Koordinationsserver (auch wenn nur Public-Keys + ACLs sichtbar), keine BSI-VS-NfD- oder NATO-Restricted-Freigabe, kein Offline-Coordination-Setup im standardmäßigen Betriebsmodell.</li>
+                                    <li><strong>Produktions-Alternative:</strong> SAFIR ist transport-agnostisch. Die Übertragung wird durch das bordeigene BW-Kommunikationssystem ersetzt — <strong>SVFuA</strong>, <strong>FüInfoSysH</strong>, <strong>SatComBw</strong> oder <strong>SitaWare</strong>. Details siehe <em>Einstellungen → Philosophie → Transport-Agnostik</em>.</li>
+                                    <li><strong>Self-hosted Alternative</strong> für rein dienstinternen Mesh-Betrieb: <strong>Headscale</strong> (Open-Source-Koordinationsserver, kompatibel zu Tailscale-Clients) auf BwNetz-Infrastruktur — gleiche WireGuard-Protokollebene, Koordination vollständig in BW-Hand.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="settings-card" style="border:1px solid var(--warning)">
+                            <div class="settings-card-title" style="color:var(--warning)">Weitere transparente Limits der Demo-Konfiguration</div>
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);line-height:1.6">
+                                <ul style="margin:0;padding-left:20px">
+                                    <li>Keine App-Layer-Verschlüsselung <em>zusätzlich</em> zur Transport-Verschlüsselung (könnte für Defense-in-Depth ergänzt werden)</li>
                                     <li>Keine Secure-Boot / TPM-Attestation auf dem Jetson</li>
                                     <li>Keine Auth-Key-Rotation — Keys laufen bis zum manuellen Widerruf</li>
-                                    <li>MIFARE-Classic-Karten mit Default-Key (für Produktion: MIFARE-DESFire mit AES)</li>
+                                    <li>MIFARE-Classic-Karten mit Default-Key (für Produktion: MIFARE-DESFire mit AES-128)</li>
                                     <li>Keine BSI-VS-NfD / NATO-Restricted Freigabe — das ist regulatorisch, kein technischer Schritt</li>
                                 </ul>
                             </div>
@@ -2779,7 +2791,7 @@
                          per Mausklick live vorfuehrbar. -->
                     <div class="settings-section" id="settings-philosophy">
                         <div class="settings-title">&#128161; Philosophie &amp; Design-Entscheidungen</div>
-                        <div class="settings-desc">Was SAFIR macht, was SAFIR bewusst nicht macht — und warum. Mit Live-Demos gegen BWI-Adversarial-Tests.</div>
+                        <div class="settings-desc">Was SAFIR macht, was SAFIR bewusst nicht macht — und warum. Mit Live-Demos für adversarial Stress-Tests.</div>
 
                         <!-- C1: "Know Your Limits" Narrativ -->
                         <div class="settings-card">
@@ -2816,11 +2828,72 @@
                             </div>
                         </div>
 
+                        <!-- Transport-Agnostik: Zweigleisige Strategie (Demo vs Produktion) -->
+                        <div class="settings-card" style="border:1px solid var(--mil-green,#5a9e3a)">
+                            <div class="settings-card-title" style="color:var(--mil-green,#5a9e3a)">&#128225; Transport-Agnostik: Demo vs. Produktions-Einsatz</div>
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:14px;line-height:1.55">
+                                Häufige Frage: <em>&quot;SAFIR ist offline-fähig, nutzt aber Tailscale als Drittanbieter. Wie passt das zusammen?&quot;</em> — Antwort: SAFIR ist <strong>transport-agnostisch</strong>. Die Übertragung zwischen Feldgerät und Leitstelle ist eine austauschbare Schicht, kein fester Bestandteil.
+                            </div>
+
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+                                <!-- Demo / Entwicklung -->
+                                <div style="padding:12px;background:var(--bg-elevated);border-left:3px solid var(--info,#5DADE2)">
+                                    <div style="font-weight:700;color:var(--info,#5DADE2);margin-bottom:6px;letter-spacing:0.08em;text-transform:uppercase;font-size:var(--fs-body-sm)">&#128187; Demo + Entwicklung (heute)</div>
+                                    <div style="font-size:var(--fs-body);color:var(--text-primary);line-height:1.55">
+                                        <strong>Tailscale Mesh-VPN</strong> (WireGuard-basiert).
+                                        <ul style="margin:8px 0 0;padding-left:18px;color:var(--text-secondary);line-height:1.5">
+                                            <li>Sofort einsatzbereit, auditierte Industriestandards (ChaCha20, Curve25519)</li>
+                                            <li>Eignet sich für Entwicklung, Tests, Vorführungen</li>
+                                            <li>Nicht VS-NfD-klassifiziert → keine Produktions-Eignung für Kampfeinsatz</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <!-- Produktion / Einsatz -->
+                                <div style="padding:12px;background:var(--bg-elevated);border-left:3px solid var(--mil-green,#5a9e3a)">
+                                    <div style="font-weight:700;color:var(--mil-green,#5a9e3a);margin-bottom:6px;letter-spacing:0.08em;text-transform:uppercase;font-size:var(--fs-body-sm)">&#127959; Produktions-Einsatz (Integration)</div>
+                                    <div style="font-size:var(--fs-body);color:var(--text-primary);line-height:1.55">
+                                        <strong>Bordeigene BW-Kommunikation</strong> übernimmt.
+                                        <ul style="margin:8px 0 0;padding-left:18px;color:var(--text-secondary);line-height:1.5">
+                                            <li>SAFIR liefert Payload, das Fahrzeug/FüInfoSys transportiert</li>
+                                            <li>Crypto- und Zulassungs-Verantwortung liegt beim bereits zertifizierten BW-System</li>
+                                            <li>Keine parallele Funk-Zulassung für SAFIR nötig</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="font-weight:700;color:var(--text-primary);margin-bottom:8px;letter-spacing:0.08em;text-transform:uppercase;font-size:var(--fs-body-sm)">Mögliche Integrations-Pfade in der Bundeswehr</div>
+                            <table style="width:100%;border-collapse:collapse;font-size:var(--fs-body-sm);margin-bottom:10px">
+                                <thead><tr style="background:var(--bg-elevated)">
+                                    <th style="text-align:left;padding:8px 10px;color:var(--accent,#c8b878);letter-spacing:0.06em;text-transform:uppercase;width:28%">Kanal</th>
+                                    <th style="text-align:left;padding:8px 10px;color:var(--accent,#c8b878);letter-spacing:0.06em;text-transform:uppercase">Einsatz-Szenario</th>
+                                </tr></thead>
+                                <tbody style="line-height:1.5">
+                                    <tr style="border-top:1px solid var(--border)"><td style="padding:8px 10px;vertical-align:top;font-weight:700">SVFuA</td><td style="padding:8px 10px;vertical-align:top">Streitkräftegemeinsame Verbundfähige Funkausstattung — software-defined radio, IP-basiert, Mesh-fähig. Ablöse für PR4G/SEM-Familie. Taktisch-operative Reichweite, läuft bei der BW aus.</td></tr>
+                                    <tr style="border-top:1px solid var(--border)"><td style="padding:8px 10px;vertical-align:top;font-weight:700">FüInfoSysH-API</td><td style="padding:8px 10px;vertical-align:top">Führungsinformationssystem Heer — bordeigene IT in gepanzerten Fahrzeugen. SAFIR-Patientendaten als JSON-Payload an den Datenbus übergeben; Fahrzeug wählt den passenden Funk-Kanal selbst.</td></tr>
+                                    <tr style="border-top:1px solid var(--border)"><td style="padding:8px 10px;vertical-align:top;font-weight:700">SatComBw</td><td style="padding:8px 10px;vertical-align:top">Militärischer Satelliten-Backbone (COMSATBw 2. Generation, X/Ka-Band). Für Auslandseinsätze außerhalb der VHF-Reichweite oder bei gestörter Bodenkommunikation.</td></tr>
+                                    <tr style="border-top:1px solid var(--border)"><td style="padding:8px 10px;vertical-align:top;font-weight:700">SitaWare HQ / Frontline</td><td style="padding:8px 10px;vertical-align:top">Bei der Bundeswehr eingeführtes Battle-Management-System. SAFIR sendet über definierte Schnittstellen (NFFI / JC3IEDM-artig) Patienten-Lagebild in die taktische Gesamtlage.</td></tr>
+                                    <tr style="border-top:1px solid var(--border)"><td style="padding:8px 10px;vertical-align:top;font-weight:700">pCloudBw</td><td style="padding:8px 10px;vertical-align:top">Private Cloud der Bundeswehr für nicht-taktische Rückwärts-Auswertung — Patientenakten-Integration nach Role 2/3, Statistik, Qualitätsmanagement.</td></tr>
+                                </tbody>
+                            </table>
+
+                            <div style="padding:10px 12px;background:rgba(90,158,58,0.08);border-left:3px solid var(--mil-green,#5a9e3a);font-size:var(--fs-body-sm);color:var(--text-primary);line-height:1.55">
+                                <strong style="color:var(--mil-green,#5a9e3a);letter-spacing:0.06em;text-transform:uppercase;font-size:var(--fs-body-sm)">Payload-Profil (passt auf jeden Kanal)</strong>
+                                <div style="margin-top:5px">
+                                    1 Patient als JSON ≈ <strong>1–5 KB</strong>, ein kompletter 9-Liner ≈ <strong>2 KB</strong>, Batch 10 Patienten ≈ <strong>50 KB</strong>. Übertragbar über jeden militärischen Datenfunk-Modus — bei 2.400 bps paketorientiertem VHF-Funk in ca. 40 Sekunden, via SVFuA/IP quasi instantan.
+                                </div>
+                            </div>
+
+                            <div style="margin-top:12px;padding:10px 12px;background:rgba(200,184,120,0.08);border-left:3px solid var(--accent,#c8b878);font-size:var(--fs-body-sm);color:var(--text-secondary);line-height:1.55">
+                                <strong style="color:var(--accent,#c8b878)">Warum diese Trennung?</strong> Das Funk-/Sat-Ökosystem der Bundeswehr hat bereits BSI-VS-NfD- und NATO-Restricted-Zulassungen durchlaufen und wird aktiv gepflegt. SAFIR als dokumentarisches Werkzeug muss diesen regulatorischen Prozess nicht noch einmal durchlaufen — wir hängen uns an die zugelassene Transportschicht und liefern nur die Payload. Damit ist <em>SAFIR</em> schneller integrierbar, und die <em>Bundeswehr</em> behält die volle Hoheit über die Übertragungs-Sicherheit.
+                            </div>
+                        </div>
+
                         <!-- C2: "Was SAFIR bewusst NICHT tut" -->
                         <div class="settings-card">
                             <div class="settings-card-title">Bewusst nicht implementiert (Design-Entscheidungen)</div>
                             <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px;line-height:1.55">
-                                Die folgenden Features fehlen nicht — sie sind bewusst ausgeklammert. Bei BWI-Nachfragen &quot;warum macht SAFIR kein X?&quot; steht hier die Antwort.
+                                Die folgenden Features fehlen nicht — sie sind bewusst ausgeklammert. Bei kritischen Nachfragen &quot;warum macht SAFIR kein X?&quot; steht hier die Antwort.
                             </div>
                             <table style="width:100%;border-collapse:collapse;font-size:var(--fs-body-sm)">
                                 <thead><tr style="background:var(--bg-elevated)">
@@ -2842,7 +2915,7 @@
 
                         <!-- C3: Robustheits-Live-Demo -->
                         <div class="settings-card" style="border:1px solid var(--mil-amber,#d4871a)">
-                            <div class="settings-card-title" style="color:var(--mil-amber,#d4871a)">&#129302; Robustheits-Live-Demo (für BWI &amp; Co.)</div>
+                            <div class="settings-card-title" style="color:var(--mil-amber,#d4871a)">&#129302; Robustheits-Live-Demo</div>
                             <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:12px;line-height:1.55">
                                 Die folgenden Buttons führen live Adversarial-Tests gegen den Jetson aus. Der jeweils erwartete Schutz-Mechanismus greift sichtbar im UI. Jeder Test legt ein Pending-Transkript an und startet die Analyse.
                             </div>

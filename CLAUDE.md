@@ -10,8 +10,8 @@
 > pro Feld**. Details in `docs/messe-hardening-plan.md` Abschnitt "Phase B → B1".
 > Das ist der stärkste Baustein aus Phase B — Grün/Gelb/Rot Confidence-Indikator
 > pro extrahiertem Feld, damit Messe-Besucher explizit sehen "System weiß was
-> es weiß vs. was es geraten hat". Entkräftet direkt den BWI-Halluzinations-
-> Vorwurf. Geschätzter Aufwand: 2 h.
+> es weiß vs. was es geraten hat". Entkräftet direkt den klassischen
+> Halluzinations-Vorwurf. Geschätzter Aufwand: 2 h.
 >
 > Wenn der User sagt „weiter mit B1" oder „mach weiter wo wir gestern
 > aufgehört haben", lies SOFORT `docs/PROGRESS.md` (für den Gesamtstand) und

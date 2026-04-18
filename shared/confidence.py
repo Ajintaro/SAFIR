@@ -9,8 +9,8 @@ gerendert wird:
   🟡 Gelb  0.6-0.9 — fuzzy Match / plausibel aber nicht exakt
   🔴 Rot   < 0.6   — unsicher, bitte manuell pruefen
 
-Das entkraeftet den klassischen BWI-Vorwurf "das LLM halluziniert — wie
-weiss man was stimmt?" direkt im UI. Der Sanitaeter sieht auf einen
+Das entkraeftet den klassischen "das LLM halluziniert — wie weiss man
+was stimmt?"-Vorwurf direkt im UI. Der Sanitaeter sieht auf einen
 Blick welche Felder Vertrauen verdienen und welche er pruefen sollte.
 
 Implementierung: Pure Python, keine externen Deps, < 1 ms pro Patient.
