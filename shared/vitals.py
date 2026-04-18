@@ -130,6 +130,15 @@ def validate_vitals(vitals: dict, age: Optional[str] = None) -> tuple[dict, list
             # LLM hat Unsinn ausgegeben (z.B. "unbekannt"): leeren, nicht warnen
             cleaned[field] = ""
             continue
+        # Wert 0 = nicht angegeben (LLM halluziniert gerne "0" wenn das Feld
+        # im Transkript nicht erwaehnt wurde). Das ist KEIN unplausibler
+        # Wert, sondern einfach eine fehlende Angabe -> leeren ohne Warning.
+        # Sonderfall "Puls=0 = keine Vitalzeichen" waere semantisch valide,
+        # aber der Sanitaeter dokumentiert das im Injury-Text ("keine
+        # Reaktion") und nicht als Vital-Wert.
+        if num == 0:
+            cleaned[field] = ""
+            continue
         if not (lo <= num <= hi):
             cleaned[field] = ""
             # Warnung in menschenlesbarer Form fuers Frontend
@@ -145,8 +154,6 @@ def validate_vitals(vitals: dict, age: Optional[str] = None) -> tuple[dict, list
             warnings.append(f"{label}={num_str} unplausibel (erwartet {lo:g}-{hi:g})")
         else:
             # Numerisch valide -> optional den urspruenglichen Typ beibehalten.
-            # Wenn LLM einen String geliefert hat (pulse "130"), lassen wir
-            # das so, sonst bricht die Downstream-Code der Strings erwartet.
             pass
 
     # Blutdruck separat
@@ -159,8 +166,15 @@ def validate_vitals(vitals: dict, age: Optional[str] = None) -> tuple[dict, list
                 cleaned["bp"] = ""
         else:
             sys_v, dia_v = parsed
-            sys_ok = BP_SYS_RANGE[0] <= sys_v <= BP_SYS_RANGE[1]
-            dia_ok = BP_DIA_RANGE[0] <= dia_v <= BP_DIA_RANGE[1]
+            # Wie bei den anderen Vitals: 0/0 = "nicht angegeben",
+            # kein Warning. LLM haengt manchmal "0/0" an wenn BP im
+            # Transkript fehlt.
+            if sys_v == 0 and dia_v == 0:
+                cleaned["bp"] = ""
+                sys_ok = dia_ok = True  # Skip downstream-Checks
+            else:
+                sys_ok = BP_SYS_RANGE[0] <= sys_v <= BP_SYS_RANGE[1]
+                dia_ok = BP_DIA_RANGE[0] <= dia_v <= BP_DIA_RANGE[1]
             if not (sys_ok and dia_ok):
                 cleaned["bp"] = ""
                 warnings.append(
@@ -168,7 +182,7 @@ def validate_vitals(vitals: dict, age: Optional[str] = None) -> tuple[dict, list
                     f"(erwartet {BP_SYS_RANGE[0]}-{BP_SYS_RANGE[1]}/"
                     f"{BP_DIA_RANGE[0]}-{BP_DIA_RANGE[1]})"
                 )
-            elif sys_v <= dia_v:
+            elif cleaned.get("bp") and sys_v <= dia_v:
                 # Systolisch muss > diastolisch sein (sonst Transkriptions-
                 # dreher). Beispiel: BP 80/120 -> wahrscheinlich meinte
                 # Sprecher 120/80. Wir behalten den Wert, warnen aber.

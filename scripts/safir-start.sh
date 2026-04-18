@@ -91,36 +91,28 @@ if pactl list short sinks 2>/dev/null | grep -q "Logitech"; then
     echo "PulseAudio: Logitech Headset als Default Sink"
 fi
 
-# 5. Ollama starten + LLM PERMANENT im RAM halten (headless hat genug Platz)
-#    Im Headless-Mode hat der Jetson ~4.8 GiB frei nach Boot. Whisper small
-#    braucht ~1.2 GiB. Kleine LLMs (Qwen 1.5B ~1.1 GiB, Gemma 3 4B ~3.3 GiB)
-#    laufen parallel zu Whisper small. Bei grossem Whisper (turbo) greift
-#    stattdessen der GPU-Swap-Mode in app.py (_enter_analysis_mode /
-#    _enter_recording_mode). Modellname kommt aus config.json:ollama.model.
-#    HISTORIE: Qwen 3B sprengt neben Whisper den Speicher; gemma3:4b ist
-#    trotz groesserer Groesse mit dem neuen Swap-Code OK.
-oled_status "SAFIR" "Ollama laden..."
+# 5. Ollama starten — aber LLM NICHT vorladen (Swap-Mode-Setup)
+#    Strategie-Wechsel seit Whisper turbo + Gemma 4B nicht gleichzeitig
+#    stabil laufen: Whisper turbo bekommt den VRAM beim Boot exklusiv.
+#    Gemma wird erst beim ersten Analyse-Trigger geladen und danach
+#    wieder entladen (siehe _enter_analysis_mode / _enter_recording_mode
+#    in app.py). Der User sieht beim Umschalten einen kurzen Toast
+#    "LLM wird geladen...", ~10s Cold-Load ist OK fuer Analyse.
+#
+#    Hier also NUR Ollama-Server starten + alle bekannten Modelle
+#    entladen (falls vorherige Runs Reste hinterlassen haben). App.py
+#    setzt swap_mode="recording" wenn Whisper turbo/medium erkannt wird.
+oled_status "SAFIR" "Ollama startet..."
 systemctl --user start ollama 2>/dev/null || sudo systemctl start ollama 2>/dev/null
 sleep 2
-# Modellname + num_ctx aus config.json ziehen (Python, immer verfuegbar).
-OLLAMA_MODEL=$(python3 -c "import json; print(json.load(open('/home/jetson/cgi-afcea-san/config.json'))['ollama']['model'])" 2>/dev/null)
-OLLAMA_NUM_CTX=$(python3 -c "import json; print(json.load(open('/home/jetson/cgi-afcea-san/config.json'))['ollama'].get('num_ctx', 2048))" 2>/dev/null)
-OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
-OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-2048}
-echo "Ollama: Starte und lade $OLLAMA_MODEL permanent (keep_alive=-1, num_ctx=$OLLAMA_NUM_CTX)..."
-# Alte Modelle aus Vorlaeufen entladen (sonst bleiben sie im VRAM neben dem Neuen).
-for OLD in qwen2.5:1.5b qwen2.5:3b gemma3:4b; do
-    if [ "$OLD" != "$OLLAMA_MODEL" ]; then
-        curl -s http://127.0.0.1:11434/api/generate \
-            -d "{\"model\":\"$OLD\",\"prompt\":\"\",\"keep_alive\":0}" > /dev/null 2>&1
-    fi
+echo "Ollama: Server gestartet, LLM-Modelle bleiben entladen (Swap-Mode-Ready)"
+# Alle bekannten LLM-Modelle aus dem VRAM kicken, falls sie noch da sind.
+# Beim ersten Analyse-Trigger wird das Zielmodell via app.py geladen.
+for OLD in qwen2.5:1.5b qwen2.5:3b gemma3:4b gemma3n:e2b; do
+    curl -s http://127.0.0.1:11434/api/generate \
+        -d "{\"model\":\"$OLD\",\"prompt\":\"\",\"keep_alive\":0}" > /dev/null 2>&1
 done
-# Warm-Start mit keep_alive=-1 → Modell bleibt bis Ollama gestoppt wird.
-# "num_gpu": 20 forciert GPU-Layer auf Tegra (sonst fällt ollama auf CPU zurück).
-curl -s http://127.0.0.1:11434/api/generate \
-    -d "{\"model\":\"$OLLAMA_MODEL\",\"prompt\":\"Hi\",\"stream\":false,\"options\":{\"num_gpu\":-1,\"num_ctx\":$OLLAMA_NUM_CTX},\"keep_alive\":-1}" \
-    > /dev/null 2>&1
-echo "Ollama: Modell $OLLAMA_MODEL auf GPU vorgeladen (alle Layer, num_ctx=$OLLAMA_NUM_CTX)"
+echo "Ollama: alle Modelle entladen, VRAM frei fuer Whisper"
 
 # 6. SAFIR Server im Vordergrund starten (lädt Whisper intern)
 #    exec ersetzt die Shell durch uvicorn — systemd sieht einen einzigen
