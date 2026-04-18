@@ -2155,13 +2155,42 @@ def run_transcribe(audio: np.ndarray, language: str = "de", _retry: bool = False
             # Defunct-Prozesse wegraeumen
             stop_whisper_server()
             time.sleep(1.5)
-            if state.model_path and start_whisper_server(state.model_path):
-                print(f"[TRANSCRIBE] Recovery erfolgreich, retry Chunk", flush=True)
-                return run_transcribe(audio, language, _retry=True)
-            else:
-                print(f"[TRANSCRIBE] Recovery-Start fehlgeschlagen", flush=True)
-                return {"error": "Whisper-Server abgestuerzt, Neustart fehlgeschlagen",
+            # Recovery mit Fallback-Kette: Das urspruenglich geladene Modell
+            # zuerst, dann kleinere Modelle probieren. Ohne das bleibt der
+            # Jetson nach einem turbo-OOM dauerhaft ohne Whisper — die Boot-
+            # Fallback-Logik greift nur beim Start, nicht im Runtime.
+            _fallback_order: list[pathlib.Path] = []
+            if state.model_path:
+                _fallback_order.append(state.model_path)
+            for _name in ("medium", "small"):
+                _p = MODELS_DIR / f"ggml-{_name}.bin"
+                if _p.exists() and _p not in _fallback_order:
+                    _fallback_order.append(_p)
+            recovered = False
+            for _path in _fallback_order:
+                print(f"[TRANSCRIBE] Recovery: versuche {_path.name} ...", flush=True)
+                if start_whisper_server(_path):
+                    state.model_path = _path
+                    # Kurzen Modellnamen aus Dateiname extrahieren
+                    _short = _path.stem.replace("ggml-", "")
+                    state.current_model = _short
+                    print(f"[TRANSCRIBE] Recovery erfolgreich mit {_short}, retry Chunk", flush=True)
+                    # TTS-Benachrichtigung nur wenn ein kleineres Modell
+                    # reingekommen ist — der User soll wissen dass die
+                    # Qualitaet reduziert wurde.
+                    if _path != _fallback_order[0]:
+                        try:
+                            tts.speak(f"Whisper neu gestartet mit {_short}")
+                        except Exception:
+                            pass
+                    recovered = True
+                    break
+                print(f"[TRANSCRIBE] {_path.name} konnte nicht geladen werden", flush=True)
+            if not recovered:
+                print(f"[TRANSCRIBE] Recovery-Fallback-Kette komplett gescheitert", flush=True)
+                return {"error": "Whisper-Server tot, kein Modell konnte geladen werden",
                         "text": "", "duration": 0}
+            return run_transcribe(audio, language, _retry=True)
         except Exception as recovery_err:
             print(f"[TRANSCRIBE] Recovery-Exception: {recovery_err}", flush=True)
             return {"error": f"Whisper-Recovery fehlgeschlagen: {str(recovery_err)[:150]}",

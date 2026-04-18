@@ -2562,6 +2562,23 @@
                                 <button class="btn" onclick="toggleVosk()">Vosk ein/aus</button>
                             </div>
                         </div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">Audio-Eingang</div>
+                            <div class="field">
+                                <label>Eingabegerät (Mikrofon für Whisper + Vosk)</label>
+                                <select id="settings-audio-device" onchange="selectDevice(this.value)"></select>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">TTS-Stimme</div>
+                            <div class="field">
+                                <label>Sprachausgabe (Piper)</label>
+                                <select id="settings-tts-voice" onchange="setTtsVoice(this.value)"></select>
+                            </div>
+                            <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:6px">
+                                Umschaltung ist live — eine kurze Probe-Ansage bestätigt den Wechsel.
+                            </div>
+                        </div>
                     </div>
 
                     <!-- KI / LLM -->
@@ -2646,23 +2663,6 @@
                                 <button class="btn btn-cgi" onclick="saveBackendSettings()">Speichern</button>
                                 <button class="btn" onclick="testBackendConnection()">Verbindung testen</button>
                                 <span id="backend-save-status" style="font-size:var(--fs-body-sm);margin-left:8px"></span>
-                            </div>
-                        </div>
-                        <div class="settings-card">
-                            <div class="settings-card-title">Audio-Eingang</div>
-                            <div class="field">
-                                <label>Eingabegerät</label>
-                                <select id="settings-audio-device" onchange="selectDevice(this.value)"></select>
-                            </div>
-                        </div>
-                        <div class="settings-card">
-                            <div class="settings-card-title">TTS-Stimme</div>
-                            <div class="field">
-                                <label>Sprachausgabe</label>
-                                <select id="settings-tts-voice" onchange="setTtsVoice(this.value)"></select>
-                            </div>
-                            <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:6px">
-                                Umschaltung ist live — eine kurze Probe-Ansage bestätigt den Wechsel.
                             </div>
                         </div>
                     </div>

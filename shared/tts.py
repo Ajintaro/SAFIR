@@ -226,20 +226,24 @@ def speak(text: str, blocking: bool = False):
 def _pick_output_rate(device, piper_rate: int) -> int:
     """Wählt eine sample rate die das Output-Device wirklich annimmt.
 
-    Wir probieren in dieser Reihenfolge:
-    1. Piper native (22050 Hz) — wenn das Device das direkt schluckt, kein
-       Resample nötig und bestmögliche Qualität.
-    2. 44100 Hz — Standard für C-Media/Ugreen-USB-Dongles.
-    3. 48000 Hz — Standard für Jabra, Conference-Speaker, modernes USB-Audio.
+    WICHTIG: Piper-Stimmen im "low"-Quality-Mode (z.B. Kerstin-low,
+    Thorsten-low) haben native 16000 Hz. Das meldet das Jabra SPEAK 510
+    als "akzeptiert" (Telefonie-Modus), die Hardware laeuft intern aber
+    bei 48000 Hz — der Driver interpretiert den 16000-Stream als 48000
+    und das Audio klingt 3x zu schnell (Mickey-Mouse-Effekt).
 
-    Wir verlassen uns bewusst NICHT mehr auf ``default_samplerate`` aus
-    query_devices(). Das Jabra SPEAK 510 meldet dort 16000 Hz (Telefonie-
-    Default), intern läuft die Hardware aber mit 48000 Hz — beim Abspielen
-    interpretiert der Driver 16000 Sample-Stream als 48000 und das Audio
-    klingt 3x zu schnell. check_output_settings() prüft die tatsächliche
-    ALSA-Route und filtert solche Fehlmeldungen aus.
+    Deshalb: fuer piper_rate < 22050 UEBERSPRINGEN wir die native Rate
+    komplett und gehen direkt auf 44100 oder 48000. Das zwingt uns zum
+    Resample via _resample_for_device, aber das Ergebnis klingt korrekt.
+    Fuer 22050+ (medium/high Modelle) darf die native Rate weiterhin
+    probiert werden — da ist sie normalerweise zuverlaessig.
     """
-    candidates = [piper_rate, 44100, 48000]
+    # Ab 22050 Hz gilt die native Piper-Rate als sicher probierbar;
+    # darunter (low-Modelle) immer auf zwei Mainstream-Rates gehen.
+    if piper_rate >= 22050:
+        candidates = [piper_rate, 44100, 48000]
+    else:
+        candidates = [48000, 44100]
     for rate in candidates:
         try:
             sd.check_output_settings(
@@ -248,7 +252,7 @@ def _pick_output_rate(device, piper_rate: int) -> int:
             return rate
         except Exception:
             continue
-    return piper_rate  # letzte Rettung
+    return 48000  # letzte Rettung — fast jedes Device akzeptiert 48kHz
 
 
 def _resample_for_device(audio_float: np.ndarray, piper_rate: int, target_rate: int) -> np.ndarray:
