@@ -186,6 +186,9 @@
         "preferred_device_name": "Jabra SPEAK 510 USB: Audio (hw:1,0)",
         "input_gain": 2.0
     },
+    "tts": {
+        "voice": "de_DE-thorsten-medium"
+    },
     "ollama": {
         "url": "http://127.0.0.1:11434",
         "model": "gemma3:4b",

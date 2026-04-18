@@ -12,9 +12,22 @@ from pathlib import Path
 import numpy as np
 import sounddevice as sd
 
-PIPER_MODEL = Path(__file__).parent.parent / "models" / "piper" / "de_DE-thorsten-medium.onnx"
+_PIPER_DIR = Path(__file__).parent.parent / "models" / "piper"
+
+# Verfuegbare Stimmen. Gender "m"/"w" fuer UI-Dropdown. Thorsten
+# ist der urspruengliche Default, Kerstin die weibliche Alternative.
+AVAILABLE_VOICES: dict[str, dict] = {
+    "de_DE-thorsten-medium": {"gender": "m", "label": "Thorsten (maennlich, medium)"},
+    "de_DE-thorsten-low":    {"gender": "m", "label": "Thorsten (maennlich, schnell)"},
+    "de_DE-kerstin-low":     {"gender": "w", "label": "Kerstin (weiblich, schnell)"},
+}
+DEFAULT_VOICE = "de_DE-thorsten-medium"
+
+# Wird zur Laufzeit auf den gewaehlten Voice-Path gesetzt.
+PIPER_MODEL = _PIPER_DIR / f"{DEFAULT_VOICE}.onnx"
 PIPER_CONFIG = PIPER_MODEL.with_suffix(".onnx.json")
 
+_current_voice_name = DEFAULT_VOICE
 _voice = None
 _lock = threading.Lock()
 _enabled = True
@@ -81,21 +94,69 @@ def get_output_device_count() -> int:
     return len(_output_devices)
 
 
-def init_tts() -> bool:
+def init_tts(voice_name: str | None = None) -> bool:
     """Laedt Piper TTS Modell (einmalig, ~2s) und scannt alle Output-
-    Devices. Mehrere Speaker werden parallel bespielt."""
-    global _voice
-    if _voice is not None:
+    Devices. Mehrere Speaker werden parallel bespielt.
+
+    voice_name kann aus config.tts.voice kommen (AVAILABLE_VOICES keys),
+    sonst wird DEFAULT_VOICE genutzt.
+    """
+    global _voice, _current_voice_name, PIPER_MODEL, PIPER_CONFIG
+    name = voice_name if voice_name in AVAILABLE_VOICES else DEFAULT_VOICE
+    model_path = _PIPER_DIR / f"{name}.onnx"
+    config_path = model_path.with_suffix(".onnx.json")
+    if not model_path.exists():
+        print(f"TTS-Stimme '{name}' nicht gefunden, Fallback auf {DEFAULT_VOICE}")
+        name = DEFAULT_VOICE
+        model_path = _PIPER_DIR / f"{name}.onnx"
+        config_path = model_path.with_suffix(".onnx.json")
+    if _voice is not None and _current_voice_name == name:
         return True
     try:
         from piper import PiperVoice
-        _voice = PiperVoice.load(str(PIPER_MODEL), config_path=str(PIPER_CONFIG))
+        _voice = PiperVoice.load(str(model_path), config_path=str(config_path))
+        _current_voice_name = name
+        PIPER_MODEL = model_path
+        PIPER_CONFIG = config_path
         rescan_devices()
-        print(f"Piper TTS geladen ({PIPER_MODEL.name}, {_voice.config.sample_rate}Hz)")
+        print(f"Piper TTS geladen ({name}, {_voice.config.sample_rate}Hz)")
         return True
     except Exception as e:
         print(f"Piper TTS Fehler: {e}")
         return False
+
+
+def switch_voice(voice_name: str) -> bool:
+    """Wechselt zur Laufzeit die Piper-Stimme. Gibt True zurueck wenn
+    erfolgreich geladen. Wird von /api/tts/voice aufgerufen wenn der
+    User im Settings-UI die Stimme aendert."""
+    global _voice, _current_voice_name
+    if voice_name == _current_voice_name:
+        return True
+    # Voice-Instanz zuruecksetzen damit init_tts wirklich neu laedt
+    with _lock:
+        _voice = None
+    return init_tts(voice_name)
+
+
+def get_current_voice() -> str:
+    return _current_voice_name
+
+
+def list_available_voices() -> list[dict]:
+    """Gibt die AVAILABLE_VOICES-Liste zurueck, aber nur die tatsaechlich
+    auf diesem Geraet vorhandenen .onnx-Dateien. So kann das UI genau
+    die Stimmen anzeigen, die auch wirklich wechselbar sind."""
+    out = []
+    for name, info in AVAILABLE_VOICES.items():
+        if (_PIPER_DIR / f"{name}.onnx").exists():
+            out.append({
+                "name": name,
+                "gender": info["gender"],
+                "label": info["label"],
+                "active": name == _current_voice_name,
+            })
+    return out
 
 
 def set_enabled(enabled: bool):

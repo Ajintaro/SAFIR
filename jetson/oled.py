@@ -446,7 +446,11 @@ class OledMenu:
     def _render_models_status(self, draw: ImageDraw):
         m = self.models_status
         whisper_ok = m.get("whisper_ok", False)
-        qwen_ok = m.get("qwen_ok", False)
+        # Backend liefert llm_state = "online" | "offline" | "??" (unbekannt)
+        # je nach aktuellem Swap-Mode + VRAM-Residenz. "qwen_ok" bleibt als
+        # legacy-Fallback fuer alte Clients/Backends.
+        llm_label = m.get("llm_label", "GEMMA3")
+        llm_state = m.get("llm_state") or ("online" if m.get("qwen_ok") else "offline")
         ram_free = m.get("ram_free_percent", 0)
 
         # Z1 (y=2): Screen-Titel
@@ -456,9 +460,13 @@ class OledMenu:
         whisper_text = "WHISPER=OK" if whisper_ok else "WHISPER=??"
         draw.text((2, 18), whisper_text, font=FONT_MD, fill=1)
 
-        # Z3 (y=34): QWEN
-        qwen_text = "QWEN=OK" if qwen_ok else "QWEN=??"
-        draw.text((2, 34), qwen_text, font=FONT_MD, fill=1)
+        # Z3 (y=34): LLM mit korrektem Label + Status
+        state_str = {"online": "OK", "offline": "OFFLINE", "analyzing": "AKTIV"}.get(llm_state, "??")
+        llm_text = f"{llm_label}={state_str}"
+        # Falls Text zu lang (max ~14 chars mit FONT_MD), abschneiden
+        if len(llm_text) > 14:
+            llm_text = llm_text[:14]
+        draw.text((2, 34), llm_text, font=FONT_MD, fill=1)
 
         # Z4 (y=50): freier RAM
         draw.text((2, 50), f"RAM:  {int(ram_free)}%", font=FONT_MD, fill=1)

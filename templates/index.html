@@ -2655,6 +2655,16 @@
                                 <select id="settings-audio-device" onchange="selectDevice(this.value)"></select>
                             </div>
                         </div>
+                        <div class="settings-card">
+                            <div class="settings-card-title">TTS-Stimme</div>
+                            <div class="field">
+                                <label>Sprachausgabe</label>
+                                <select id="settings-tts-voice" onchange="setTtsVoice(this.value)"></select>
+                            </div>
+                            <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:6px">
+                                Umschaltung ist live — eine kurze Probe-Ansage bestätigt den Wechsel.
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Interoperabilität -->
@@ -3728,6 +3738,17 @@
                 `<option value="${m.name}" ${m.name === models.current ? 'selected' : ''}>${m.name} (${m.size_mb} MB)</option>`
             ).join('');
 
+            // TTS-Stimmen
+            try {
+                const ttsVoices = await api('/api/tts/voices');
+                const vsel = document.getElementById('settings-tts-voice');
+                if (vsel && ttsVoices && ttsVoices.voices) {
+                    vsel.innerHTML = ttsVoices.voices.map(v =>
+                        `<option value="${v.name}" ${v.name === ttsVoices.current ? 'selected' : ''}>${v.label}</option>`
+                    ).join('');
+                }
+            } catch(e) { /* kein TTS-Endpoint verfuegbar */ }
+
             // Audio devices für Settings-Seite.
             // WICHTIG: "current" ist die ID des aktuell gewaehlten Input-Devices
             // (kommt aus config.json:audio.preferred_device_name + Boot-Preload
@@ -4130,6 +4151,19 @@
                 document.querySelectorAll('.patient-card-details.analyzing').forEach(el => el.classList.remove('analyzing'));
                 document.querySelectorAll(`.patient-card-details[data-pid="${msg.patient_id}"]`).forEach(el => el.classList.add('analyzing'));
                 { const p = patients[msg.patient_id]; if (p) updateActivityDetail(`${p.name || msg.patient_id}...`); }
+                break;
+            case 'pending_skipped':
+                // Voice-Flow hat einen Pending als nicht-medizinisch geflaggt.
+                // Frontend setzt das Flag lokal damit renderPendingCards die
+                // Card mit orangenem "NICHT MEDIZINISCH"-Badge rendert.
+                {
+                    const entry = pendingTranscripts[msg.pending_id];
+                    if (entry) {
+                        entry.content_filter_skipped = true;
+                        entry.skip_reason = msg.reason || 'content_filter';
+                        renderPendingCards();
+                    }
+                }
                 break;
             case 'analysis_failed':
                 // B3 Auto-Recovery: Analyse ist gecrasht (LLM-Timeout, Ollama-
@@ -4619,12 +4653,22 @@
             const ts = e.date && e.time ? `${e.date} ${e.time}` : (e.time || '');
             const chars = (e.full_text || '').length;
             let statusBadge, borderColor;
-            // B3 Auto-Recovery: Error-Zustand hat hoechste Prio in der
-            // Status-Anzeige, damit der User sieht dass Retry moeglich ist.
+            // Zustands-Reihenfolge nach Prioritaet:
+            //   1. analysis_failed (Crash-Retry moeglich) — rot
+            //   2. content_filter_skipped (nicht-medizinisch) — orange
+            //   3. analyzing — blau
+            //   4. analyzed — gruen
+            //   5. unanalysiert — tan
             if (e.analysis_failed) {
                 const errShort = (e.analysis_error || 'unbekannter Fehler').slice(0, 60);
                 statusBadge = `<span style="display:inline-block;padding:2px 8px;background:rgba(204,34,34,0.2);color:var(--cgi-red,#cc2222);border-radius:4px;font-size:var(--fs-body-sm);font-weight:700" title="${errShort.replace(/"/g,'&quot;')}">&#9888; ANALYSE FEHLGESCHLAGEN</span>`;
                 borderColor = 'var(--cgi-red,#cc2222)';
+            } else if (e.content_filter_skipped && !e.analyzed) {
+                // Nicht-medizinischer Inhalt — vom Voice-Flow uebersprungen.
+                // User kann weiter analysieren erzwingen via "Trotzdem"-Button
+                // in einem manuellen Dialog (force_analysis) oder verwerfen.
+                statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(212,135,26,0.2);color:var(--mil-amber,#d4871a);border-radius:4px;font-size:var(--fs-body-sm);font-weight:700" title="Content-Filter hat diesen Text als nicht-medizinisch klassifiziert">&#9888; NICHT MEDIZINISCH</span>';
+                borderColor = 'var(--mil-amber,#d4871a)';
             } else if (e.analyzing) {
                 statusBadge = '<span style="display:inline-block;padding:2px 8px;background:rgba(93,173,226,0.18);color:#5DADE2;border-radius:4px;font-size:var(--fs-body-sm);font-weight:700">WIRD ANALYSIERT…</span>';
                 borderColor = '#5DADE2';
@@ -4640,12 +4684,12 @@
                 borderColor = 'var(--mil-tan,#c8b878)';
             }
             const safeText = (e.full_text || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-            // B3: Bei analysis_failed ist Retry = "nochmal versuchen" Label,
-            // Button wird NICHT disabled. Bei Erfolg/analyzing weiterhin disabled.
+            // Button-Disable + Label nach Zustand:
             const analyzeDisabled = (e.analyzing || e.analyzed) ? 'disabled style="opacity:0.4;cursor:not-allowed"' : '';
             let analyzeLabel;
             if (e.analyzed) analyzeLabel = '&#9989; Analysiert';
             else if (e.analysis_failed) analyzeLabel = '&#8635; Erneut versuchen';
+            else if (e.content_filter_skipped) analyzeLabel = '&#8634; Trotzdem analysieren';
             else analyzeLabel = '&#129504; KI-Analyse';
             const errorBlock = e.analysis_failed && e.analysis_error
                 ? `<div style="margin-top:8px;padding:6px 10px;background:rgba(204,34,34,0.1);border-left:3px solid var(--cgi-red,#cc2222);font-size:var(--fs-body-sm);color:var(--cgi-red,#cc2222)"><strong>Fehler:</strong> ${(e.analysis_error || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>`
@@ -5205,6 +5249,19 @@
     }
     async function unloadModel() { if (!confirm('Modell entladen? GPU-Speicher wird freigegeben.')) return; await api('/api/models/unload', 'POST'); }
     async function selectDevice(id) { await api('/api/devices/select', 'POST', { device_id: parseInt(id) }); }
+
+    async function setTtsVoice(voiceName) {
+        try {
+            const res = await api('/api/tts/voice', 'POST', { voice: voiceName });
+            if (res && res.status === 'ok') {
+                showToast('TTS-Stimme gewechselt', '&#128266;');
+            } else {
+                showToast('Stimme-Wechsel fehlgeschlagen: ' + (res && res.error || 'unbekannt'), '&#9888;');
+            }
+        } catch(e) {
+            showToast('Fehler: ' + e.message, '&#9888;');
+        }
+    }
     async function setLanguage(lang) { await api('/api/language', 'POST', { language: lang }); }
 
     // ---- Vosk ----

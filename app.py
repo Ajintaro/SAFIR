@@ -2825,7 +2825,57 @@ def segment_transcript_to_patients(transcript: str) -> dict:
             merged3[-1]["text"] = merged3[-1]["text"] + " " + t
             continue
         merged3.append({"patient_nr": len(merged3) + 1, "text": t, "summary": p.get("summary", "")})
-    patients = merged3
+
+    # Post-Merge 4 (Sanitaeter-Intro): Ein Segment das mit typischen
+    # Sprecher-Intros beginnt ("Hier spricht ...", "Ich bin ...", "Ich
+    # spreche ...", "Ich untersuche ...") ist KEIN Patient sondern die
+    # Einleitung des Sanitaeters. Wenn so ein Segment kurz ist und keine
+    # nennenswerten Verletzungs- oder Vital-Daten enthaelt, mergen wir
+    # es ins NAECHSTE Segment (als Intro zum ersten echten Patient).
+    # Gemma segmentiert trotz BOUNDARY_PROMPT-Anweisung manchmal solche
+    # Saetze als eigenen Patient, was zu Phantom-"Oberfeldarzt"-Records
+    # fuehrt. Hier fangen wir das ab.
+    INTRO_PREFIXES = (
+        "hier spricht", "ich spreche", "ich bin der", "ich bin die",
+        "ich bin am ", "ich bin vor ort", "ich bin am ort", "ich bin am einsatzort",
+        "hier ist ", "am apparat ", "es spricht ", "ich untersuche",
+        "ich habe hier ", "ich bin oberfeldarzt", "ich bin stabsarzt",
+        "ich bin sanitaeter", "ich bin sanitäter", "ich bin notarzt",
+        "wir sind am ort", "wir sind am unfallort", "wir sind am einsatzort",
+        "wir sind am platz", "wir haben hier ", "am ort haben wir ",
+        "guten tag, hier ist ", "guten tag, ich bin",
+    )
+    # Wenn der erste Satz eines Segments ein Intro ist UND der gesamte
+    # Segment kurz genug ist (der erste echte Patient wurde nicht
+    # beschrieben), mergen ins naechste. Vital-/Verletzungs-Hinweise im
+    # Segment zaehlen als "es beschreibt schon einen Patient" und wir
+    # mergen nicht.
+    vital_markers = ("puls ", "puls:", "puls=", "blutdruck", "sauerstoff",
+                     "spo2", "atmung", "gcs ", "bewusstsein",
+                     "schuss", "splitter", "verletzung", "wunde", "fraktur",
+                     "blutung", "verbrennung", "prellung", "distorsion")
+    merged4: list[dict] = []
+    pending_intro = ""
+    for p in merged3:
+        t = p["text"].strip()
+        t_low = t.lower()
+        # Erste 120 chars des Segments checken — Intros sind am Anfang
+        starts_with_intro = any(t_low.startswith(pref) for pref in INTRO_PREFIXES)
+        has_vital_info = any(m in t_low for m in vital_markers)
+        # Intro-Segment ohne medizinische Info -> kein eigener Patient
+        if starts_with_intro and not has_vital_info:
+            pending_intro = (pending_intro + " " + t).strip()
+            print(f"[SEGMENT] Intro-Segment erkannt, wird gemerged: {t[:80]!r}", flush=True)
+            continue
+        # Pending Intro ans Segment davor-anhaengen
+        if pending_intro:
+            t = pending_intro + " " + t
+            pending_intro = ""
+        merged4.append({"patient_nr": len(merged4) + 1, "text": t, "summary": p.get("summary", "")})
+    # Falls das letzte Segment ein Intro war und kein Patient danach kam:
+    # Intro verwerfen (nichts Sinnvolles anlegen — `patients` wird
+    # gegebenenfalls leer und die downstream-Logik faengt das ab).
+    patients = merged4
 
     if not patients:
         patients = [{"patient_nr": 1, "text": transcript.strip(), "summary": ""}]
@@ -6015,6 +6065,45 @@ async def tts_status():
     return {"enabled": tts.is_enabled()}
 
 
+@app.get("/api/tts/voices")
+async def tts_list_voices():
+    """Listet verfuegbare Piper-Stimmen (nur die lokal vorhandenen .onnx)."""
+    try:
+        return {"voices": tts.list_available_voices(),
+                "current": tts.get_current_voice()}
+    except Exception as e:
+        return {"voices": [], "error": str(e)}
+
+
+@app.post("/api/tts/voice")
+async def tts_set_voice(body: dict):
+    """Wechselt die Piper-Stimme zur Laufzeit und persistiert in config.json.
+    Body: {"voice": "de_DE-kerstin-low"}
+    """
+    name = (body or {}).get("voice", "")
+    if not name:
+        return {"status": "error", "error": "voice fehlt"}
+    try:
+        ok = tts.switch_voice(name)
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+    if not ok:
+        return {"status": "error", "error": f"Stimme '{name}' konnte nicht geladen werden"}
+    # In config.json persistieren
+    try:
+        cfg = load_config()
+        cfg.setdefault("tts", {})["voice"] = name
+        save_config(cfg)
+    except Exception as e:
+        print(f"[TTS] Config-Persist fehlgeschlagen: {e}", flush=True)
+    # Kurze Probe damit der User die neue Stimme sofort hoert
+    try:
+        tts.speak("Stimme gewechselt")
+    except Exception:
+        pass
+    return {"status": "ok", "current": tts.get_current_voice()}
+
+
 @app.post("/api/mic/test")
 async def mic_test(body: dict = None):
     """Startet/Stoppt einen Mikrofon-Test mit eigenem Stream."""
@@ -6635,9 +6724,10 @@ async def startup():
     # Vosk Command-Processor starten
     asyncio.create_task(process_vosk_commands())
 
-    # Piper TTS laden
+    # Piper TTS laden — Stimme aus config.tts.voice (Default thorsten-medium).
     oled_menu.show_status("SAFIR", "TTS laden...", 85)
-    tts.init_tts()
+    tts_voice = (_config.get("tts") or {}).get("voice", "de_DE-thorsten-medium")
+    tts.init_tts(tts_voice)
 
     # BAT-Position-Animation Loop (idle bis "Rueckfahrt" getriggert wird)
     asyncio.create_task(bat_position_loop())
@@ -6786,17 +6876,42 @@ async def _oled_update_loop():
                     # deshalb ob das Modell bei Ollama registriert ist
                     # (`/api/tags`), nicht ob es gerade im VRAM liegt.
                     whisper_ok = bool(state.model_loaded)
-                    qwen_ok = False
-                    try:
-                        _tags = httpx.get(f"{OLLAMA_URL}/api/tags", timeout=1.5)
-                        if _tags.status_code == 200:
-                            want = OLLAMA_MODEL.split(":")[0]
-                            for _m in _tags.json().get("models", []):
-                                if want in _m.get("name", ""):
-                                    qwen_ok = True
-                                    break
-                    except Exception:
-                        qwen_ok = False
+                    # LLM-Label aus Modellname ableiten (gemma3:4b -> GEMMA3,
+                    # qwen2.5:1.5b -> QWEN, etc.) — erste Segment vorm Doppel-
+                    # punkt, dann gross.
+                    _llm_short = OLLAMA_MODEL.split(":")[0].replace(".", "").upper()
+                    if "GEMMA3N" in _llm_short:
+                        llm_label = "GEMMA3N"
+                    elif "GEMMA3" in _llm_short:
+                        llm_label = "GEMMA3"
+                    elif "GEMMA" in _llm_short:
+                        llm_label = "GEMMA"
+                    elif "QWEN" in _llm_short:
+                        llm_label = "QWEN"
+                    else:
+                        llm_label = _llm_short[:7]
+                    # LLM-State haengt vom Swap-Mode ab:
+                    #   coexist    -> LLM immer online, Status per VRAM-Check
+                    #   recording  -> Whisper aktiv, LLM OFFLINE (entladen)
+                    #   analyzing  -> LLM aktiv (AKTIV), Whisper entladen
+                    swap_mode = getattr(state, "swap_mode", "coexist")
+                    if swap_mode == "recording":
+                        llm_state = "offline"
+                    elif swap_mode == "analyzing":
+                        llm_state = "analyzing"
+                    else:
+                        # coexist: schauen ob das LLM wirklich geladen ist
+                        llm_state = "offline"
+                        try:
+                            _tags = httpx.get(f"{OLLAMA_URL}/api/tags", timeout=1.5)
+                            if _tags.status_code == 200:
+                                want = OLLAMA_MODEL.split(":")[0]
+                                for _m in _tags.json().get("models", []):
+                                    if want in _m.get("name", ""):
+                                        llm_state = "online"
+                                        break
+                        except Exception:
+                            pass
                     # ram_percent = belegt; wir zeigen auf dem OLED den
                     # freien Anteil (100 - belegt).
                     try:
@@ -6805,7 +6920,11 @@ async def _oled_update_loop():
                         ram_free_percent = 0
                     oled_menu.update_models_status({
                         "whisper_ok": whisper_ok,
-                        "qwen_ok": qwen_ok,
+                        "llm_label": llm_label,
+                        "llm_state": llm_state,
+                        # Legacy-Key fuer Rueckwaerts-Kompatibilitaet falls
+                        # jemand den alten Status liest
+                        "qwen_ok": llm_state == "online",
                         "ram_free_percent": ram_free_percent,
                     })
 
