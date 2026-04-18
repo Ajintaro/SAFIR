@@ -4484,19 +4484,22 @@ async def data_test_generate(body: dict | None = None):
 
     elif scenario == "role1":
         # 2 Patienten die schon in Role 1 angekommen + analyzed + synced
-        # sind. Demo-Szene fuer Role-1-Uebergabe / Triage-Entscheidungen.
+        # sind. Demo-Szene fuer Role-1-Uebergabe. Triage bewusst LEER —
+        # die wird in Role 1 vom Arzt manuell gesetzt, nicht automatisch.
+        # Solange triage leer ist, zeigt das UI das Dienstgrad-Schulter-
+        # stueck (siehe showRankBadge-Logik in renderPatientCards).
         test_patients = [
             _mk_patient("Christian Braun", "Hauptfeldwebel",
                 ["Schussverletzung Oberschenkel", "Tourniquet"],
                 {"pulse": "112", "spo2": "94", "bp": "105/65"},
                 flow_status="reported", analyzed=True, synced=True,
-                triage="T1", current_role="role1",
+                triage="", current_role="role1",
                 transcript_text="Hauptfeldwebel Braun, Schussverletzung Oberschenkel, Tourniquet seit 45 Minuten."),
             _mk_patient("Monika Weber", "Oberfeldwebelin",
                 ["Stichverletzung Abdomen"],
                 {"pulse": "102", "spo2": "96", "bp": "115/70"},
                 flow_status="reported", analyzed=True, synced=True,
-                triage="T2", current_role="role1",
+                triage="", current_role="role1",
                 transcript_text="Oberfeldwebelin Weber, Stichverletzung rechter Oberbauch, stabil."),
         ]
         pending_texts = []

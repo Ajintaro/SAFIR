@@ -6265,12 +6265,16 @@
                 // MIFARE-Karten sind vs. welche noch offen.
                 const hasRfidWritten = (p.timeline || []).some(ev => ev.event === 'rfid_written');
 
-                // Phase 0 (BAT): Offizielles BW-Schulterstueck statt Triage-
-                // Dot. Triage wird erst in der Rettungsstation gesetzt — im
-                // Feld ist der Dienstgrad die relevante Sofort-Info.
-                // Kein Rang? -> graue Placeholder-Box (nicht leerer Raum,
-                // damit Layout konsistent bleibt und "Rang unbekannt" erkennbar).
-                const showRankBadge = isPhase0;
+                // Schulterstueck-vs-Triage-Logik:
+                // - Phase 0 (BAT): immer Schulterstueck, weil Triage dort bewusst
+                //   nicht gesetzt wird
+                // - Role 1+: Schulterstueck solange keine Triage gesetzt (Patient
+                //   gerade angekommen, Arzt hat noch nicht entschieden).
+                //   Sobald Triage gesetzt -> farbiger Triage-Dot (vordringlich
+                //   Farbe, Dienstgrad im Namens-Text-Anhang).
+                // Kein Rang -> graue Placeholder-Box (nicht leerer Raum, damit
+                // Layout konsistent bleibt und "Rang unbekannt" erkennbar).
+                const showRankBadge = isPhase0 || !p.triage;
                 const badgeImg = showRankBadge ? rankToBadgeHtml(p.rank) : '';
                 const rankBadgeHtml = showRankBadge
                     ? (badgeImg
