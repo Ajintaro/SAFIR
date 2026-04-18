@@ -52,11 +52,16 @@ PAGE_SUBMENUS = {
         ("lock_now", "Jetzt Sperren"),
     ],
     "patient": [
+        # Erster Eintrag: Patienten-Liste oeffnen (Pick-Mode). Ab hier
+        # kann der User per B kurz durchscrollen, B lang aktiviert den
+        # gewaehlten Patient und fuehrt zurueck ins Patient-Menue wo
+        # weitere Aktionen verfuegbar sind.
+        ("patient_pick", "Patient waehlen"),
         ("record_toggle", "Aufnahme"),
         ("analyze_pending", "Analysieren"),
         ("send_backend", "Melden"),
         ("card_write", "RFID schreiben"),
-        ("patient_delete", "Loeschen"),
+        ("patient_delete", "Aktiven loeschen"),
     ],
 }
 
@@ -94,6 +99,12 @@ class OledMenu:
         # des aktuellen Screens statt der normalen Content-Ansicht.
         self.submenu_open = False
         self.submenu_index = 0
+        # Patient-Pick-Mode: Liste aller Patienten, scrollbar mit B kurz,
+        # B lang setzt den Patient als active_patient und geht zurueck ins
+        # Patient-Hauptmenue. A lang bricht ab.
+        self.patient_pick_open = False
+        self.patient_pick_index = 0
+        self.patient_list: list[dict] = []  # [{"patient_id":..,"name":..,"triage":..}]
         self.stats = {}              # System-Stats (CPU, RAM, GPU, Temperaturen, ...)
         self.network_info = {}       # Netzwerk-Info (Hostname, IP)
         self.patient_info = {}       # Patienten-Übersicht (Anzahl, etc.)
@@ -251,24 +262,47 @@ class OledMenu:
         self._wake()
         if self.locked:
             return
-        if not self.submenu_open:
-            self.current_page = (self.current_page + 1) % len(PAGES)
+        # In Patient-Pick- und Submenu-Modi ist A kurz reserviert fuer
+        # Page-Wechsel -> deshalb hier blocken, user muss A lang drueck
+        # um zurueckzugehen.
+        if self.patient_pick_open or self.submenu_open:
+            return
+        self.current_page = (self.current_page + 1) % len(PAGES)
 
     def button_a_long(self):
-        """A lang: Untermenü toggle (rein wenn Einträge da sind, raus sonst)."""
+        """A lang: Navigation zurueck / Untermenü toggle.
+        - Im Patient-Pick offen: schliessen, zurueck zu Hauptseite
+        - Im Submenu: schliessen, zurueck zu Hauptseite
+        - Sonst: Submenu oeffnen (falls Page ein Submenu hat)
+        """
         self._wake()
+        # 1. Pick-Mode -> abbrechen (kein Patient-Wechsel)
+        if self.patient_pick_open:
+            self.patient_pick_open = False
+            self.patient_pick_index = 0
+            return
+        # 2. Submenu offen -> schliessen
         if self.submenu_open:
             self.submenu_open = False
             self.submenu_index = 0
             return
+        # 3. Hauptseite -> Submenu oeffnen wenn Page eins hat
         page = PAGES[self.current_page]
         if PAGE_SUBMENUS.get(page):
             self.submenu_open = True
             self.submenu_index = 0
 
     def button_b_short(self):
-        """B kurz: Im Untermenü nächster Eintrag. Im Hauptmenü nichts."""
+        """B kurz: Scroll-Operation.
+        - In Patient-Pick: naechster Patient in der Liste
+        - In Submenu: naechster Eintrag
+        - Sonst: nichts
+        """
         self._wake()
+        if self.patient_pick_open:
+            if self.patient_list:
+                self.patient_pick_index = (self.patient_pick_index + 1) % len(self.patient_list)
+            return
         if not self.submenu_open:
             return
         page = PAGES[self.current_page]
@@ -277,21 +311,41 @@ class OledMenu:
             self.submenu_index = (self.submenu_index + 1) % len(items)
 
     def button_b_long(self):
-        """B lang: Im Untermenü Eintrag ausführen → returns {'page': ..., 'action': ...}.
-        Das Untermenü bleibt nach dem Fire offen, damit mehrere Aktionen
-        ohne Re-Navigation möglich sind."""
+        """B lang: Action-Execute.
+        - In Patient-Pick: gewaehlten Patient aktivieren -> schliesst Pick
+        - In Submenu: Action des ausgewaehlten Eintrags zurueckgeben
+        - "patient_pick" Action -> oeffnet Pick-Mode + schliesst Submenu
+        """
         self._wake()
+        # Patient-Pick aktiv -> Patient aktivieren
+        if self.patient_pick_open:
+            if self.patient_list and 0 <= self.patient_pick_index < len(self.patient_list):
+                chosen = self.patient_list[self.patient_pick_index]
+                print(f"[OLED] patient_pick: FIRE id={chosen['patient_id']} name={chosen['name']!r}", flush=True)
+                # Pick schliessen + zurueck auf Patient-Hauptseite (kein Submenu)
+                self.patient_pick_open = False
+                self.patient_pick_index = 0
+                self.submenu_open = False
+                return {"page": "patient", "action": "patient_pick_confirm",
+                        "label": chosen["name"], "patient_id": chosen["patient_id"]}
+            return None
         if not self.submenu_open:
             print(f"[OLED] button_b_long: submenu geschlossen (page={PAGES[self.current_page]}) — ignoriert", flush=True)
             return None
         page = PAGES[self.current_page]
         items = PAGE_SUBMENUS.get(page, [])
-        if items and 0 <= self.submenu_index < len(items):
-            action_id, label = items[self.submenu_index]
-            print(f"[OLED] button_b_long: FIRE page={page} idx={self.submenu_index} action={action_id} label={label!r}", flush=True)
-            return {"page": page, "action": action_id, "label": label}
-        print(f"[OLED] button_b_long: leeres submenu (page={page})", flush=True)
-        return None
+        if not items or not (0 <= self.submenu_index < len(items)):
+            return None
+        action_id, label = items[self.submenu_index]
+        # Action "patient_pick" -> Pick-Mode oeffnen statt Action-Fire
+        if action_id == "patient_pick":
+            self.submenu_open = False  # Submenu schliessen
+            self.patient_pick_open = True
+            self.patient_pick_index = 0
+            print(f"[OLED] patient_pick: OPEN ({len(self.patient_list)} Patienten)", flush=True)
+            return None
+        print(f"[OLED] button_b_long: FIRE page={page} idx={self.submenu_index} action={action_id} label={label!r}", flush=True)
+        return {"page": page, "action": action_id, "label": label}
 
     # Kompatibilitäts-Wrapper — nicht in neuer Logik verwenden
     def button_up(self):
@@ -334,6 +388,27 @@ class OledMenu:
     def update_active_patient(self, info: dict):
         self.active_patient_info = info
 
+    def update_patient_list(self, patients: list[dict]):
+        """Wird von app.py-Loop regelmaessig aufgerufen mit einer kompakten
+        Liste aller Patienten (patient_id, name, triage, rank). Wird in
+        der Patient-Pick-Ansicht gescrollt — am OLED sieht der User die
+        Namen + Triage-Buchstabe um auszuwaehlen welcher Patient aktiv
+        werden soll."""
+        # Defensiv: nur Strings speichern, Dict auf 3 Keys reduzieren
+        self.patient_list = [
+            {
+                "patient_id": str(p.get("patient_id", "")),
+                "name": (p.get("name") or "Unbekannt").strip() or "Unbekannt",
+                "triage": (p.get("triage") or "").strip() or "-",
+                "rank": (p.get("rank") or "").strip(),
+            }
+            for p in (patients or [])
+            if p.get("patient_id")
+        ]
+        # Index-Grenze anpassen falls Liste schrumpft
+        if self.patient_pick_index >= len(self.patient_list) and self.patient_list:
+            self.patient_pick_index = 0
+
     def update_hotspot(self, info: dict):
         self.hotspot_info = info
 
@@ -362,8 +437,13 @@ class OledMenu:
 
         page = PAGES[self.current_page]
 
-        # Untermenue hat Vorrang: zeigt Action-Liste statt Content
-        if self.submenu_open:
+        # Rendering-Priority (high -> low):
+        #   1. Patient-Pick-Mode (Liste durchscrollen, Patient auswaehlen)
+        #   2. Submenu (Action-Liste des aktuellen Screens)
+        #   3. Content-Ansicht der jeweiligen Seite
+        if self.patient_pick_open:
+            self._render_patient_pick(draw)
+        elif self.submenu_open:
             self._render_submenu(draw, page)
         elif page == "models":
             self._render_models_status(draw)
@@ -556,24 +636,89 @@ class OledMenu:
 
     # ---- Seite: PATIENT (aktiver Patient) ----
     def _render_patient(self, draw: ImageDraw):
+        """Zeigt den AKTIVEN Patient + Position in der Liste (z.B. "3/5").
+        Layout:
+          Z1 (oben rechts): Position-Indikator "3/5" (FONT_SM)
+          Z2 (y=2): Name (FONT_LG, max 14 chars)
+          Z3 (y=22): Rang (FONT_SM)
+          Z4 (y=34): Triage-Box oder "-"
+          Z5 (y=50): Status (flow_status) FONT_SM
+        """
         p = self.active_patient_info
+        total = len(self.patient_list)
         if not p or not p.get("patient_id"):
             draw.text((2, 4),  "KEIN",    font=FONT_XL, fill=1)
             draw.text((2, 24), "PATIENT", font=FONT_XL, fill=1)
+            if total > 0:
+                draw.text((2, 50), f"{total} im Speicher", font=FONT_SM, fill=1)
             return
 
         name = (p.get("name") or "").strip() or "Unbekannt"
-        triage = p.get("triage", "")
+        rank = (p.get("rank") or "").strip()
+        triage = (p.get("triage") or "").strip()
         flow = p.get("flow_status", "")
 
-        # Name oben (XL), max 10 Zeichen
-        draw.text((2, 2), name[:10], font=FONT_XL, fill=1)
-        # Triage mittig, groß
+        # Position in Liste: aktueller Patient ist der wievielte?
+        pos = 0
+        for i, pp in enumerate(self.patient_list):
+            if pp.get("patient_id") == p.get("patient_id"):
+                pos = i + 1
+                break
+        if total > 0 and pos > 0:
+            pos_text = f"{pos}/{total}"
+            # Rechts oben, kleiner Font
+            tw = draw.textlength(pos_text, font=FONT_SM)
+            draw.text((WIDTH - tw - 2, 2), pos_text, font=FONT_SM, fill=1)
+
+        # Z2: Name (gross)
+        draw.text((2, 2), name[:14], font=FONT_LG, fill=1)
+        # Z3: Rang (klein)
+        if rank:
+            draw.text((2, 22), rank[:20], font=FONT_SM, fill=1)
+        # Z4: Triage (als Box + Label wenn gesetzt, sonst Bindestrich)
         if triage:
-            draw.text((2, 24), f"Triage: {triage}", font=FONT_MD, fill=1)
-        # Flow-Status unten
+            # Kleine gefuellte Box fuer die Triage-Farbe (S/W-OLED: nur Rand)
+            draw.rectangle([2, 34, 28, 48], outline=1, fill=0)
+            draw.text((8, 35), triage, font=FONT_MD, fill=1)
+            draw.text((34, 35), "TRIAGE", font=FONT_SM, fill=1)
+        else:
+            draw.text((2, 35), "Triage: --", font=FONT_SM, fill=1)
+        # Z5: Flow-Status unten
         if flow:
-            draw.text((2, 44), flow[:20], font=FONT_MD, fill=1)
+            draw.text((2, 52), flow[:20], font=FONT_SM, fill=1)
+
+    def _render_patient_pick(self, draw: ImageDraw):
+        """Patienten-Liste im Pick-Mode. 4 Zeilen sichtbar, zentriert
+        um den ausgewaehlten Index. Selektierter Eintrag invertiert.
+        Zeigt Name + Triage-Buchstabe pro Zeile."""
+        if not self.patient_list:
+            draw.text((2, 2),  "KEINE", font=FONT_LG, fill=1)
+            draw.text((2, 24), "PATIENTEN", font=FONT_LG, fill=1)
+            draw.text((2, 52), "A lang=zurueck", font=FONT_SM, fill=1)
+            return
+
+        total = len(self.patient_list)
+        idx = self.patient_pick_index
+        # Header mit Position
+        draw.text((2, 2), f"PATIENT {idx + 1}/{total}", font=FONT_SM, fill=1)
+        # Items: zentrieren um idx (3 Eintraege sichtbar unter Header)
+        # Window-Start berechnen damit idx moeglichst mittig sitzt
+        window_size = 3
+        start = max(0, min(idx - 1, total - window_size))
+        y = 16
+        for i in range(start, min(start + window_size, total)):
+            p = self.patient_list[i]
+            name = p["name"][:12]
+            triage = p["triage"][:1] if p["triage"] != "-" else "-"
+            line = f"{name:<12} {triage}"
+            if i == idx:
+                draw.rectangle([0, y - 1, WIDTH - 1, y + 12], fill=1)
+                draw.text((3, y), f"> {line}", font=FONT_MD, fill=0)
+            else:
+                draw.text((3, y), f"  {line}", font=FONT_MD, fill=1)
+            y += 14
+        # Hilfe-Zeile unten
+        draw.text((2, 55), "B=weiter B-lang=waehl", font=FONT_SM, fill=1)
 
     # ---- Untermenü-Liste (2-Level-Menü) ----
     def _render_submenu(self, draw: ImageDraw, page: str):

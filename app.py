@@ -534,6 +534,12 @@ def _handle_oled_action(action: dict):
             return voice_write_card()
         if action_id == "patient_delete":
             return _oled_patient_delete()
+        if action_id == "patient_pick_confirm":
+            # User hat im Pick-Mode B lang gedrueckt -> gewaehlten Patient
+            # als active_patient setzen. Das OLED-Menue hat sich schon
+            # selbst geschlossen, wir broadcasten nur den State-Wechsel.
+            new_pid = action.get("patient_id", "")
+            return _oled_patient_activate(new_pid, action.get("label", ""))
 
     print(f"[OLED-ACTION] unbekannt: page={page} action={action_id}", flush=True)
     return None
@@ -789,6 +795,27 @@ async def _oled_patient_delete():
     await broadcast({"type": "patient_deleted", "patient_id": pid})
     tts.announce_entry_deleted()
     await asyncio.sleep(1.0)
+    oled_menu.clear_status()
+
+
+async def _oled_patient_activate(new_pid: str, label: str = ""):
+    """OLED-Untermenü: Ausgewaehlten Patient aus der Pick-Liste als
+    active_patient setzen. Gibt TTS-Ansage + OLED-Bestaetigung."""
+    if not new_pid or new_pid not in state.patients:
+        tts.speak("Patient nicht gefunden")
+        return
+    state.active_patient = new_pid
+    patient = state.patients[new_pid]
+    name = patient.get("name") or "Unbekannt"
+    oled_menu.show_status("AKTIV", name[:18])
+    # Broadcast an Frontend damit die UI den aktiven Patient mitbekommt
+    await broadcast({
+        "type": "rfid_scan",
+        "action": "found",
+        "patient": patient,
+    })
+    tts.speak(f"Patient {name} aktiv")
+    await asyncio.sleep(1.5)
     oled_menu.clear_status()
 
 
@@ -7139,11 +7166,27 @@ async def _oled_update_loop():
                         oled_menu.update_active_patient({
                             "patient_id": active_pat.get("patient_id", ""),
                             "name": active_pat.get("name", ""),
+                            "rank": active_pat.get("rank", ""),
                             "triage": active_pat.get("triage", ""),
                             "flow_status": active_pat.get("flow_status", ""),
                         })
                     else:
                         oled_menu.update_active_patient({})
+                    # Komplette Patient-Liste an OLED uebergeben fuer den
+                    # Pick-Mode (Patient waehlen). Kompakte Darstellung —
+                    # nur die Felder die das OLED wirklich rendert.
+                    try:
+                        oled_menu.update_patient_list([
+                            {
+                                "patient_id": pp.get("patient_id", ""),
+                                "name": pp.get("name", ""),
+                                "rank": pp.get("rank", ""),
+                                "triage": pp.get("triage", ""),
+                            }
+                            for pp in state.patients.values()
+                        ])
+                    except Exception as _e:
+                        pass
 
                     # Power-Info (Uptime)
                     uptime_s = time.monotonic() - _hardware_start_ts
