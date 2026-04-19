@@ -1838,7 +1838,9 @@ async def voice_write_card():
         return
 
     total = len(todo)
-    tts.speak(f"{total} Karten schreiben" if total > 1 else "Eine Karte schreiben")
+    # Einleitungs-Ansage weggelassen — der User sieht den Counter "1/3" auf
+    # dem OLED und die erste Patient-Ansage kommt sofort danach. Jede
+    # zusaetzliche Zeile waere Wartezeit bei langsamer TTS-Stimme.
     written = 0
     skipped: list[str] = []
     op = state.current_operator or {}
@@ -1865,13 +1867,18 @@ async def voice_write_card():
                 await asyncio.sleep(2.0)
                 break
             name = (patient.get("name") or "Unbekannt").strip()
+            rank = (patient.get("rank") or "").strip()
             pid = patient["patient_id"]
             label_idx = f"{idx + 1}/{total}"
             short_name = name[:14]
             oled_menu.show_status(f"KARTE {label_idx}", f"{short_name} auflegen")
             if hardware_service._leds:
                 hardware_service._leds.set(red=LedPattern.BLINK_SLOW)
-            tts.speak(f"Karte {idx + 1}. {name}")
+            # Ansage mit Rang+Name damit der User den richtigen Patient
+            # identifiziert ("Karte 1. Hauptfeldwebel Mueller auflegen").
+            # Wenn kein Rang bekannt ist, fallback auf "Patient Mueller".
+            speaker_label = f"{rank} {name}" if rank else f"Patient {name}"
+            tts.speak(f"Karte {idx + 1}. {speaker_label}. Bitte auflegen.")
 
             uid = await hardware_service.await_rfid_scan(timeout=15.0)
             # Nochmal Cancel-Check nach dem await — User koennte waehrend
@@ -1937,7 +1944,11 @@ async def voice_write_card():
                 except Exception as e:
                     print(f"[RFID] push_single_patient nach Write fehlgeschlagen: {e}", flush=True)
                 await hardware_service.flash_success(0.7)
-                tts.speak(f"Karte {idx + 1} fertig")
+                # KEINE "Karte N fertig"-Ansage — der User sieht LED + OLED-Status
+                # und bekommt sofort die naechste "Karte N+1. Rang Name"-Ansage.
+                # Alle Zwischen-TTS wuerden die Queue stauen (Backlog > 2-3
+                # bedeutet: Ansagen kommen zu spaet und passen nicht mehr
+                # zur aktuellen Karte).
                 written += 1
             else:
                 oled_menu.show_status("FEHLER", str(result)[:18])
@@ -1949,15 +1960,17 @@ async def voice_write_card():
         if hardware_service._leds:
             hardware_service._leds.set(red=LedPattern.OFF)
 
+        # Abschluss-Ansage: knapp halten damit der Worker sie wirklich
+        # abspielt bevor der naechste Voice-Command kommt.
         if written == total:
             oled_menu.show_status("FERTIG", f"{written}/{total} OK")
-            tts.speak(f"{written} Karten geschrieben" if written != 1 else "Eine Karte geschrieben")
+            tts.speak("Alle Karten fertig" if written > 1 else "Karte fertig")
         elif written > 0:
             oled_menu.show_status("TEIL OK", f"{written}/{total}")
-            tts.speak(f"{written} von {total} Karten geschrieben")
+            tts.speak(f"{written} von {total} fertig")
         else:
             oled_menu.show_status("KEINE OK", "0 Karten")
-            tts.speak("Keine Karten geschrieben")
+            tts.speak("Keine Karte geschrieben")
         await asyncio.sleep(2.5)
         oled_menu.clear_status()
     finally:

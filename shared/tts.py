@@ -253,6 +253,16 @@ def _ensure_worker():
             _tts_worker_thread.start()
 
 
+# Maximal-Backlog in der TTS-Queue. Bei langsamer Stimme (z.B. thorsten-
+# high auf CPU) dauert eine Ansage 2-4s. Wenn wir schneller enqueuen
+# als abspielen, kommen Ansagen minutenspaet und passen nicht mehr zur
+# aktuellen Situation. Deshalb: ueber diesem Limit werden ALTE Messages
+# aus der Queue entfernt damit die neuen (aktuell relevanten) Vorrang
+# haben. 3 ist ein guter Kompromiss — kurze Sequenzen wie "Karte 1. Mueller
+# auflegen" + "Karte fertig" + "Karte 2. Schmidt auflegen" passen rein.
+_TTS_MAX_BACKLOG = 3
+
+
 def speak(text: str, blocking: bool = False):
     """Spricht Text aus. Non-blocking per Default (queue-basiert).
 
@@ -260,18 +270,30 @@ def speak(text: str, blocking: bool = False):
     paralleler Piper-Zugriff mehr moeglich. Bei blocking=True wird
     _speak_internal direkt aufgerufen (z.B. fuer kritische Fehler-
     meldungen die synchron raus muessen).
+
+    Bei Queue-Backlog > _TTS_MAX_BACKLOG werden die aeltesten Messages
+    verworfen — sie sind sowieso nicht mehr aktuell und blockieren nur
+    die wichtigen naechsten Ansagen.
     """
     if not _enabled or _voice is None:
         print(f"[TTS] dropped (enabled={_enabled}, voice-loaded={_voice is not None}): {text[:60]!r}", flush=True)
         return
     if blocking:
         _speak_internal(text)
-    else:
-        _ensure_worker()
-        qsize_before = _tts_queue.qsize()
-        _tts_queue.put(text)
-        if qsize_before > 2:
-            print(f"[TTS] queue-backlog {qsize_before}, enqueue: {text[:40]!r}", flush=True)
+        return
+    _ensure_worker()
+    # Backlog-Drop: wenn zu viele Messages anstehen, alteste entfernen
+    dropped = 0
+    while _tts_queue.qsize() >= _TTS_MAX_BACKLOG:
+        try:
+            _tts_queue.get_nowait()
+            _tts_queue.task_done()
+            dropped += 1
+        except Exception:
+            break
+    if dropped > 0:
+        print(f"[TTS] backlog drop: {dropped} alte Messages entfernt vor enqueue '{text[:40]}'", flush=True)
+    _tts_queue.put(text)
 
 
 def _pick_output_rate(device, piper_rate: int) -> int:
