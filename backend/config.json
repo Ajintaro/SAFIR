@@ -16,6 +16,11 @@
     "phase0_unit_name": "BAT Simulation",
     "navigation": [
         {
+            "id": "separator-kette",
+            "type": "separator",
+            "label": "Rettungskette"
+        },
+        {
             "id": "phase0",
             "label": "Phase 0",
             "icon": "&#9873;",
@@ -47,9 +52,31 @@
             "subtitle": "BW-Krankenhaus"
         },
         {
+            "id": "separator-verwaltung",
+            "type": "separator",
+            "label": "Verwaltung"
+        },
+        {
             "id": "patients",
             "label": "Patienten",
             "icon": "&#9764;"
+        },
+        {
+            "id": "documents",
+            "label": "Dokumente",
+            "icon": "&#128196;"
+        },
+        {
+            "id": "handbook",
+            "label": "Handbuch",
+            "icon": "&#128218;",
+            "subtitle": "Bedienungsanleitung"
+        },
+        {
+            "id": "vision",
+            "label": "Vision",
+            "icon": "&#127919;",
+            "subtitle": "Weitere Einsatzgebiete"
         },
         {
             "id": "settings",

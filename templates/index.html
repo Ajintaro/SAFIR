@@ -1278,8 +1278,36 @@
             color: var(--text-dim);
             line-height: var(--lh-body-sm);
         }
-        .role1-transport-header .unit-dist { font-size: var(--fs-body-sm); font-weight: 600; color: var(--info, #5DADE2); margin-right: 4px; }
-        .role1-transport-header .eta { font-size: var(--fs-body-sm); font-weight: 700; color: var(--warning); }
+        .role1-transport-header .unit-dist {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 2px 8px; margin: 0 3px 0 0;
+            font-size: var(--fs-body); font-weight: 700;
+            color: var(--info, #5DADE2);
+            background: rgba(93, 173, 226, 0.12);
+            border: 1px solid rgba(93, 173, 226, 0.35);
+            border-radius: 2px;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.02em;
+        }
+        .role1-transport-header .unit-dist::before {
+            content: "◉"; font-size: 8px; opacity: 0.7;
+        }
+        .role1-transport-header .unit-eta {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 2px 8px; margin: 0 3px 0 0;
+            font-size: var(--fs-body); font-weight: 700;
+            color: var(--warning, #d4871a);
+            background: rgba(212, 135, 26, 0.12);
+            border: 1px solid rgba(212, 135, 26, 0.4);
+            border-radius: 2px;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.02em;
+        }
+        .role1-transport-header .unit-eta::before {
+            content: "⏱"; font-size: 10px; opacity: 0.85;
+        }
+        .role1-transport-card.arrived .unit-dist,
+        .role1-transport-card.arrived .unit-eta { display: none; }
         .role1-transport-header .toggle-arrow {
             font-size: var(--fs-body-sm); color: var(--text-dim); transition: transform 0.2s;
             flex-shrink: 0; margin-left: 4px;
@@ -4396,21 +4424,14 @@
                     // Cache position for distance display
                     role1Positions[key] = pos;
 
-                    // Update distance in transport card
+                    // Distanz- + ETA-Chips in Transport-Card aktualisieren.
+                    // ETA basiert auf der live uebermittelten speed_kmh —
+                    // wird nur angezeigt wenn BAT sich aktiv bewegt (Rueckfahrt
+                    // laeuft). Im Ruhezustand verschwindet der ETA-Chip.
                     const card = document.querySelector(`.role1-transport-card[data-unit="${key}"]`);
                     if (card) {
                         const km = haversineKm(lat, lng, R1_POS.lat, R1_POS.lng);
-                        const distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
-                        let distEl = card.querySelector('.unit-dist');
-                        if (distEl) {
-                            distEl.textContent = distStr;
-                        } else {
-                            distEl = document.createElement('span');
-                            distEl.className = 'unit-dist';
-                            distEl.textContent = distStr;
-                            const meta = card.querySelector('.unit-meta');
-                            if (meta) meta.parentNode.insertBefore(distEl, meta);
-                        }
+                        updateDistEtaChips(card, km, pos.speed_kmh || 0);
                     }
 
                     if (role1Map) {
@@ -4432,7 +4453,87 @@
                             role1MarkerPositions[key] = posKey;
                             role1MarkerPatientCounts[key] = `${patCount}_${role1ActiveLayer}_${isArrived ? 1 : 0}`;
                         }
+
+                        // Rueckfahrt-Polyline: gepunktete Luftlinie zwischen BAT
+                        // und Rettungsstation. Wird aus position_update abgeleitet
+                        // (kein separater bat_returning-Event noetig):
+                        //   speed > 0  → Polyline erzeugen/aktualisieren
+                        //   speed == 0, < 100 m zur Station → Polyline entfernen (arrived)
+                        //   sonst → Polyline unveraendert (BAT steht irgendwo still)
+                        const kmToStation = haversineKm(lat, lng, R1_POS.lat, R1_POS.lng);
+                        const isMoving = (pos.speed_kmh || 0) > 0.5;
+                        if (isMoving) {
+                            if (!role1ReturnLines[key]) {
+                                role1ReturnLines[key] = L.polyline([
+                                    [lat, lng], [R1_POS.lat, R1_POS.lng],
+                                ], {
+                                    color: '#d4871a',
+                                    weight: 3,
+                                    opacity: 0.85,
+                                    dashArray: '6, 8',
+                                    lineCap: 'round',
+                                }).addTo(role1Map);
+                                role1ReturnLines[key].bindTooltip(
+                                    'Rueckfahrt — Luftlinie (' + key + ')',
+                                    { sticky: true }
+                                );
+                            } else {
+                                role1ReturnLines[key].setLatLngs([
+                                    [lat, lng], [R1_POS.lat, R1_POS.lng],
+                                ]);
+                            }
+                        } else if (role1ReturnLines[key] && kmToStation < 0.1) {
+                            // Angekommen: BAT steht und ist < 100m von Rettungsstation
+                            role1Map.removeLayer(role1ReturnLines[key]);
+                            delete role1ReturnLines[key];
+                            role1ArrivedBats = role1ArrivedBats || {};
+                            role1ArrivedBats[key] = true;
+                        }
                     }
+                }
+                break;
+            case 'bat_returning':
+                // BAT hat Rueckfahrt gestartet — gepunktete Luftlinie auf der
+                // Lagekarte zeichnen (zwischen Start-Position und Rettungsstation).
+                // Die Linie wird in position_update-Events live auf die aktuelle
+                // Position verkuerzt, damit der Arzt sieht wie der BAT naeher
+                // kommt. Bewusst als "gepunktete" Linie, damit offensichtlich
+                // ist dass es sich um eine Luftlinie handelt, NICHT um eine
+                // echte Strassenroute.
+                if (role1Map && msg.start_lat && msg.destination_lat) {
+                    const batKey = msg.unit_name || Object.keys(role1Positions)[0] || null;
+                    if (batKey) {
+                        // Existierende Linie entfernen (falls Rueckfahrt neu gestartet)
+                        if (role1ReturnLines[batKey]) {
+                            role1Map.removeLayer(role1ReturnLines[batKey]);
+                        }
+                        const poly = L.polyline([
+                            [msg.start_lat, msg.start_lon || msg.start_lng],
+                            [msg.destination_lat, msg.destination_lon || msg.destination_lng],
+                        ], {
+                            color: '#d4871a',        // --mil-amber
+                            weight: 3,
+                            opacity: 0.85,
+                            dashArray: '6, 8',       // gepunktet
+                            lineCap: 'round',
+                        }).addTo(role1Map);
+                        poly.bindTooltip(`Rueckfahrt — Luftlinie (${batKey})`, {sticky: true});
+                        role1ReturnLines[batKey] = poly;
+                        showToast('BAT ' + batKey + ' auf Rückfahrt', '\u26D1', 'info');
+                    }
+                }
+                break;
+            case 'bat_arrived':
+                // BAT hat die Rettungsstation erreicht — Polyline entfernen,
+                // Marker bekommt "arrived"-State. Toast fuer den Arzt.
+                if (msg.unit_name) {
+                    if (role1Map && role1ReturnLines[msg.unit_name]) {
+                        role1Map.removeLayer(role1ReturnLines[msg.unit_name]);
+                        delete role1ReturnLines[msg.unit_name];
+                    }
+                    role1ArrivedBats = role1ArrivedBats || {};
+                    role1ArrivedBats[msg.unit_name] = true;
+                    showToast('BAT ' + msg.unit_name + ' eingetroffen', '\u2705', 'info');
                 }
                 break;
             case 'init':
@@ -6559,6 +6660,11 @@
     let role1StationMarker = null;
     let role1ActiveLayer = 'taktisch';  // 'taktisch' | 'medizinisch' | 'gelände'
     let role1TileLayer = null;
+    // Polylines pro BAT-Unit: gepunktete Luftlinie zwischen aktueller
+    // BAT-Position und der Rettungsstation, waehrend die Rueckfahrt
+    // laeuft. Wird beim bat_returning-Event erzeugt, bei position_update
+    // live verkuerzt und beim bat_arrived-Event entfernt.
+    let role1ReturnLines = {};  // unit_name -> L.Polyline
 
     // Tile-Layer Definitionen
     const R1_TILE_LAYERS = {
@@ -6762,6 +6868,67 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
+    // Distanz formatieren: <1 km -> Meter, sonst km mit einer Nachkommastelle
+    function formatDistance(km) {
+        if (km == null || isNaN(km)) return '';
+        return km < 1 ? Math.round(km * 1000) + ' m' : km.toFixed(1) + ' km';
+    }
+
+    // ETA aus Distanz (km) und Geschwindigkeit (km/h) berechnen und formatieren.
+    // Gibt leeren String zurueck wenn BAT still steht (speed <= 0) oder schon
+    // angekommen (< 50 m). Format: "3:20 min" oder "12 min".
+    function formatEta(km, speedKmh) {
+        if (km == null || isNaN(km) || !speedKmh || speedKmh <= 0) return '';
+        if (km < 0.05) return '';
+        const minutes = (km / speedKmh) * 60;
+        if (minutes < 1) return Math.round(minutes * 60) + ' s';
+        if (minutes < 10) {
+            const whole = Math.floor(minutes);
+            const secs = Math.round((minutes - whole) * 60);
+            return whole + ':' + String(secs).padStart(2, '0') + ' min';
+        }
+        return Math.round(minutes) + ' min';
+    }
+
+    // Update Distanz- und ETA-Chips in einer Transport-Card. Idempotent,
+    // erzeugt fehlende Chips, aktualisiert bestehende. insertBeforeEl ist
+    // typischerweise die .unit-meta, damit die Chips links davon landen.
+    function updateDistEtaChips(card, km, speedKmh) {
+        if (!card) return;
+        const distStr = formatDistance(km);
+        const etaStr = formatEta(km, speedKmh);
+        const insertBefore = card.querySelector('.unit-meta');
+
+        // Distanz-Chip
+        let distEl = card.querySelector('.unit-dist');
+        if (distStr) {
+            if (!distEl) {
+                distEl = document.createElement('span');
+                distEl.className = 'unit-dist';
+                if (insertBefore) insertBefore.parentNode.insertBefore(distEl, insertBefore);
+                else card.querySelector('.role1-transport-header')?.appendChild(distEl);
+            }
+            distEl.textContent = distStr;
+        } else if (distEl) {
+            distEl.remove();
+        }
+
+        // ETA-Chip (nur wenn BAT sich bewegt)
+        let etaEl = card.querySelector('.unit-eta');
+        if (etaStr) {
+            if (!etaEl) {
+                etaEl = document.createElement('span');
+                etaEl.className = 'unit-eta';
+                // Zwischen dist und meta einfuegen
+                if (insertBefore) insertBefore.parentNode.insertBefore(etaEl, insertBefore);
+                else card.querySelector('.role1-transport-header')?.appendChild(etaEl);
+            }
+            etaEl.textContent = etaStr;
+        } else if (etaEl) {
+            etaEl.remove();
+        }
+    }
+
     let role1PrevBySource = {};  // Cache für inkrementelle Updates
     let role1LastBySource = {};  // Aktuellste Gruppierung für Marker-Updates
 
@@ -6810,11 +6977,13 @@
         Object.entries(bySource).forEach(([src, pts]) => {
             const isArrived = role1ArrivedBats && role1ArrivedBats[src];
             const pos = role1Positions[src];
-            let distStr = '';
+            let km = null;
+            let speedKmh = 0;
             if (pos && pos.lat && pos.lon) {
-                const km = haversineKm(pos.lat, pos.lon, R1_POS.lat, R1_POS.lng);
-                distStr = km < 1 ? (km * 1000).toFixed(0) + ' m' : km.toFixed(1) + ' km';
+                km = haversineKm(pos.lat, pos.lon, R1_POS.lat, R1_POS.lng);
+                speedKmh = pos.speed_kmh || 0;
             }
+            const distStr = formatDistance(km);  // fuer Neuerstellung unten
 
             const existingCard = existingCards[src];
             if (existingCard) {
@@ -6822,18 +6991,9 @@
                 const metaEl = existingCard.querySelector('.unit-meta');
                 if (metaEl) metaEl.textContent = pts.length + ' Pat.';
 
-                // Distanz aktualisieren
-                let distEl = existingCard.querySelector('.unit-dist');
-                if (distStr) {
-                    if (distEl) {
-                        distEl.textContent = distStr;
-                    } else {
-                        distEl = document.createElement('span');
-                        distEl.className = 'unit-dist';
-                        distEl.textContent = distStr;
-                        const meta = existingCard.querySelector('.unit-meta');
-                        if (meta) meta.parentNode.insertBefore(distEl, meta);
-                    }
+                // Distanz + ETA aktualisieren (idempotent, entfernt bei arrived)
+                if (km !== null && !isArrived) {
+                    updateDistEtaChips(existingCard, km, speedKmh);
                 }
 
                 // Arrived-Badge
