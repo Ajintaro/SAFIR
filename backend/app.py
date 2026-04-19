@@ -9,9 +9,19 @@ zeigt Truppenbewegungen auf der Karte und clustert Patienten nach Transport.
 
 import asyncio
 import json
+import logging
 import time
 from datetime import datetime
 from pathlib import Path
+
+# Logging auf INFO damit Omnikey-Scans, Operator-Login und andere
+# INFO-Events im Terminal sichtbar sind. Ohne diese basicConfig
+# schluckt Python die logger.info()-Aufrufe (Standard-Level = WARNING).
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, FileResponse, Response
@@ -177,6 +187,11 @@ async def websocket_endpoint(ws: WebSocket):
         "positions": state.positions,
         "events": state.events[-20:],
         "peers": list(state.peers.values()),
+        # Lock-Zustand sofort mitschicken damit das Frontend beim Connect
+        # korrekt (ent-)sperrt darstellt. Ohne diese Felder bleibt der
+        # Lock-Banner unsichtbar, auch wenn das Backend gesperrt ist.
+        "locked": state.locked,
+        "current_operator": state.current_operator,
     })
     try:
         while True:
@@ -221,6 +236,10 @@ async def get_status():
         "has_audio": True,
         "has_map": True,
         "default_page": "role1",
+        # Lock-Zustand: wird vom Frontend beim initial /api/status Call
+        # gelesen um Lock-Banner und Body-Klasse korrekt zu setzen.
+        "locked": state.locked,
+        "current_operator": state.current_operator,
     }
 
 
@@ -511,6 +530,11 @@ async def _handle_operator_scan(uid: str, op: dict):
     now_iso = datetime.now().strftime("%H:%M")
     uid_norm = (uid or "").strip().upper()
     current = state.current_operator
+    print(
+        f"[OPERATOR-SCAN] uid={uid_norm} op={op.get('name')} "
+        f"current={current} locked={state.locked}",
+        flush=True,
+    )
     if current and (current.get("uid", "") or "").strip().upper() == uid_norm:
         # Gleicher Bediener scannt erneut → Logout + Sperren
         state.current_operator = None
@@ -602,6 +626,13 @@ async def _handle_rfid_uid(uid: str) -> dict:
     """
     import time as _t
     uid_norm = (uid or "").strip().upper()
+    # Diagnostik: immer loggen damit im Terminal sichtbar was passiert
+    print(
+        f"[RFID] Scan eingegangen: UID={uid_norm!r} "
+        f"locked={state.locked} current_operator={state.current_operator} "
+        f"scan_pending={_operator_scan_pending}",
+        flush=True,
+    )
 
     # Schritt 0 — Wenn Lern-Modus aktiv UND noch keine UID erfasst wurde:
     # UID merken und NICHT Login ausloesen. Sobald eine UID gemerkt ist,
@@ -615,6 +646,7 @@ async def _handle_rfid_uid(uid: str) -> dict:
 
     # Schritt 1 — Operator-Check (blauer Chip)
     op = _find_operator(uid_norm)
+    print(f"[RFID] _find_operator({uid_norm!r}) -> {op}", flush=True)
     if op is not None:
         await _handle_operator_scan(uid_norm, op)
         return {"type": "operator_scan", "uid": uid_norm, "matched": True}
