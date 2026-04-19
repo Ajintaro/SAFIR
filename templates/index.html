@@ -3050,6 +3050,19 @@
                             </div>
                         </div>
 
+                        <div class="settings-card" style="border:1px solid var(--cgi-red,#cc2222)">
+                            <div class="settings-card-title" style="color:var(--cgi-red,#cc2222)">&#128179; RFID-Karte löschen</div>
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
+                                Löscht alle SAFIR-Patientendaten von einer einzelnen Karte. Die Karte bleibt beschreibbar (Sektor-Trailer unberührt) — direkt danach wieder für einen neuen Patienten verwendbar. Nützlich für Security-Wipe nach der Demo oder um Karten wiederzuverwenden.
+                            </div>
+                            <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:10px;font-style:italic">
+                                Sprachbefehl: <strong>"Karte löschen"</strong>. Operator-Karten (Login) werden erkannt und NICHT gelöscht.
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn" style="background:var(--cgi-red,#cc2222);color:#fff" onclick="rfidEraseCard()">Karte löschen</button>
+                            </div>
+                        </div>
+
                         <!-- B4 Preset-Demo-Szenarien — Safety-Net wenn Live-Diktat schiefgeht.
                              1 Klick laedt ein vordefiniertes Patient-Set.
                              Jeder Preset triggert reset + test-generate mit scenario-Param. -->
@@ -4745,6 +4758,21 @@
             showToast('Karten-Schreiben wird abgebrochen', '&#9888;');
         } else {
             showToast(res.error || 'Kein Schreiben aktiv', '&#9888;');
+        }
+    }
+
+    // RFID-Karte loeschen: einzelne Karte auflegen, SAFIR-Nutzbloecke werden
+    // genullt. Sektor-Trailer bleiben unberuehrt — Karte ist direkt danach
+    // fuer neue Patienten wiederverwendbar. Zwei Use-Cases:
+    //  1. Security-Wipe nach der Demo (keine Daten auf fremden Karten)
+    //  2. Karte von fertig behandeltem Patient fuer naechsten Einsatz leeren
+    async function rfidEraseCard() {
+        if (!confirm('RFID-Karte löschen?\n\nLege EINE Karte auf den Reader. Alle SAFIR-Patientendaten auf der Karte werden unwiderruflich auf Null gesetzt.\n\nDie Karte bleibt beschreibbar — direkt danach für einen neuen Patienten verwendbar.\n\nOperator-Karten werden erkannt und NICHT gelöscht.')) return;
+        const res = await api('/api/rfid/erase', 'POST', {});
+        if (res.status === 'started') {
+            showToast('Karte auflegen zum Löschen …', '&#128179;', 'voice');
+        } else {
+            showToast(res.error || 'Löschen nicht gestartet', '&#9888;');
         }
     }
 

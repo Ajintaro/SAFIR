@@ -663,6 +663,143 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
             _rc522_halt()
 
 
+def rc522_erase_card(timeout: float = 10.0) -> tuple[bool, str]:
+    """
+    Loescht die SAFIR-Patientendaten von einer MIFARE-Karte. Schreibt
+    Null-Bytes (bytes(16)) in die SAFIR-Nutzblöcke 4-6 und 8-10.
+
+    WICHTIG — was NICHT angefasst wird:
+      - Block 0 (Manufacturer-Block, read-only) — ohnehin unmoeglich
+      - Block 3, 7, 11, ... (Sektor-Trailer mit Keys A/B + Access Bits)
+        → wuerden beim Ueberschreiben die Karte fuer uns bricken, weil
+          dann unser Default-Key FFFFFFFFFFFF nicht mehr passt.
+
+    Die Karte bleibt also mit unseren Standard-Keys weiter beschreibbar
+    — rc522_write_patient_to_card kann direkt danach drauf schreiben.
+
+    Gibt (erfolg, uid_hex_oder_fehlermeldung) zurück. Haelt den globalen
+    SPI-Lock waehrend des gesamten Flows — der RfidService-Poll-Loop
+    pausiert solange (gleiches Verhalten wie rc522_write_patient_to_card).
+    """
+    import time as _t
+
+    if not _rc522_available:
+        return (False, "RC522 nicht verfügbar")
+
+    log.info("RFID-Erase gestartet — warte auf SPI-Lock")
+    with _spi_lock:
+        log.info("SPI-Lock erhalten, suche Karte …")
+        start = _t.time()
+        # Phase 1: Karte finden (identisch zu rc522_write_patient_to_card)
+        uid_bytes = None
+        sak = None
+        while _t.time() - start < timeout:
+            ok, _atqa = _rc522_request(_PICC_REQIDL)
+            if not ok:
+                _t.sleep(0.1)
+                continue
+            uid5 = _rc522_anticoll()
+            if uid5 is None:
+                _t.sleep(0.1)
+                continue
+            sak = _rc522_select(uid5)
+            if sak is None:
+                _t.sleep(0.1)
+                continue
+            uid_bytes = uid5[:4]
+            break
+
+        if uid_bytes is None:
+            log.warning("RFID-Erase: Phase 1 Timeout — keine Karte gefunden")
+            return (False, "Timeout — keine Karte gefunden")
+
+        uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
+        log.info(f"Karte gefunden zum Loeschen: UID {uid_hex}, SAK 0x{sak:02X}")
+
+        # Phase 2: Loesch-Payload (alle SAFIR-Bloecke auf 0x00)
+        ZERO = bytes(16)
+        sector_blocks = {
+            1: [4, 5, 6],
+            2: [8, 9, 10],
+        }
+
+        def _erase_block_and_verify(sector, auth_block, blk) -> tuple[bool, str]:
+            """Block auf Null schreiben + per Read verifizieren. Gleiche
+            Re-Auth-Retry-Logik wie in rc522_write_patient_to_card —
+            MIFARE verliert manchmal den Crypto1-State zwischen Write
+            und Read."""
+            for attempt in (1, 2):
+                ok, detail = _rc522_write_block(blk, ZERO)
+                if ok:
+                    verify = _rc522_read_block(blk)
+                    if verify == ZERO:
+                        return (True, "")
+                    detail = f"Verify mismatch (got {verify.hex() if verify else 'None'})"
+                log.warning(
+                    f"RFID-Erase: Block {blk} Versuch {attempt} fehlgeschlagen: {detail}"
+                )
+                if attempt == 1:
+                    _rc522_stop_crypto()
+                    _t.sleep(0.02)
+                    if not _rc522_auth(auth_block, uid_bytes):
+                        return (False, f"Re-Auth Sektor {sector} fehlgeschlagen")
+            return (False, f"Block {blk}: {detail}")
+
+        try:
+            for sector_idx, (sector, blocks) in enumerate(sector_blocks.items()):
+                auth_block = blocks[0]
+                # Gleiches Hardware-Reset-Muster wie beim Schreiben: vor
+                # Sektor 2 muss der RC522 komplett zurueckgesetzt werden,
+                # sonst schlaegt die Auth auf Sektor 2 still fehl. Siehe
+                # ausfuehrlichen Kommentar in rc522_write_patient_to_card.
+                if sector_idx > 0:
+                    _rc522_stop_crypto()
+                    _rc522_halt()
+                    _t.sleep(0.05)
+                    rc522_init()
+                    _t.sleep(0.05)
+                    found = False
+                    for _attempt in range(20):
+                        ok_req, _ = _rc522_request(_PICC_REQIDL)
+                        if not ok_req:
+                            _t.sleep(0.05)
+                            continue
+                        uid5_re = _rc522_anticoll()
+                        if uid5_re is None:
+                            _t.sleep(0.05)
+                            continue
+                        if _rc522_select(uid5_re) is None:
+                            _t.sleep(0.05)
+                            continue
+                        found = True
+                        break
+                    if not found:
+                        log.warning(
+                            f"RFID-Erase: Karte nach Reset vor Sektor {sector} nicht wiedergefunden"
+                        )
+                        return (
+                            False,
+                            f"Karte nach Reset vor Sektor {sector} nicht wiedergefunden",
+                        )
+                if not _rc522_auth(auth_block, uid_bytes):
+                    log.warning(f"RFID-Erase: Auth fehlgeschlagen auf Sektor {sector}")
+                    return (False, f"Auth fehlgeschlagen auf Sektor {sector}")
+                log.info(
+                    f"RFID-Erase: Sektor {sector} authentifiziert (Block {auth_block})"
+                )
+                for blk in blocks:
+                    ok, err = _erase_block_and_verify(sector, auth_block, blk)
+                    if not ok:
+                        log.warning(f"RFID-Erase: Fehlgeschlagen auf Block {blk}: {err}")
+                        return (False, f"Block {blk}: {err}")
+                    log.info(f"RFID-Erase: Block {blk} auf Null gesetzt")
+            log.info(f"RFID-Erase erfolgreich (alle Bloecke genullt): UID {uid_hex}")
+            return (True, uid_hex)
+        finally:
+            _rc522_stop_crypto()
+            _rc522_halt()
+
+
 def rc522_read_patient_from_card(timeout: float = 5.0) -> tuple[dict | None, str]:
     """
     Liest SAFIR-Patientendaten von einer Karte (nur Header + Patient-ID + Triage).

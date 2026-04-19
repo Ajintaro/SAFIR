@@ -1560,6 +1560,9 @@ async def process_vosk_commands():
                     await broadcast({"type": "voice_command", "action": "export_docx"})
                 elif action == "rfid_write_patient":
                     await voice_write_card()
+                elif action == "rfid_erase_card":
+                    # Sprachbefehl "Karte loeschen" — einzelne Karte bereinigen
+                    await voice_erase_card()
                 elif action == "rfid_write_cancel":
                     # Abbruch-Flag setzen; laufende Schleife prueft es
                     # am naechsten Schleifen-Anfang bzw. nach await_rfid_scan
@@ -1976,6 +1979,131 @@ async def voice_write_card():
     finally:
         state.rfid_write_active = False
     return
+
+
+async def voice_erase_card():
+    """Einzel-Karte loeschen. Der User legt eine Karte auf den Reader,
+    die SAFIR-Nutzbloecke (4-6, 8-10) werden auf Null gesetzt. Die
+    Sektor-Trailer bleiben unberuehrt — die Karte bleibt mit den
+    Standard-Keys weiter beschreibbar.
+
+    Zwei Haupt-Use-Cases:
+      1. Security-Wipe: User will nach der Demo sichergehen dass keine
+         Patientendaten auf den Karten bleiben.
+      2. Karte wiederverwenden: Ein Patient ist fertig behandelt, die
+         Karte soll fuer den naechsten Einsatz leer sein.
+
+    Wenn die geloeschte Karte in state.rfid_map einem Patient zugeordnet
+    war, wird diese Zuordnung entfernt und ein Timeline-Event
+    'rfid_erased' gesetzt. Das 'rfid_written'-Event wird entfernt, so
+    dass der naechste RFID-Batch den Patient wieder beruecksichtigt
+    (User kann den selben Patient sofort erneut auf die Karte schreiben).
+
+    Shared Handler — gleichzeitig aufrufbar via Sprachbefehl, GUI-Button
+    und (optional spaeter) OLED-Menue.
+    """
+    from shared.rfid import rc522_erase_card
+    from jetson.hardware import LedPattern
+
+    # Wenn gerade ein Batch-Schreiben laeuft, nicht parallel loeschen —
+    # beides greift auf den gleichen SPI-Bus zu und verursacht sonst
+    # unvorhersehbare Auth-Fehler.
+    if getattr(state, "rfid_write_active", False):
+        tts.speak("RFID-Schreiben läuft gerade, erst abwarten")
+        oled_menu.show_status("BLOCKIERT", "Schreiben aktiv")
+        await asyncio.sleep(2.0)
+        oled_menu.clear_status()
+        return
+
+    oled_menu.show_status("LOESCHEN", "Karte auflegen")
+    if hardware_service._leds:
+        hardware_service._leds.set(red=LedPattern.BLINK_SLOW)
+    tts.speak("Karte löschen. Bitte auflegen.")
+
+    uid = await hardware_service.await_rfid_scan(timeout=15.0)
+    if uid is None:
+        oled_menu.show_status("TIMEOUT", "Keine Karte")
+        tts.speak("Zeit abgelaufen")
+        if hardware_service._leds:
+            hardware_service._leds.set(red=LedPattern.OFF)
+        await asyncio.sleep(2.0)
+        oled_menu.clear_status()
+        return
+
+    # Operator-Karte? Nicht loeschen — das wuerde den Login kaputt machen.
+    if _find_operator(uid) is not None:
+        oled_menu.show_status("OPERATOR", "Patientenkarte!")
+        tts.speak("Keine Operator-Karte. Nur Patienten-Karten können gelöscht werden.")
+        await hardware_service.flash_error(1.0)
+        if hardware_service._leds:
+            hardware_service._leds.set(red=LedPattern.OFF)
+        await asyncio.sleep(2.0)
+        oled_menu.clear_status()
+        return
+
+    oled_menu.show_status("LOESCHE", uid[:10])
+    loop = asyncio.get_event_loop()
+    try:
+        success, result = await loop.run_in_executor(
+            None, rc522_erase_card, 8.0
+        )
+    except Exception as e:
+        success, result = False, str(e)
+
+    if success:
+        # Patient-Zuordnung aufloesen damit der Record wieder "schreibbar"
+        # wird und auf der Karte keine Daten mehr liegen die das Surface
+        # mit irgendwem assoziiert.
+        affected_pid = state.rfid_map.pop(uid, None)
+        patient_name = None
+        if affected_pid and affected_pid in state.patients:
+            patient = state.patients[affected_pid]
+            patient_name = patient.get("name") or affected_pid
+            patient["rfid_tag_id"] = ""
+            # rfid_written-Events rausnehmen, damit der naechste
+            # RFID-Batch den Patient wieder beruecksichtigt
+            tl = patient.get("timeline", []) or []
+            patient["timeline"] = [
+                ev for ev in tl if ev.get("event") != "rfid_written"
+            ]
+            patient["timeline"].append({
+                "time": datetime.now().isoformat(),
+                "role": patient.get("current_role", "phase0"),
+                "event": "rfid_erased",
+                "details": f"Karte UID {result} auf Null gesetzt",
+            })
+            patient["timestamp_updated"] = datetime.now().isoformat()
+            await broadcast({"type": "patient_update", "patient": patient})
+            # Surface muss wissen dass die UID nicht mehr mit dem Patient
+            # assoziiert ist — sonst oeffnet ein kuenftiger Scan derselben
+            # (bereits geloeschten) Karte weiterhin die alte Patientenakte.
+            try:
+                await push_single_patient(patient)
+            except Exception as e:
+                print(f"[RFID-ERASE] push_single_patient fehlgeschlagen: {e}", flush=True)
+        if state.last_rfid_uid == uid:
+            state.last_rfid_uid = None
+        await broadcast({
+            "type": "rfid_erased",
+            "uid": uid,
+            "patient_id": affected_pid,
+        })
+        await hardware_service.flash_success(0.7)
+        if patient_name:
+            oled_menu.show_status("GELOESCHT", patient_name[:14])
+            tts.speak(f"Karte gelöscht. {patient_name}")
+        else:
+            oled_menu.show_status("GELOESCHT", uid[:10])
+            tts.speak("Karte gelöscht")
+    else:
+        oled_menu.show_status("FEHLER", str(result)[:18])
+        tts.speak("Löschen fehlgeschlagen")
+        await hardware_service.flash_error(1.0)
+
+    if hardware_service._leds:
+        hardware_service._leds.set(red=LedPattern.OFF)
+    await asyncio.sleep(2.0)
+    oled_menu.clear_status()
 
 
 async def _legacy_single_card_write_unused():
@@ -4355,6 +4483,18 @@ async def rfid_batch_cancel():
     state.rfid_write_cancel = True
     tts.speak("Karten-Schreiben wird abgebrochen")
     return {"status": "ok"}
+
+
+@app.post("/api/rfid/erase")
+async def rfid_erase_endpoint():
+    """Einzel-Karte loeschen (GUI-Button oder anderer Trigger).
+    Fuehrt den gleichen Pfad aus wie der Sprachbefehl 'Karte loeschen'.
+    Der User legt eine einzelne Karte auf den Reader, SAFIR-Nutzbloecke
+    werden auf Null gesetzt. Die Sektor-Trailer bleiben unberuehrt —
+    die Karte ist danach leer aber weiter beschreibbar.
+    """
+    asyncio.create_task(voice_erase_card())
+    return {"status": "started"}
 
 
 @app.post("/api/rfid/scan")

@@ -396,6 +396,12 @@ async def _do_ingest(body: dict) -> dict:
             val = patient.get(key)
             if val:
                 existing[key] = val
+            elif key == "rfid_tag_id" and "rfid_tag_id" in patient:
+                # Explizit leerer rfid_tag_id → Karte wurde auf dem Jetson
+                # geloescht (voice_erase_card). Surface muss die Zuordnung
+                # aufloesen, sonst findet ein Omnikey-Scan derselben (jetzt
+                # leeren) Karte weiterhin den alten Patient.
+                existing["rfid_tag_id"] = ""
         for key in ["transcripts", "timeline", "injuries", "treatments", "medications"]:
             new_items = patient.get(key, [])
             if new_items:

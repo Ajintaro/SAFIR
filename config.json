@@ -145,6 +145,19 @@
                 "karten schreiben abbrechen"
             ]
         },
+        "rfid_erase_card": {
+            "label": "RFID-Karte löschen",
+            "triggers": [
+                "karte loeschen",
+                "karte löschen",
+                "rfid loeschen",
+                "rfid löschen",
+                "karte leeren",
+                "karte bereinigen",
+                "karte zuruecksetzen",
+                "karte zurücksetzen"
+            ]
+        },
         "mic_test": {
             "label": "Mikrofon-/Audio-Test",
             "triggers": [
