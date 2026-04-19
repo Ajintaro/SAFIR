@@ -461,10 +461,11 @@ def _handle_rfid_scan(uid: str):
     """
     state.last_rfid_uid = uid
 
-    # Web-UI Lern-Modus hat hoechste Prioritaet: UID wird gemerkt, kein
-    # Login-Trigger. User fuellt im Frontend Label/Name/Rolle aus und
-    # schickt dann POST /api/operators zum Speichern.
-    if _operator_scan_pending["active"]:
+    # Web-UI Lern-Modus hat hoechste Prioritaet, ABER nur solange noch
+    # keine UID erfasst wurde. Sobald eine UID gemerkt ist, fallen weitere
+    # Scans durch zu den normalen Handlern — damit die gerade registrierte
+    # Karte sofort als Login funktioniert (ohne die 30s Timeout abwarten).
+    if _operator_scan_pending["active"] and _operator_scan_pending["uid"] is None:
         import time as _t
         elapsed = _t.monotonic() - (_operator_scan_pending["started_at"] or 0)
         if elapsed <= 30:
@@ -4612,6 +4613,10 @@ async def operators_add(body: dict):
         "uid": uid, "label": label, "name": name, "role": role,
     })
     save_config(cfg)
+    # Lern-Modus beenden, damit die gerade registrierte Karte beim
+    # naechsten Scan als Login durchgeht (nicht erneut als Lern-UID).
+    _operator_scan_pending["active"] = False
+    _operator_scan_pending["uid"] = None
     return {"status": "ok", "operators": cfg["rfid"]["operators"]}
 
 

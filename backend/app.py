@@ -603,10 +603,12 @@ async def _handle_rfid_uid(uid: str) -> dict:
     import time as _t
     uid_norm = (uid or "").strip().upper()
 
-    # Schritt 0 — Wenn Lern-Modus aktiv, UID merken und NICHT Login ausloesen.
-    # Erlaubt dem User in der UI, eine neue Karte zu registrieren ohne dass
-    # sie sofort als Login/Logout-Trigger wirkt.
-    if _operator_scan_pending["active"]:
+    # Schritt 0 — Wenn Lern-Modus aktiv UND noch keine UID erfasst wurde:
+    # UID merken und NICHT Login ausloesen. Sobald eine UID gemerkt ist,
+    # fallen weitere Scans durch zu den normalen Handlern — damit die
+    # gerade registrierte Karte sofort als Login funktioniert (ohne dass
+    # der User die 30s des Lern-Modus abwarten muss).
+    if _operator_scan_pending["active"] and _operator_scan_pending["uid"] is None:
         _operator_scan_pending["uid"] = uid_norm
         add_event("operator_scan_captured", f"Karte im Lern-Modus erfasst: {uid_norm}")
         return {"type": "operator_scan_captured", "uid": uid_norm}
@@ -709,6 +711,11 @@ async def operators_add(body: dict):
     })
     save_backend_config(cfg)
     add_event("operator_added", f"Neue Operator-Karte registriert: {name} ({label})")
+    # Lern-Modus zuruecksetzen — damit die gerade registrierte Karte nicht
+    # beim naechsten Auflegen erneut als Lern-UID abgefangen wird, sondern
+    # direkt als Login funktioniert.
+    _operator_scan_pending["active"] = False
+    _operator_scan_pending["uid"] = None
     # Bei erster Operator-Karte: Lock aktivieren (ab jetzt mit Auth)
     if len(cfg["rfid"]["operators"]) == 1 and not state.locked:
         state.locked = True
