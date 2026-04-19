@@ -6987,6 +6987,10 @@ _bat_pos_state: dict = {
     "current_lon": None,
     "step": 0,                 # Aktueller Schritt
     "total_steps": 40,         # 40 Schritte * 1.5s = 60 s Gesamtdauer
+    # OSRM-Route (liste von (lat, lon)-tupeln). Wenn vorhanden, folgt der
+    # BAT entlang der echten Strassenroute statt Luftlinie. Wenn None,
+    # Fallback auf lineare lat/lon-Interpolation.
+    "route": None,
 }
 
 
@@ -6999,10 +7003,77 @@ def _interpolate_position(start_lat: float, start_lon: float,
     return (lat, lon)
 
 
+def _interpolate_along_route(route: list, progress: float) -> tuple[float, float]:
+    """Folgt der OSRM-Route entlang ihres Polylinie-Verlaufs.
+    route = [(lat, lon), (lat, lon), ...].
+    progress=0 → erstes Koordinaten-Paar, progress=1 → letztes.
+    Dazwischen wird linear zwischen benachbarten Wegpunkten interpoliert."""
+    if not route or len(route) < 2:
+        return (0.0, 0.0)
+    p = max(0.0, min(1.0, progress))
+    if p >= 1.0:
+        return route[-1]
+    total = len(route) - 1
+    idx_f = p * total
+    idx = int(idx_f)
+    frac = idx_f - idx
+    lat = route[idx][0] + (route[idx + 1][0] - route[idx][0]) * frac
+    lon = route[idx][1] + (route[idx + 1][1] - route[idx][1]) * frac
+    return (lat, lon)
+
+
+async def _fetch_osrm_route(start_lat: float, start_lon: float,
+                            end_lat: float, end_lon: float) -> list | None:
+    """Holt eine echte Strassenroute vom oeffentlichen OSRM-Demo-Server.
+    Gibt eine Liste von (lat, lon)-Tupeln zurueck oder None bei Fehler.
+
+    Nutzt router.project-osrm.org (kostenlos, ohne Registrierung).
+    Die Response enthaelt GeoJSON mit coordinates als [lon, lat]-Paare.
+    """
+    url = (
+        f"https://router.project-osrm.org/route/v1/driving/"
+        f"{start_lon},{start_lat};{end_lon},{end_lat}"
+        f"?overview=full&geometries=geojson"
+    )
+    try:
+        loop = asyncio.get_event_loop()
+        def _do_get():
+            return httpx.get(url, timeout=8)
+        resp = await loop.run_in_executor(None, _do_get)
+        if resp.status_code != 200:
+            print(f"[OSRM] HTTP {resp.status_code} — Fallback auf Luftlinie", flush=True)
+            return None
+        data = resp.json()
+        routes = data.get("routes") or []
+        if not routes:
+            print("[OSRM] keine Routen zurueckgegeben", flush=True)
+            return None
+        coords = routes[0].get("geometry", {}).get("coordinates") or []
+        if len(coords) < 2:
+            return None
+        # GeoJSON liefert [lon, lat] — wir brauchen (lat, lon)
+        route = [(c[1], c[0]) for c in coords]
+        distance_m = routes[0].get("distance", 0)
+        duration_s = routes[0].get("duration", 0)
+        print(
+            f"[OSRM] Route geladen: {len(route)} Wegpunkte, "
+            f"{distance_m/1000:.1f} km, ~{duration_s/60:.0f} min",
+            flush=True,
+        )
+        return route
+    except Exception as e:
+        print(f"[OSRM] Exception: {e} — Fallback auf Luftlinie", flush=True)
+        return None
+
+
 async def bat_position_loop():
     """Background-Task der die laufende Rueckfahrt-Animation alle 1.5s
     Schritt-fuer-Schritt zur Surface-Lagekarte schickt. Idle wenn
-    _bat_pos_state['active'] False ist."""
+    _bat_pos_state['active'] False ist.
+
+    Wenn eine OSRM-Route im State vorhanden ist, bewegt sich der BAT
+    entlang der echten Strassenroute. Sonst: lineare Luftlinien-
+    Interpolation (Fallback wenn OSRM nicht erreichbar)."""
     while True:
         await asyncio.sleep(1.5)
         if not _bat_pos_state["active"]:
@@ -7019,10 +7090,14 @@ async def bat_position_loop():
         total = _bat_pos_state["total_steps"]
         progress = min(1.0, step / total)
 
-        lat, lon = _interpolate_position(
-            _bat_pos_state["start_lat"], _bat_pos_state["start_lon"],
-            end_lat, end_lon, progress,
-        )
+        route = _bat_pos_state.get("route")
+        if route and len(route) >= 2:
+            lat, lon = _interpolate_along_route(route, progress)
+        else:
+            lat, lon = _interpolate_position(
+                _bat_pos_state["start_lat"], _bat_pos_state["start_lon"],
+                end_lat, end_lon, progress,
+            )
         _bat_pos_state["current_lat"] = lat
         _bat_pos_state["current_lon"] = lon
 
@@ -7041,6 +7116,7 @@ async def bat_position_loop():
         _bat_pos_state["step"] += 1
         if step >= total:
             _bat_pos_state["active"] = False
+            _bat_pos_state["route"] = None  # Route freigeben
             await broadcast({
                 "type": "bat_arrived",
                 "unit_name": unit_name,
@@ -7119,29 +7195,76 @@ async def bat_position_set(body: dict):
 async def bat_return_to_station():
     """Startet die Rueckfahrt-Animation: BAT bewegt sich vom aktuellen
     Standort zur Rettungsstation. Erfordert dass vorher ein Standort
-    gesetzt wurde (via /api/bat/position/set)."""
+    gesetzt wurde (via /api/bat/position/set).
+
+    Holt vor dem Start eine echte Strassenroute von OSRM. Dauert ca.
+    0.5-2s. Wenn OSRM erreichbar ist, folgt der BAT entlang der Route
+    (kein Brechen durch Haeuser). Bei Fehler: Fallback auf Luftlinie."""
     if _bat_pos_state["start_lat"] is None or _bat_pos_state["start_lon"] is None:
         return {"error": "Kein Standort gesetzt. Erst /api/bat/position/set aufrufen."}
+
+    start_lat = _bat_pos_state["start_lat"]
+    start_lon = _bat_pos_state["start_lon"]
+    end_lat, end_lon = _rescue_station_coords()
+
+    # Echte Strassenroute vom OSRM-Demo-Server holen
+    route = await _fetch_osrm_route(start_lat, start_lon, end_lat, end_lon)
+
+    _bat_pos_state["route"] = route
     _bat_pos_state["step"] = 0
     _bat_pos_state["active"] = True
-    end_lat, end_lon = _rescue_station_coords()
     duration_s = _bat_pos_state["total_steps"] * 1.5
     tts.speak("Ruckfahrt zur Rettungsstation gestartet")
-    await broadcast({
+    broadcast_msg = {
         "type": "bat_returning",
-        "start_lat": _bat_pos_state["start_lat"],
-        "start_lon": _bat_pos_state["start_lon"],
+        "start_lat": start_lat,
+        "start_lon": start_lon,
         "destination_lat": end_lat,
         "destination_lon": end_lon,
         "duration_s": duration_s,
-    })
+    }
+    if route:
+        # Vollstaendige Route mit an die Frontend-Clients mitgeben,
+        # damit Surface-Lagekarte die echte Strassen-Polylinie zeichnen
+        # kann statt einer Luftlinie.
+        broadcast_msg["route"] = [[lat, lon] for (lat, lon) in route]
+        broadcast_msg["route_source"] = "osrm"
+    else:
+        broadcast_msg["route_source"] = "straight"
+    await broadcast(broadcast_msg)
+    # Zusaetzlich: Route auch an den Surface-Endpoint schicken, damit die
+    # Browser-Clients dort den bat_returning-Event bekommen (sonst sehen
+    # sie nur position_update ohne die Routen-Polylinie).
+    cfg = load_config()
+    backend_url = cfg.get("backend", {}).get("url", "")
+    if backend_url and route:
+        try:
+            loop = asyncio.get_event_loop()
+            def _push():
+                return httpx.post(
+                    f"{backend_url}/api/bat/route-broadcast",
+                    json={
+                        "unit_name": cfg.get("unit_name", "BAT Alpha"),
+                        "route": broadcast_msg["route"],
+                        "start_lat": start_lat,
+                        "start_lon": start_lon,
+                        "destination_lat": end_lat,
+                        "destination_lon": end_lon,
+                    },
+                    timeout=5,
+                )
+            await loop.run_in_executor(None, _push)
+        except Exception as e:
+            print(f"[ROUTE-PUSH] Surface nicht erreichbar: {e}", flush=True)
     return {
         "status": "ok",
-        "start_lat": _bat_pos_state["start_lat"],
-        "start_lon": _bat_pos_state["start_lon"],
+        "start_lat": start_lat,
+        "start_lon": start_lon,
         "destination_lat": end_lat,
         "destination_lon": end_lon,
         "duration_s": duration_s,
+        "route_points": len(route) if route else 0,
+        "route_source": "osrm" if route else "straight",
     }
 
 

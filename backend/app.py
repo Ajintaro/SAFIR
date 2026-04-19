@@ -815,6 +815,33 @@ async def operators_scan_cancel():
     return {"status": "ok"}
 
 
+@app.post("/api/bat/route-broadcast")
+async def bat_route_broadcast(body: dict):
+    """Wird vom Jetson beim Start einer Rueckfahrt aufgerufen. Enthaelt
+    die OSRM-Strassenroute als Liste von [lat, lon]-Paaren. Leitet das
+    als bat_returning-Event an alle Browser-Clients (Surface-Lagekarte)
+    damit diese die echte Strassen-Polylinie zeichnen koennen statt
+    einer Luftlinie."""
+    unit_name = body.get("unit_name", "BAT")
+    route = body.get("route") or []
+    await broadcast({
+        "type": "bat_returning",
+        "unit_name": unit_name,
+        "start_lat": body.get("start_lat"),
+        "start_lon": body.get("start_lon"),
+        "destination_lat": body.get("destination_lat"),
+        "destination_lon": body.get("destination_lon"),
+        "route": route,
+        "route_source": "osrm" if route else "straight",
+    })
+    add_event(
+        "bat_returning",
+        f"{unit_name}: Rueckfahrt zur Rettungsstation gestartet "
+        f"({'echte Strassenroute' if route else 'Luftlinie'})",
+    )
+    return {"status": "ok", "broadcast_to": len(state.ws_clients)}
+
+
 @app.post("/api/rfid/clear-tag")
 async def rfid_clear_tag(body: dict):
     """Loest die rfid_tag_id-Zuordnung auf dem Surface explizit auf.

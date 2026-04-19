@@ -2219,21 +2219,8 @@
         <div class="page" id="page-role1">
             <!-- Role 1: Taktische Lagekarte + Eingehende Transporte -->
             <div class="role1-layout">
-                <!-- Taktische Karte + Demo-Overlay -->
-                <div style="position:relative;display:flex;flex-direction:column;min-height:0">
-                    <div id="role1-map" class="role1-map" style="flex:1;min-height:0"></div>
-                    <!-- Demo-Simulation: 3 BATs fahren echte OSRM-Routen zur
-                         Rettungsstation. Nutzt den oeffentlichen OSRM-Demo-
-                         Server (router.project-osrm.org) — kein eigener
-                         Server-Setup. Button oben rechts auf der Karte. -->
-                    <div style="position:absolute;top:10px;right:10px;z-index:500;display:flex;gap:6px">
-                        <button class="btn" id="r1-sim-btn" onclick="role1StartSimulation()"
-                                style="padding:6px 14px;font-size:var(--fs-body-sm);font-weight:700;background:var(--info,#5DADE2);border:1px solid var(--info,#5DADE2);color:#fff;border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,0.4)"
-                                title="3 simulierte BATs fahren echte Strassenrouten (OSRM) zur Rettungsstation">
-                            &#127917; Simulation
-                        </button>
-                    </div>
-                </div>
+                <!-- Taktische Karte -->
+                <div id="role1-map" class="role1-map"></div>
 
                 <!-- Rechtes Panel -->
                 <div class="role1-panel">
@@ -2241,13 +2228,9 @@
                         Eingehende Transporte
                     </div>
 
-                    <!-- Triage-Übersicht -->
-                    <div class="role1-triage-bar">
-                        <div class="role1-tc" style="color:var(--t1,#FF0000)"><span class="role1-tc-num" id="r1-tc-t1">0</span>T1 Sofort</div>
-                        <div class="role1-tc" style="color:var(--t2,#FF8800)"><span class="role1-tc-num" id="r1-tc-t2">0</span>T2 Dringend</div>
-                        <div class="role1-tc" style="color:var(--t3,#00AA00)"><span class="role1-tc-num" id="r1-tc-t3">0</span>T3 Aufschub</div>
-                        <div class="role1-tc" style="color:var(--t4,#4444AA)"><span class="role1-tc-num" id="r1-tc-t4">0</span>T4 Abwartend</div>
-                    </div>
+                    <!-- Triage-Leiste entfernt: Triage wird erst in Role 1
+                         vom Arzt gesetzt, ist bei eingehenden BATs immer
+                         leer und daher unnuetz als Counter ueber der Liste. -->
 
                     <!-- Transport-Liste -->
                     <div class="role1-transport-list" id="r1-transport-list">
@@ -4734,35 +4717,32 @@
                             role1MarkerPatientCounts[key] = `${patCount}_${role1ActiveLayer}_${isArrived ? 1 : 0}`;
                         }
 
-                        // Rueckfahrt-Polyline: gepunktete Luftlinie zwischen BAT
-                        // und Rettungsstation. Wird aus position_update abgeleitet
-                        // (kein separater bat_returning-Event noetig):
-                        //   speed > 0  → Polyline erzeugen/aktualisieren
-                        //   speed == 0, < 100 m zur Station → Polyline entfernen (arrived)
-                        //   sonst → Polyline unveraendert (BAT steht irgendwo still)
+                        // Rueckfahrt-Polyline-Management bei position_update:
+                        // - Wenn eine Polylinie bereits aus dem bat_returning-Event
+                        //   existiert (entweder echte OSRM-Route oder Luftlinie),
+                        //   lassen wir sie unveraendert — der BAT-Marker bewegt
+                        //   sich einfach darauf entlang.
+                        // - Wenn keine Linie existiert UND BAT bewegt sich:
+                        //   erzeugen wir als Fallback eine einfache Luftlinie
+                        //   (falls der bat_returning-Event verloren ging).
+                        // - Beim Ankommen (< 100 m, still): Linie entfernen.
                         const kmToStation = haversineKm(lat, lng, R1_POS.lat, R1_POS.lng);
                         const isMoving = (pos.speed_kmh || 0) > 0.5;
-                        if (isMoving) {
-                            if (!role1ReturnLines[key]) {
-                                role1ReturnLines[key] = L.polyline([
-                                    [lat, lng], [R1_POS.lat, R1_POS.lng],
-                                ], {
-                                    color: '#d4871a',
-                                    weight: 3,
-                                    opacity: 0.85,
-                                    dashArray: '6, 8',
-                                    lineCap: 'round',
-                                }).addTo(role1Map);
-                                role1ReturnLines[key].bindTooltip(
-                                    'Rueckfahrt — Luftlinie (' + key + ')',
-                                    { sticky: true }
-                                );
-                            } else {
-                                role1ReturnLines[key].setLatLngs([
-                                    [lat, lng], [R1_POS.lat, R1_POS.lng],
-                                ]);
-                            }
-                        } else if (role1ReturnLines[key] && kmToStation < 0.1) {
+                        if (isMoving && !role1ReturnLines[key]) {
+                            role1ReturnLines[key] = L.polyline([
+                                [lat, lng], [R1_POS.lat, R1_POS.lng],
+                            ], {
+                                color: '#d4871a',
+                                weight: 3,
+                                opacity: 0.85,
+                                dashArray: '6, 8',   // gepunktet = Luftlinie
+                                lineCap: 'round',
+                            }).addTo(role1Map);
+                            role1ReturnLines[key].bindTooltip(
+                                'Rueckfahrt — Luftlinie (' + key + ')',
+                                { sticky: true }
+                            );
+                        } else if (role1ReturnLines[key] && !isMoving && kmToStation < 0.1) {
                             // Angekommen: BAT steht und ist < 100m von Rettungsstation
                             role1Map.removeLayer(role1ReturnLines[key]);
                             delete role1ReturnLines[key];
@@ -4773,33 +4753,46 @@
                 }
                 break;
             case 'bat_returning':
-                // BAT hat Rueckfahrt gestartet — gepunktete Luftlinie auf der
-                // Lagekarte zeichnen (zwischen Start-Position und Rettungsstation).
-                // Die Linie wird in position_update-Events live auf die aktuelle
-                // Position verkuerzt, damit der Arzt sieht wie der BAT naeher
-                // kommt. Bewusst als "gepunktete" Linie, damit offensichtlich
-                // ist dass es sich um eine Luftlinie handelt, NICHT um eine
-                // echte Strassenroute.
-                if (role1Map && msg.start_lat && msg.destination_lat) {
+                // BAT hat Rueckfahrt gestartet. Der Jetson hat entweder eine
+                // echte Strassenroute via OSRM geholt und mitgeschickt
+                // (msg.route = [[lat,lon], ...]) oder — falls OSRM nicht
+                // erreichbar war — nur Start/Ziel (Fallback Luftlinie).
+                // Wir zeichnen die entsprechende Polylinie in Amber und
+                // halten sie solange bis bat_arrived-Event kommt.
+                if (role1Map && (msg.route || (msg.start_lat && msg.destination_lat))) {
                     const batKey = msg.unit_name || Object.keys(role1Positions)[0] || null;
                     if (batKey) {
-                        // Existierende Linie entfernen (falls Rueckfahrt neu gestartet)
+                        // Alte Linie entfernen (falls Rueckfahrt neu gestartet)
                         if (role1ReturnLines[batKey]) {
                             role1Map.removeLayer(role1ReturnLines[batKey]);
                         }
-                        const poly = L.polyline([
-                            [msg.start_lat, msg.start_lon || msg.start_lng],
-                            [msg.destination_lat, msg.destination_lon || msg.destination_lng],
-                        ], {
+                        // Route bevorzugen, sonst Luftlinie
+                        const hasRoute = Array.isArray(msg.route) && msg.route.length >= 2;
+                        const latlngs = hasRoute
+                            ? msg.route.map(c => [c[0], c[1]])
+                            : [
+                                [msg.start_lat, msg.start_lon || msg.start_lng],
+                                [msg.destination_lat, msg.destination_lon || msg.destination_lng],
+                            ];
+                        const poly = L.polyline(latlngs, {
                             color: '#d4871a',        // --mil-amber
                             weight: 3,
                             opacity: 0.85,
-                            dashArray: '6, 8',       // gepunktet
+                            // Strassenroute durchgezogen, Luftlinie gepunktet —
+                            // der Unterschied ist auf einen Blick sichtbar
+                            dashArray: hasRoute ? null : '6, 8',
                             lineCap: 'round',
                         }).addTo(role1Map);
-                        poly.bindTooltip(`Rueckfahrt — Luftlinie (${batKey})`, {sticky: true});
+                        const label = hasRoute
+                            ? `Ruckfahrt — Strassenroute (${batKey})`
+                            : `Ruckfahrt — Luftlinie (${batKey})`;
+                        poly.bindTooltip(label, { sticky: true });
                         role1ReturnLines[batKey] = poly;
-                        showToast('BAT ' + batKey + ' auf Rückfahrt', '\u26D1', 'info');
+                        showToast(
+                            'BAT ' + batKey + ' auf Rückfahrt'
+                                + (hasRoute ? ' (Strassenroute)' : ' (Luftlinie)'),
+                            '\u26D1', 'info'
+                        );
                     }
                 }
                 break;
@@ -7215,16 +7208,10 @@
     function role1UpdateUI() {
         const patients = role1Patients;
 
-        // Triage-Zaehler
-        const counts = { T1: 0, T2: 0, T3: 0, T4: 0 };
-        patients.forEach(p => {
-            const t = (p.triage || '').toUpperCase();
-            if (counts[t] !== undefined) counts[t]++;
-        });
-        document.getElementById('r1-tc-t1').textContent = counts.T1;
-        document.getElementById('r1-tc-t2').textContent = counts.T2;
-        document.getElementById('r1-tc-t3').textContent = counts.T3;
-        document.getElementById('r1-tc-t4').textContent = counts.T4;
+        // Triage-Counter-Update entfernt. Die Elemente r1-tc-tN wurden
+        // mit der Triage-Leiste aus der UI entfernt — Triage wird erst
+        // vom Arzt in Role 1 gesetzt, ein Counter ueber eingehenden
+        // (noch un-triagierten) Patienten waere immer null.
 
         // Transporte gruppiert nach BAT/Einheit
         const bySource = {};
@@ -7461,208 +7448,6 @@
         if (isPatient) {
             showToast(`${unitName}: ${text}`, '&#9873;', 'voice');
         }
-    }
-
-    // ============================================================
-    // Role 1: OSRM-Simulation — 3 BATs fahren echte Strassenrouten
-    // ============================================================
-    // Nutzt den oeffentlichen OSRM-Demo-Server (router.project-osrm.org)
-    // ohne Registrierung — kein eigener Server noetig. Die Route-Daten
-    // kommen als GeoJSON-Polyline, BATs bewegen sich in 80 Schritten
-    // zu 1.5s entlang der Route. Patienten werden gestaffelt gemeldet
-    // (per /api/ingest), BAT-Position live per /api/position. Bei
-    // Ankunft: arrived-Badge und flow_status=arrived.
-    let role1SimRunning = false;
-    let role1SimIntervals = [];
-    let role1SimTimeouts = [];
-    let role1RouteLines = [];  // OSRM-Polylines auf der Karte
-
-    async function role1FetchRoute(start, end) {
-        try {
-            const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-            const res = await fetch(url);
-            const data = await res.json();
-            if (data.routes && data.routes[0]) {
-                // OSRM liefert [lng, lat], wir brauchen [lat, lng]
-                return data.routes[0].geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
-            }
-        } catch (e) {
-            console.warn('[SIM] OSRM-Routing fehlgeschlagen, nutze Luftlinie:', e);
-        }
-        return null;
-    }
-
-    async function role1StartSimulation() {
-        const btn = document.getElementById('r1-sim-btn');
-        if (role1SimRunning) {
-            // Stop: alle Timer killen, Routen-Linien entfernen
-            role1SimIntervals.forEach(id => clearInterval(id));
-            role1SimTimeouts.forEach(id => clearTimeout(id));
-            role1SimIntervals = [];
-            role1SimTimeouts = [];
-            role1RouteLines.forEach(line => { if (role1Map) role1Map.removeLayer(line); });
-            role1RouteLines = [];
-            role1SimRunning = false;
-            btn.innerHTML = '&#127917; Simulation';
-            btn.style.background = 'var(--info, #5DADE2)';
-            btn.style.borderColor = 'var(--info, #5DADE2)';
-            showToast('Simulation gestoppt', '&#9208;');
-            return;
-        }
-
-        role1SimRunning = true;
-        btn.innerHTML = '&#9209; Stopp';
-        btn.style.background = 'var(--cgi-red, #cc2222)';
-        btn.style.borderColor = 'var(--cgi-red, #cc2222)';
-
-        showToast('Simulation: 3 BATs berechnen Routen (OSRM)...', '&#127917;', 'voice');
-
-        // Rettungsstation als Ziel
-        const r1 = { lat: R1_POS.lat, lng: R1_POS.lng };
-
-        // 3 fiktive BATs mit Start-Koordinaten rund um Bonn + Patienten.
-        // Die Patienten haben BEWUSST keine Triage gesetzt — das wird beim
-        // Arzt in Role 1 entschieden. So passt die Simulation zur neuen
-        // "keine Triage in Transport-Cards"-Logik.
-        const bats = [
-            {
-                name: 'BAT Alpha42',
-                start: { lat: 50.7580, lng: 7.0450 },
-                color: '#E11937',
-                patients: [
-                    { id: 'SIM-A1', name: 'Huber, Stefan', injuries: ['Schusswunde li. Oberschenkel', 'Starke Blutung'], vitals: { pulse: 132, spo2: 88, bp: '85/55' }, blood_type: 'A+', rank: 'Hauptgefreiter' },
-                    { id: 'SIM-A2', name: 'Richter, Anna',  injuries: ['Splitterverletzung re. Arm'], vitals: { pulse: 98, spo2: 95 }, rank: 'Obergefreite' },
-                ],
-            },
-            {
-                name: 'BAT Bravo17',
-                start: { lat: 50.7100, lng: 7.0500 },
-                color: '#F39C12',
-                patients: [
-                    { id: 'SIM-B1', name: 'Weber, Thomas', injuries: ['Prellungen', 'Schürfwunden'], vitals: { pulse: 78, spo2: 98 }, rank: 'Gefreiter' },
-                ],
-            },
-            {
-                name: 'BAT Charlie9',
-                start: { lat: 50.7450, lng: 7.1500 },
-                color: '#3B82F6',
-                patients: [
-                    { id: 'SIM-C1', name: 'Klein, Markus',  injuries: ['Blast-Verletzung', 'Bewusstlos'], vitals: { pulse: 140, spo2: 82, gcs: 6 }, blood_type: '0-', rank: 'Stabsgefreiter' },
-                    { id: 'SIM-C2', name: 'Fischer, Lisa',  injuries: ['Fraktur li. Unterarm'], vitals: { pulse: 105, spo2: 96 }, rank: 'Hauptgefreite' },
-                    { id: 'SIM-C3', name: 'Schmidt, Peter', injuries: ['Leichte Verbrennung'], vitals: { pulse: 82, spo2: 97 }, rank: 'Oberstabsgefreiter' },
-                ],
-            },
-        ];
-
-        // Routen parallel von OSRM laden
-        const routes = await Promise.all(bats.map(bat => role1FetchRoute(bat.start, r1)));
-
-        // Routen als gepunktete Polylines auf der Karte zeichnen
-        routes.forEach((route, i) => {
-            if (route && role1Map) {
-                const latlngs = route.map(p => [p.lat, p.lng]);
-                const line = L.polyline(latlngs, {
-                    color: bats[i].color,
-                    weight: 3,
-                    opacity: 0.55,
-                    dashArray: '8, 6',
-                }).addTo(role1Map);
-                line.bindTooltip(`Route ${bats[i].name}`, { sticky: true });
-                role1RouteLines.push(line);
-            }
-        });
-
-        // Patienten gestaffelt melden: BAT 1 nach 3s, BAT 2 nach 12s,
-        // BAT 3 nach 20s; innerhalb eines BATs je Patient 4s Abstand.
-        const batDelays = [3000, 12000, 20000];
-        const patientDelay = 4000;
-
-        for (let bi = 0; bi < bats.length; bi++) {
-            const bat = bats[bi];
-            for (let pi = 0; pi < bat.patients.length; pi++) {
-                const p = bat.patients[pi];
-                const delay = batDelays[bi] + pi * patientDelay;
-                const tid = setTimeout(async () => {
-                    if (!role1SimRunning) return;
-                    try {
-                        await api('/api/ingest', 'POST', {
-                            patient: {
-                                patient_id: p.id, name: p.name, rank: p.rank || '',
-                                triage: '', injuries: p.injuries,
-                                vitals: p.vitals || {}, blood_type: p.blood_type || '',
-                                flow_status: 'inbound', current_role: 'phase0',
-                                synced: true, analyzed: true,
-                            },
-                            unit_name: bat.name,
-                            device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
-                        });
-                        role1AddEvent(`${p.name} gemeldet`, bat.name, true);
-                    } catch (e) {
-                        console.warn('[SIM] ingest fehlgeschlagen:', e);
-                    }
-                }, delay);
-                role1SimTimeouts.push(tid);
-            }
-        }
-
-        // BAT-Bewegung entlang der Route: 80 Schritte × 1.5s = 120s Fahrzeit
-        const totalSteps = 80;
-        bats.forEach((bat, bi) => {
-            const route = routes[bi];
-            let step = 0;
-            const interval = setInterval(async () => {
-                if (step >= totalSteps || !role1SimRunning) {
-                    clearInterval(interval);
-                    if (step >= totalSteps && role1SimRunning) {
-                        // Ankunft: exakte R1-Position, arrived-Badge
-                        role1ArrivedBats[bat.name] = true;
-                        showToast(`${bat.name} an Rettungsstation eingetroffen`, '&#10003;', 'voice');
-                        try {
-                            await api('/api/position', 'POST', {
-                                unit_name: bat.name,
-                                lat: r1.lat, lon: r1.lng,
-                                heading: 0, speed_kmh: 0,
-                                device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
-                            });
-                            // Patienten auf arrived setzen (Surface-seitige Endpoint)
-                            for (const p of bat.patients) {
-                                try {
-                                    await api(`/api/patient/${p.id}/update`, 'POST', {
-                                        flow_status: 'arrived',
-                                    });
-                                } catch (e) {}
-                            }
-                        } catch (e) {
-                            console.warn('[SIM] arrival-Update fehlgeschlagen:', e);
-                        }
-                    }
-                    return;
-                }
-                step++;
-                const progress = step / totalSteps;
-                let lat, lng;
-                if (route && route.length > 2) {
-                    // Exakt entlang der OSRM-Route interpolieren
-                    const idx = Math.min(Math.floor(progress * (route.length - 1)), route.length - 2);
-                    const frac = (progress * (route.length - 1)) - idx;
-                    lat = route[idx].lat + (route[idx + 1].lat - route[idx].lat) * frac;
-                    lng = route[idx].lng + (route[idx + 1].lng - route[idx].lng) * frac;
-                } else {
-                    // Fallback ohne OSRM: Luftlinie mit sanftem Wobble
-                    const wobble = Math.sin(progress * Math.PI) * 0.003 * (bi % 2 === 0 ? 1 : -1);
-                    lat = bat.start.lat + (r1.lat - bat.start.lat) * progress + wobble;
-                    lng = bat.start.lng + (r1.lng - bat.start.lng) * progress - wobble * 0.5;
-                }
-                try {
-                    await api('/api/position', 'POST', {
-                        unit_name: bat.name, lat, lon: lng,
-                        heading: 0, speed_kmh: 30 + Math.random() * 20,
-                        device_id: 'sim-' + bat.name.toLowerCase().replace(/\s/g, '-'),
-                    });
-                } catch (e) { /* ignore */ }
-            }, 1500);
-            role1SimIntervals.push(interval);
-        });
     }
 
     // ============================================================
