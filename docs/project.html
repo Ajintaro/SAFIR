@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>SAFIR — Projekt-Dokumentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --bg: #0f1209;
+            --surface: #1a2012;
+            --elevated: #23291c;
+            --border: #3a3f2f;
+            --text: #e8e6d9;
+            --text-dim: #9aa09a;
+            --mil-tan: #c8b878;
+            --mil-green: #5a9e3a;
+            --mil-amber: #d4871a;
+            --mil-red: #cc2222;
+            --info: #5DADE2;
+            --radius: 4px;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', Rajdhani, Arial, sans-serif; line-height: 1.6; }
+        .layout { display: grid; grid-template-columns: 260px 1fr; max-width: 1400px; margin: 0 auto; min-height: 100vh; }
+
+        /* Sidebar */
+        aside.toc {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 24px 16px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        .toc-title { font-family: monospace; font-size: 14px; font-weight: 700; color: var(--mil-tan); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+        .toc a { display: block; padding: 6px 10px; font-size: 13px; color: var(--text-dim); text-decoration: none; border-left: 2px solid transparent; border-radius: 3px; margin-bottom: 2px; }
+        .toc a:hover { background: var(--elevated); color: var(--text); border-left-color: var(--mil-tan); }
+        .toc-h2 { padding-left: 28px !important; font-size: 12px !important; opacity: 0.85; }
+
+        /* Content */
+        article { padding: 40px 48px; max-width: 960px; }
+        h1.doc-title { font-size: 36px; margin: 0 0 4px 0; color: var(--text); letter-spacing: -0.02em; font-weight: 300; }
+        h1.doc-title .sub { color: var(--mil-tan); font-size: 16px; display: block; font-family: monospace; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 8px; }
+        .meta-bar { font-size: 12px; color: var(--text-dim); font-family: monospace; margin-bottom: 40px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+        .meta-bar strong { color: var(--mil-tan); }
+        h2 { font-size: 24px; margin: 40px 0 12px 0; color: var(--mil-tan); font-weight: 700; border-bottom: 2px solid var(--border); padding-bottom: 8px; }
+        h3 { font-size: 18px; margin: 28px 0 8px 0; color: var(--text); font-weight: 600; }
+        h4 { font-size: 15px; margin: 20px 0 6px 0; color: var(--text); font-weight: 600; }
+        p { margin: 0 0 14px 0; color: var(--text); }
+        ul, ol { padding-left: 24px; margin: 0 0 16px 0; }
+        li { margin-bottom: 4px; }
+        code { background: var(--elevated); padding: 2px 6px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.92em; color: var(--mil-tan); }
+        pre { background: var(--elevated); padding: 14px 18px; border-radius: var(--radius); border-left: 3px solid var(--mil-tan); overflow-x: auto; font-size: 13px; line-height: 1.55; margin: 14px 0; }
+        pre code { background: none; padding: 0; color: var(--text); }
+        strong { color: var(--text); }
+        table { width: 100%; border-collapse: collapse; margin: 14px 0 20px 0; font-size: 14px; }
+        th { text-align: left; padding: 10px 12px; background: var(--elevated); color: var(--mil-tan); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--border); }
+        td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+        td code { display: inline-block; }
+        blockquote { margin: 16px 0; padding: 12px 18px; background: var(--elevated); border-left: 3px solid var(--info); font-style: italic; color: var(--text-dim); }
+
+        .note { padding: 12px 16px; border-radius: var(--radius); border-left: 3px solid; background: var(--elevated); margin: 16px 0; font-size: 14px; }
+        .note.info { border-color: var(--info); }
+        .note.warn { border-color: var(--mil-amber); }
+        .note.ok { border-color: var(--mil-green); }
+        .note-title { font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; margin-bottom: 4px; }
+        .note.info .note-title { color: var(--info); }
+        .note.warn .note-title { color: var(--mil-amber); }
+        .note.ok .note-title { color: var(--mil-green); }
+
+        .mermaid { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin: 20px 0; text-align: center; }
+        figcaption { text-align: center; font-size: 12px; color: var(--text-dim); font-style: italic; margin-top: 6px; }
+
+        .hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0; }
+        .stat { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--mil-tan); padding: 14px; border-radius: var(--radius); }
+        .stat-val { font-size: 24px; color: var(--mil-tan); font-weight: 700; font-family: monospace; }
+        .stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+
+        /* Print */
+        @media print {
+            body { background: white; color: black; }
+            .layout { grid-template-columns: 1fr; max-width: 100%; }
+            aside.toc { display: none; }
+            article { padding: 20px; max-width: 100%; }
+            h2 { page-break-after: avoid; }
+            pre, table, .mermaid { page-break-inside: avoid; }
+            a { color: black; text-decoration: none; }
+        }
+
+        @media (max-width: 900px) {
+            .layout { grid-template-columns: 1fr; }
+            aside.toc { position: static; height: auto; }
+            .hero-stats { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="layout">
+    <aside class="toc">
+        <div class="toc-title">Inhalt</div>
+        <a href="#summary">1. Executive Summary</a>
+        <a href="#architecture">2. Architektur</a>
+        <a href="#hardware">3. Hardware</a>
+        <a href="#software">4. Software-Stack</a>
+        <a href="#data">5. Datenmodell</a>
+        <a href="#security">6. Sicherheit</a>
+        <a href="#workflows">7. Workflows</a>
+        <a href="#api">8. API-Referenz</a>
+        <a href="#config">9. Konfiguration</a>
+        <a href="#deploy">10. Deployment</a>
+        <a href="#perf">11. Performance &amp; Limits</a>
+        <a href="#roadmap">12. Roadmap</a>
+    </aside>
+
+    <article>
+        <h1 class="doc-title">
+            <span class="sub">SAFIR &middot; Technical Documentation</span>
+            Sprachgestützte Assistenz für Informationserfassung in der Rettungskette
+        </h1>
+        <div class="meta-bar">
+            Version <strong>2.1</strong> · Stand: <strong>April 2026</strong> · Auftraggeber: <strong>CGI Deutschland</strong> · Zielgruppe: <strong>Bundeswehr Sanitätsdienst</strong>
+        </div>
+
+        <!-- ================ 1. Executive Summary ================ -->
+        <section id="summary">
+            <h2>1. Executive Summary</h2>
+            <p>SAFIR ist ein zweigeteiltes, netzbasiertes Dokumentationssystem für den Bundeswehr-Sanitätsdienst entlang der <strong>Rettungskette</strong> (Phase 0 bis Role 4). Ein <strong>Feldgerät</strong> (NVIDIA Jetson Orin Nano, getragen vom Sanitäter) nimmt Sprachdiktate auf, transkribiert sie lokal mit Whisper, segmentiert mehrere Patienten pro Diktat mittels Gemma 3 4B und schreibt eine eindeutige Patient-ID auf <strong>MIFARE-Classic RFID-Karten</strong>. Alle Daten werden über ein <strong>WireGuard-Mesh (Tailscale)</strong> verschlüsselt an die <strong>Leitstelle</strong> (Microsoft Surface) gespiegelt.</p>
+
+            <div class="hero-stats">
+                <div class="stat"><div class="stat-val">100%</div><div class="stat-label">On-Device KI</div></div>
+                <div class="stat"><div class="stat-val">~30s</div><div class="stat-label">E2E-Latenz</div></div>
+                <div class="stat"><div class="stat-val">E2E</div><div class="stat-label">Verschlüsselt</div></div>
+                <div class="stat"><div class="stat-val">DE</div><div class="stat-label">Deutsche Sprache</div></div>
+            </div>
+
+            <h3>Kern-Differenzierung</h3>
+            <ul>
+                <li><strong>Edge-AI:</strong> Modelle laufen auf dem 7.4-GB-Jetson — keine Abhängigkeit von Cloud oder Internet</li>
+                <li><strong>Multi-Patient pro Diktat:</strong> ~10-minütiger freier Befund wird automatisch in strukturierte Patient-Records segmentiert</li>
+                <li><strong>Physische Identifikation via RFID:</strong> Verwundete gehen mit ihrer Karte entlang der Rettungskette</li>
+                <li><strong>Halluzinations-Konservativ:</strong> Das System vergisst lieber einen Patienten als einen zu erfinden</li>
+                <li><strong>Deutsche Sprachverarbeitung:</strong> Whisper large-v3-turbo + Gemma 3 mit deutsch-spezifischen Post-Processing-Regeln</li>
+            </ul>
+        </section>
+
+        <!-- ================ 2. Architektur ================ -->
+        <section id="architecture">
+            <h2>2. Architektur-Übersicht</h2>
+
+            <h3>Zwei-Geräte-Topologie</h3>
+            <div class="mermaid">
+flowchart LR
+    subgraph Feld["Phase 0 — Feldgerät (BAT)"]
+        J["Jetson Orin Nano<br/>100.126.179.27"]
+        J --> JM[Mikrofon]
+        J --> JO[OLED 128x64]
+        J --> JR[RC522 RFID]
+        J --> JT["Taster A+B"]
+        J --> JL[LEDs]
+    end
+    subgraph Leit["Role 1 — Leitstelle"]
+        S["MS Surface<br/>ai-station"]
+        S --> SB[Browser-UI]
+        S --> SO[Omnikey RFID]
+    end
+    J <===>|"WireGuard VPN<br/>ChaCha20-Poly1305"| S
+            </div>
+            <figcaption>Abb. 1 — Geräte-Topologie mit verschlüsseltem WireGuard-Link</figcaption>
+
+            <h3>Datenfluss: Sprachbefund → Patientenrecord</h3>
+            <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Mic as Mikrofon
+    participant Whi as Whisper
+    participant Gem as Gemma 3
+    participant St as State Jetson
+    participant Surf as Surface
+    Mic->>Whi: Audio 25s-Chunks
+    Whi->>St: Transkript
+    St->>Gem: BOUNDARY_PROMPT
+    Gem-->>St: starts=[1,6,12]
+    St->>St: Post-Merge 1-4
+    St->>Gem: EXTRACT_PROMPT pro Segment
+    Gem-->>St: Name, Vitals
+    St->>Surf: POST /api/ingest
+    Surf-->>St: WS patient_update
+            </div>
+            <figcaption>Abb. 2 — Pipeline vom Audio bis zum synchronisierten Patient</figcaption>
+
+            <h3>Layer-Stack</h3>
+            <pre><code>┌───────────────────────────────────────────────────────────┐
+│ Jetson Orin Nano                                           │
+├───────────────────────────────────────────────────────────┤
+│ UI Layer     │ HTML Template (Jinja2) + Vanilla JS + WS   │
+│ API Layer    │ FastAPI (uvicorn) auf Port 8080            │
+│ Business     │ app.py — Segmenter, Extract, Sync, OLED    │
+│ KI Layer     │ Whisper (GPU) · Gemma 3 (GPU) · Vosk (CPU) │
+│              │ · Piper TTS (CPU)                          │
+│ Hardware     │ RC522 (SPI) · OLED (I²C) · GPIO · LED      │
+│ OS           │ NVIDIA JetPack 5.x + CUDA 12.6             │
+└───────────────────────────────────────────────────────────┘</code></pre>
+        </section>
+
+        <!-- ================ 3. Hardware ================ -->
+        <section id="hardware">
+            <h2>3. Hardware</h2>
+
+            <h3>Feldgerät: NVIDIA Jetson Orin Nano Super</h3>
+            <table>
+                <tr><th>Komponente</th><th>Spezifikation</th></tr>
+                <tr><td>SoC</td><td>NVIDIA Orin · 6× ARM Cortex-A78AE @ 1.5 GHz · 1024 CUDA Cores (Ampere) · 32 Tensor Cores</td></tr>
+                <tr><td>Unified Memory</td><td>7.4 GB LPDDR5 (shared CPU+GPU)</td></tr>
+                <tr><td>Storage</td><td>256 GB NVMe SSD</td></tr>
+                <tr><td>Leistungsaufnahme</td><td>7 W (idle) · 15 W (Volllast)</td></tr>
+                <tr><td>Netzwerk</td><td>WiFi 6 + Ethernet Gigabit</td></tr>
+                <tr><td>Betrieb</td><td>Powerbank 20 000 mAh / 15 V / 65 W (~20 h Demo-Tag)</td></tr>
+            </table>
+
+            <h4>Peripherie</h4>
+            <table>
+                <tr><th>Gerät</th><th>Interface</th><th>Funktion</th></tr>
+                <tr><td>OLED SSD1306</td><td>I²C Bus 7</td><td>128×64 monochrom, 4 Info-Seiten</td></tr>
+                <tr><td>RC522 RFID</td><td>SPI</td><td>13.56 MHz, MIFARE Classic 1K</td></tr>
+                <tr><td>2 Taster</td><td>GPIO Pin 11 + 26</td><td>Rot: OLED-Nav · Grün: Aufnahme</td></tr>
+                <tr><td>3 LEDs</td><td>GPIO</td><td>Status / Aufnahme / Fehler</td></tr>
+                <tr><td>Mikrofon</td><td>USB</td><td>Freisprech-Mikro</td></tr>
+                <tr><td>Audio-Out</td><td>USB + HDA</td><td>Parallel Headset + Lautsprecher</td></tr>
+            </table>
+
+            <h3>Leitstelle: Microsoft Surface</h3>
+            <table>
+                <tr><th>Komponente</th><th>Spezifikation</th></tr>
+                <tr><td>CPU</td><td>Intel Core i7</td></tr>
+                <tr><td>GPU</td><td>NVIDIA RTX 4060 (8 GB VRAM)</td></tr>
+                <tr><td>RAM</td><td>16 GB</td></tr>
+                <tr><td>OS</td><td>Windows 11</td></tr>
+                <tr><td>RFID-Leser</td><td>HID Omnikey USB</td></tr>
+            </table>
+
+            <h3>RFID-Karten (MIFARE Classic 1K)</h3>
+            <pre><code>Block 0      │ Manufacturer (UID, read-only)
+Block 4      │ SAFIR Magic-Bytes + Version + Zeitstempel
+Block 5      │ Patient-ID (16 Byte)
+Block 6      │ Triage, Alter, Geschlecht, Blutdruck, Puls,
+             │ Atmung, SpO2, GCS
+Block 8-9    │ Name (32 Byte UTF-8)
+Block 10     │ Rang (reserviert)
+Block 3,7,11 │ Sektor-Trailer — Keys, nicht von SAFIR geschrieben</code></pre>
+            <div class="note warn">
+                <div class="note-title">MIFARE Classic Crypto1 ist nicht kryptographisch sicher</div>
+                SAFIR behandelt die Karte daher als reine ID-Referenz. Sensitive Daten (Transkripte, freitextliche Verletzungen) landen NICHT auf der Karte, sondern nur im verschlüsselten Backend-Store.
+            </div>
+        </section>
+
+        <!-- ================ 4. Software-Stack ================ -->
+        <section id="software">
+            <h2>4. Software-Stack</h2>
+
+            <h3>KI-Modelle</h3>
+            <table>
+                <tr><th>Modell</th><th>Typ</th><th>Größe</th><th>Hardware</th><th>Zweck</th></tr>
+                <tr><td>Whisper large-v3-turbo</td><td>ASR</td><td>~1.2 GB</td><td>Jetson GPU</td><td>Transkription (DE)</td></tr>
+                <tr><td>Gemma 3 4B (Q4_K_M)</td><td>LLM</td><td>~4.3 GB</td><td>Jetson GPU</td><td>Segmentierung + Extraktion</td></tr>
+                <tr><td>Vosk (de-klein)</td><td>Command ASR</td><td>~80 MB</td><td>Jetson CPU</td><td>Voice-Commands (~15ms)</td></tr>
+                <tr><td>Piper (Thorsten)</td><td>TTS</td><td>~65 MB</td><td>Jetson CPU</td><td>Sprachausgabe</td></tr>
+            </table>
+
+            <h3>Python-Framework</h3>
+            <ul>
+                <li><strong>FastAPI</strong> + <strong>uvicorn</strong> — Web-Framework auf beiden Geräten</li>
+                <li><strong>Jinja2</strong> — Template-Engine (HTML-Seiten)</li>
+                <li><strong>WebSockets</strong> — Live-Updates zwischen Geräten und Browser</li>
+                <li><strong>Ollama</strong> — lokaler LLM-Runtime für Gemma</li>
+                <li><strong>whisper.cpp</strong> + <strong>whisper-cpp-python</strong> — GPU-accelerated Whisper</li>
+                <li><strong>sounddevice</strong> + <strong>numpy</strong> — Audio I/O</li>
+                <li><strong>python-docx</strong>, <strong>reportlab</strong> — Export-Formate</li>
+                <li><strong>pyscard</strong> (nur Surface) — HID Omnikey-Zugang</li>
+                <li><strong>httpx</strong> — HTTP-Client für Sync</li>
+            </ul>
+        </section>
+
+        <!-- ================ 5. Datenmodell ================ -->
+        <section id="data">
+            <h2>5. Datenmodell</h2>
+            <p>Das zentrale Modell ist <code>PATIENT_SCHEMA</code> in <code>shared/models.py</code>.</p>
+            <pre><code>{
+  "patient_id": "PAT-XXXXXXXX",
+  "timestamp_created": "2026-04-19T09:38:44",
+  "current_role": "phase0" | "role1" | ...,
+  "flow_status": "registered" | "inbound" | "arrived" | ...,
+  "synced": true,
+  "analyzed": true,
+  "rfid_tag_id": "8AEF10C3",
+  "device_id": "jetson-01",
+
+  "name": "Erika Schmidt",
+  "rank": "Hauptfeldwebel",
+  "unit": "3./SanRgt 1",
+  "blood_type": "0+",
+
+  "triage": "T2",
+  "injuries": ["Kopfverletzung", "Nasenbluten"],
+  "mechanism": "Splitterverletzung",
+  "medications": [...],
+  "treatments": [...],
+  "vitals": {
+    "pulse": 110,
+    "bp": "120/80",
+    "resp_rate": 18,
+    "spo2": 94,
+    "gcs": 15
+  },
+
+  "template_type": "9liner",
+  "nine_liner": {
+    "line1": "UTM-Grid",
+    ...
+    "line9": "NBC"
+  },
+
+  "transcripts": [{"time": "...", "text": "..."}],
+  "timeline": [{"event": "registered", "time": "...", "details": "..."}],
+  "confidences": {
+    "name": 0.95,
+    "vitals": {"pulse": 0.89, "spo2": 0.85}
+  }
+}</code></pre>
+
+            <h3>Patient-Flow-States</h3>
+            <div class="mermaid">
+stateDiagram-v2
+    [*] --> registered
+    registered --> inbound: BAT fährt
+    inbound --> arrived: Role 1 erreicht
+    arrived --> in_treatment: Arzt übernimmt
+    in_treatment --> stabilized: Stabil
+    stabilized --> outbound: Transport Role 2
+    outbound --> transferred: Role 2
+    transferred --> [*]
+            </div>
+            <figcaption>Abb. 3 — Patient-Flow-State-Machine</figcaption>
+        </section>
+
+        <!-- ================ 6. Sicherheit ================ -->
+        <section id="security">
+            <h2>6. Sicherheitsarchitektur</h2>
+
+            <h3>Verschlüsselte Kommunikation</h3>
+            <p>Kommunikation zwischen Jetson und Surface läuft ausschließlich über das <strong>Tailscale-Mesh</strong> auf <strong>WireGuard</strong>-Basis.</p>
+
+            <div class="mermaid">
+flowchart LR
+    J["Jetson<br/>Private Key"] -->|"ChaCha20-Poly1305"| TS["Tailscale<br/>Coordination"]
+    S["Surface<br/>Private Key"] -->|"ChaCha20-Poly1305"| TS
+    J <===>|"Direkter WireGuard-Tunnel<br/>End-to-End verschlüsselt"| S
+            </div>
+            <figcaption>Abb. 4 — E2E-Verschlüsselung: Tailscale orchestriert nur Public-Keys, keine Daten</figcaption>
+
+            <h4>Kryptographische Primitive (WireGuard-Standard)</h4>
+            <table>
+                <tr><th>Funktion</th><th>Algorithmus</th><th>Bit-Länge</th></tr>
+                <tr><td>Key Exchange</td><td>Curve25519 ECDH</td><td>256</td></tr>
+                <tr><td>Symmetrische Verschlüsselung</td><td>ChaCha20</td><td>256</td></tr>
+                <tr><td>Authentifizierte Verschlüsselung</td><td>Poly1305</td><td>128</td></tr>
+                <tr><td>Hash / MAC</td><td>Blake2s</td><td>256</td></tr>
+            </table>
+
+            <div class="note ok">
+                <div class="note-title">Zero-Trust</div>
+                Tailscale sieht nur Peer-IPs und Public Keys — <strong>keine Payload-Daten</strong>. Selbst Tailscale Inc. kann die Patientenkommunikation nicht mitlesen.
+            </div>
+
+            <h3>RFID-Sicherheit (Bewusste Einschränkung)</h3>
+            <p>MIFARE Classic Crypto1 wurde 2007 per Brute-Force geknackt. SAFIR behandelt die Karte daher als <strong>reine ID-Referenz</strong>:</p>
+            <ul>
+                <li>✓ Patient-ID und Basisdaten (Name, Triage, Vitals) auf der Karte für Offline-Lesbarkeit</li>
+                <li>✗ Transkripte, 9-Liner-Details, Operator-Namen NICHT auf der Karte</li>
+                <li>✓ Backend-Store mit Tailscale-Verschlüsselung als Wahrheitsquelle</li>
+            </ul>
+
+            <h3>Authentifizierung via RFID-Operator-Karte</h3>
+            <p>Jeder Sanitäter hat eine persönliche Karte, UID in <code>config.json → rfid.operators</code>. Auflegen → Login mit TTS-Begrüßung. Rollen-System:</p>
+            <table>
+                <tr><th>Rolle</th><th>Erlaubnisse</th></tr>
+                <tr><td><code>bat_soldat_1</code></td><td>patient_create, patient_update, rfid_write_patient</td></tr>
+                <tr><td><code>arzt</code></td><td>+ patient_delete, rfid_overwrite_patient</td></tr>
+            </table>
+        </section>
+
+        <!-- ================ 7. Workflows ================ -->
+        <section id="workflows">
+            <h2>7. Workflows</h2>
+
+            <h3>Multi-Patient-Diktat</h3>
+            <div class="mermaid">
+stateDiagram-v2
+    [*] --> Bereit
+    Bereit --> Aufnahme: Taster B / Voice
+    Aufnahme --> Transkription: Stopp
+    Transkription --> PendingDraft: Whisper fertig
+    PendingDraft --> Analyse: "Analysieren"
+    Analyse --> Segmenter: Gemma
+    Segmenter --> PostMerge: 4-Stufen
+    PostMerge --> Extract: pro Segment
+    Extract --> Patients: n Records
+    Patients --> RFIDBatch: "Karte schreiben"
+    RFIDBatch --> Meldung: "Melden"
+    Meldung --> [*]
+            </div>
+
+            <h3>Post-Merge-Strategie (Defense in Depth)</h3>
+            <p>LLMs sind nicht deterministisch — selbst mit <code>temperature=0.0</code>. Vier aufeinanderfolgende Regeln härten das Ergebnis:</p>
+            <ol>
+                <li><strong>Post-Merge 1</strong> — Segmente &lt; 30 chars an vorheriges mergen</li>
+                <li><strong>Post-Merge 2</strong> — Pronomen-Segmente ("Er hat...", "Sie ist...") gehören zum vorherigen Patient</li>
+                <li><strong>Post-Merge 3</strong> — Ohne <code>START_MARKER</code> UND <code>PATIENT_MARKER</code> → zum vorherigen</li>
+                <li><strong>Post-Merge 4</strong> — Intro-Filter: "Hier spricht..." wird mit dem folgenden echten Patient vereint</li>
+            </ol>
+
+            <h3>RFID-Schreib-Batch</h3>
+            <div class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant J as Jetson
+    participant C as RC522
+    U->>J: "Karte schreiben"
+    J->>J: Patienten ohne rfid_tag_id finden
+    loop pro Patient
+        J-->>U: TTS "Karte N. Rang Name. Bitte auflegen."
+        U->>C: Karte auflegen
+        J->>C: Auth Sektor 1 + Blöcke 4,5,6
+        J->>C: HARD-RESET (Crypto1 reset)
+        J->>C: Auth Sektor 2 + Blöcke 8,9,10
+        J->>C: Re-Read + Verify
+        J->>J: patient.rfid_tag_id = UID
+    end
+    J-->>U: TTS "Alle Karten fertig"
+            </div>
+            <figcaption>Abb. 5 — RFID-Write mit obligatorischem Hardware-Reset zwischen Sektoren</figcaption>
+
+            <div class="note warn">
+                <div class="note-title">Hardware-Reset kritisch</div>
+                Der RC522-Chip behält nach Sektor-1-Auth einen Crypto1-State. Ohne Reset schlägt Sektor-2-Auth silent fehl und der Name wird nicht geschrieben. Siehe <code>shared/rfid.py:599-649</code> für die ausführliche Analyse.
+            </div>
+        </section>
+
+        <!-- ================ 8. API-Referenz ================ -->
+        <section id="api">
+            <h2>8. API-Referenz</h2>
+
+            <h3>Jetson (Port 8080)</h3>
+            <table>
+                <tr><th>Endpoint</th><th>Method</th><th>Zweck</th></tr>
+                <tr><td><code>/api/status</code></td><td>GET</td><td>System-Status, Modelle, Memory</td></tr>
+                <tr><td><code>/api/patients</code></td><td>GET</td><td>Alle Patient-Records</td></tr>
+                <tr><td><code>/api/pending</code></td><td>GET</td><td>Unanalysierte Transkripte</td></tr>
+                <tr><td><code>/api/recording/start</code></td><td>POST</td><td>Diktat starten</td></tr>
+                <tr><td><code>/api/recording/stop</code></td><td>POST</td><td>Diktat beenden</td></tr>
+                <tr><td><code>/api/analyze/pending</code></td><td>POST</td><td>LLM-Analyse</td></tr>
+                <tr><td><code>/api/rfid/batch</code></td><td>POST</td><td>Batch-Karte-Schreiben</td></tr>
+                <tr><td><code>/api/rfid/erase</code></td><td>POST</td><td>Karte löschen</td></tr>
+                <tr><td><code>/api/sync/all</code></td><td>POST</td><td>Alle Patienten melden</td></tr>
+                <tr><td><code>/ws</code></td><td>WS</td><td>Live-Events Sink+Source</td></tr>
+            </table>
+
+            <h3>Surface (Port 8080)</h3>
+            <table>
+                <tr><th>Endpoint</th><th>Method</th><th>Zweck</th></tr>
+                <tr><td><code>/api/ingest</code></td><td>POST</td><td>Patient von Jetson empfangen</td></tr>
+                <tr><td><code>/api/position</code></td><td>POST</td><td>BAT-Position aktualisieren</td></tr>
+                <tr><td><code>/api/rfid/clear-tag</code></td><td>POST</td><td>RFID-Zuordnung auflösen</td></tr>
+                <tr><td><code>/api/rfid/lookup</code></td><td>POST</td><td>Manueller UID-Lookup</td></tr>
+                <tr><td><code>/ws</code></td><td>WS</td><td>Live-Events zu Browsern</td></tr>
+            </table>
+        </section>
+
+        <!-- ================ 9. Konfiguration ================ -->
+        <section id="config">
+            <h2>9. Konfiguration</h2>
+            <p>Via <code>config.json</code> auf jedem Gerät. Editierbar über Settings-UI, keine Code-Änderung nötig.</p>
+            <pre><code>{
+  "ollama": {
+    "url": "http://127.0.0.1:11434",
+    "model": "gemma3:4b",
+    "num_ctx": 2048,
+    "num_gpu": -1,
+    "keep_alive": -1
+  },
+  "backend": {
+    "url": "http://100.101.80.64:8080"
+  },
+  "voice_commands": {
+    "record_start": {"triggers": ["aufnahme starten", ...]},
+    "rfid_write_patient": {"triggers": ["karte schreiben", ...]},
+    ...
+  },
+  "rfid": {
+    "operators": [
+      {"uid": "8AEF10C3", "name": "OFA Hugendubel", "role": "arzt"}
+    ],
+    "roles": {...}
+  },
+  "security": {
+    "lock_idle_seconds": 1800
+  },
+  "device_id": "jetson-01",
+  "unit_name": "BAT Alpha42",
+  "rescue_station": {
+    "lat": 50.7374,
+    "lon": 7.0982,
+    "name": "Bonn-Hardthöhe"
+  }
+}</code></pre>
+        </section>
+
+        <!-- ================ 10. Deployment ================ -->
+        <section id="deploy">
+            <h2>10. Deployment</h2>
+
+            <h3>Jetson Setup</h3>
+            <ol>
+                <li>JetPack 5.x installieren (Ubuntu 20.04 + CUDA 12.6)</li>
+                <li>Headless: <code>sudo systemctl set-default multi-user.target</code></li>
+                <li>Repo klonen: <code>git clone git@github.com:Ajintaro/SAFIR.git /home/jetson/cgi-afcea-san</code></li>
+                <li>Python-Venv: <code>python -m venv venv &amp;&amp; pip install -r requirements.txt</code></li>
+                <li>Ollama + Gemma: <code>ollama pull gemma3:4b</code></li>
+                <li>Vosk, Whisper, Piper nach <code>models/</code> entpacken</li>
+                <li>Systemd: <code>sudo systemctl enable safir.service</code></li>
+                <li>Tailscale: <code>sudo tailscale up --ssh</code></li>
+            </ol>
+
+            <h3>Surface Setup</h3>
+            <ol>
+                <li>Python 3.11+ installieren</li>
+                <li>Repo klonen</li>
+                <li><code>pip install -r backend/requirements.txt</code></li>
+                <li>Tailscale einrichten</li>
+                <li>Start: <code>backend\start-surface.cmd</code> (mit Auto-Reload)</li>
+                <li>Browser: <code>http://localhost:8080</code></li>
+            </ol>
+        </section>
+
+        <!-- ================ 11. Performance ================ -->
+        <section id="perf">
+            <h2>11. Performance &amp; Limits</h2>
+
+            <h3>Latenz-Budget</h3>
+            <table>
+                <tr><th>Stufe</th><th>Typisch</th><th>Max</th></tr>
+                <tr><td>Whisper-Transkription (pro 25-s-Chunk)</td><td>3–5 s</td><td>8 s</td></tr>
+                <tr><td>Gemma Boundary-Segmentation</td><td>5–8 s</td><td>12 s</td></tr>
+                <tr><td>Gemma Extract (pro Patient)</td><td>10–20 s</td><td>40 s</td></tr>
+                <tr><td>End-to-End (1 Patient)</td><td>~30 s</td><td>~60 s</td></tr>
+                <tr><td>Jetson→Surface Sync</td><td>&lt; 1 s</td><td>3 s</td></tr>
+                <tr><td>Omnikey-Scan → Modal</td><td>&lt; 2 s</td><td>3 s</td></tr>
+            </table>
+
+            <h3>Ressourcen-Nutzung (Swap-Mode)</h3>
+            <table>
+                <tr><th>Mode</th><th>Whisper</th><th>Gemma 3 4B</th><th>Frei (von 7.4 GB)</th></tr>
+                <tr><td>Idle</td><td>0</td><td>0</td><td>7.4 GB</td></tr>
+                <tr><td>Recording</td><td>1.2 GB</td><td>0</td><td>6.2 GB</td></tr>
+                <tr><td><strong>Analyse</strong></td><td>0 (unloaded)</td><td>4.3 GB</td><td>3.1 GB</td></tr>
+                <tr><td>Analyse fertig</td><td>0</td><td>0</td><td>7.4 GB</td></tr>
+            </table>
+            <p>Swap-Mode: Vor jeder Analyse wird Whisper ausgelagert, Gemma geladen. Danach umgekehrt. Beide passen nicht gleichzeitig, aber beide werden auch nicht gleichzeitig benötigt.</p>
+        </section>
+
+        <!-- ================ 12. Roadmap ================ -->
+        <section id="roadmap">
+            <h2>12. Known Limitations &amp; Roadmap</h2>
+
+            <h3>Kritische Limits</h3>
+            <table>
+                <tr><th>Limit</th><th>Impact</th><th>Plan</th></tr>
+                <tr><td>Unterbrochene Diktate → Patient verpasst</td><td>Arzt ergänzt manuell</td><td>Prompt-Beispiel + Confidence-Threshold</td></tr>
+                <tr><td>MIFARE Classic nicht sicher</td><td>Daten auf Karte mitlesbar</td><td>Daten minimal halten</td></tr>
+                <tr><td>Gemma setzt keine Triage</td><td>Arzt triagiert</td><td>Beabsichtigt</td></tr>
+                <tr><td>Kein Identity-Provider</td><td>User in JSON</td><td>LDAP für v3</td></tr>
+            </table>
+
+            <h3>Roadmap</h3>
+            <ul>
+                <li><strong>v2.2</strong> — Messe-Hardening A1-A5, Confidence-Badges, Preset-Szenarien, Backup-Jetson</li>
+                <li><strong>v3.0</strong> — 9-Liner MEDEVAC Full-Flow, TCCC-Card, Multi-Station (Role 2+3), PostgreSQL</li>
+                <li><strong>v4.0</strong> — SitaWare-Integration, SATCOM-Modus, Voice-Biometrie, Cross-Border</li>
+            </ul>
+
+            <hr style="margin: 40px 0; border: 0; border-top: 1px solid var(--border);">
+
+            <h3>Kontakt</h3>
+            <p>CGI Deutschland · AFCEA-Messe 2026</p>
+            <p><strong>Repository:</strong> <code>github.com/Ajintaro/SAFIR</code></p>
+        </section>
+
+    </article>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'dark',
+        themeVariables: {
+            darkMode: true,
+            background: '#1a2012',
+            primaryColor: '#1a2012',
+            primaryTextColor: '#c8b878',
+            primaryBorderColor: '#c8b878',
+            lineColor: '#c8b878',
+            fontFamily: 'Segoe UI, sans-serif'
+        }
+    });
+</script>
+</body>
+</html>
