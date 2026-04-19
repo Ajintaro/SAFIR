@@ -546,6 +546,43 @@ async def rfid_lookup(body: dict):
     return await _handle_rfid_uid(uid)
 
 
+@app.post("/api/rfid/clear-tag")
+async def rfid_clear_tag(body: dict):
+    """Loest die rfid_tag_id-Zuordnung auf dem Surface explizit auf.
+    Wird vom Jetson nach einem erfolgreichen Erase aufgerufen.
+
+    Vorteile gegenueber /api/ingest mit leerem rfid_tag_id:
+      - Unabhaengig von der Merge-Logik (funktioniert auch wenn der
+        Surface gerade noch mit altem Code laeuft, solange dieser
+        Endpoint existiert).
+      - Schreibt save_patient sofort nach der Aenderung, damit der
+        Zustand auch nach einem Surface-Restart erhalten bleibt.
+      - Broadcastet patient_update damit die Frontend-Ansicht sofort
+        aktualisiert.
+
+    Body: {"uid": "8AEF10C3"}  — Mehrere Patienten mit derselben UID
+    (sollte nicht vorkommen, aber defensive Programmierung) werden
+    alle bereinigt.
+    """
+    uid = (body.get("uid") or "").strip().upper()
+    if not uid:
+        return {"status": "error", "error": "uid fehlt"}
+    cleared = []
+    for pid, p in list(state.patients.items()):
+        tag = (p.get("rfid_tag_id") or "").strip().upper()
+        if tag == uid:
+            p["rfid_tag_id"] = ""
+            save_patient(p)
+            cleared.append(pid)
+            await broadcast({"type": "patient_update", "patient": p})
+    if cleared:
+        add_event(
+            "rfid_erased",
+            f"Karte UID {uid} auf Feldgeraet geloescht — {len(cleared)} Zuordnung(en) aufgeloest",
+        )
+    return {"status": "ok", "uid": uid, "cleared": cleared}
+
+
 # ---------------------------------------------------------------------------
 # Phase 0 — Simulation (Patienten ohne Spracheingabe erstellen & senden)
 # ---------------------------------------------------------------------------

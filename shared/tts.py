@@ -440,11 +440,11 @@ def announce_patient_ready():
     speak("Patient fertig. Scan vorbereiten.")
 
 def announce_rfid_linked():
-    # Low-Prio: Wenn die Karte auf dem Reader liegt und der Hardware-
-    # Service durch Debounce oder RC522-Reset mehrmals "Scan"-Events
-    # emittiert, sollen diese Ansagen ueberspringbar sein — wichtige
-    # Batch-Write-Ansagen haben Vorrang.
-    speak("Scan erfolgreich", priority=_PRIO_LOW)
+    # Keine TTS-Ansage beim RFID-Scan — der User hat visuelles Feedback
+    # (LED + OLED + Frontend-Highlight), eine zusaetzliche Sprachansage
+    # pro Scan war nur stoerend. Funktion bleibt als No-Op bestehen
+    # fuer API-Kompatibilitaet mit bestehenden Aufrufern.
+    pass
 
 def announce_patient_count(count: int):
     speak(f"{count} Patienten angelegt")

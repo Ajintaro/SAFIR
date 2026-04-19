@@ -2091,6 +2091,40 @@ async def voice_erase_card():
                     print(f"[RFID-ERASE] push_single_patient fehlgeschlagen: {e}", flush=True)
             if state.last_rfid_uid == uid:
                 state.last_rfid_uid = None
+            # Explizit den Surface-Endpoint /api/rfid/clear-tag aufrufen.
+            # Das ist redundant zum push_single_patient oben, aber robuster:
+            # der Endpoint loest die UID-Zuordnung auch dann sauber auf, wenn
+            # /api/ingest aus irgendeinem Grund die Patient-Update-Merge nicht
+            # durchlaesst (z.B. wenn der Patient nie ans Surface gemeldet war,
+            # aber der Jetson die UID gesetzt hatte). Unabhaengig vom
+            # affected_pid — wir loeschen IMMER fuer die UID, damit stale
+            # Mappings auf dem Surface verschwinden.
+            try:
+                cfg = load_config()
+                backend_url = cfg.get("backend", {}).get("url", "")
+                if backend_url:
+                    loop = asyncio.get_event_loop()
+                    def _do_clear():
+                        return httpx.post(
+                            f"{backend_url}/api/rfid/clear-tag",
+                            json={"uid": uid},
+                            timeout=4,
+                        )
+                    resp = await loop.run_in_executor(None, _do_clear)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        print(
+                            f"[RFID-ERASE] Surface-Mapping geloescht: UID {uid} "
+                            f"-> {data.get('cleared', [])}",
+                            flush=True,
+                        )
+                    else:
+                        print(
+                            f"[RFID-ERASE] Surface clear-tag HTTP {resp.status_code}",
+                            flush=True,
+                        )
+            except Exception as e:
+                print(f"[RFID-ERASE] Surface clear-tag fehlgeschlagen: {e}", flush=True)
             await broadcast({
                 "type": "rfid_erased",
                 "uid": uid,
