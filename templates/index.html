@@ -3326,7 +3326,7 @@
     <div class="hw-overlay-header">
         <div>
             <h3><span class="card-accent"></span>Hardware Monitor</h3>
-            <span>Jetson Orin Nano</span>
+            <span id="hw-overlay-device-name">Laden...</span>
         </div>
         <button class="hw-overlay-close" onclick="toggleHwOverlay()">&times;</button>
     </div>
@@ -3377,7 +3377,11 @@
             <div class="bar"><div class="bar-fill" id="disk-bar" style="width:0%;background:var(--info)"></div></div>
             <div style="text-align:right;margin-top:3px"><span style="font-size:var(--fs-body-sm);color:var(--text-dim)" id="disk-percent">0</span><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">%</span></div>
         </div>
-        <div class="field" style="margin-top:8px">
+        <!-- Whisper-Modell-Verwaltung: nur auf Ger\u00e4ten mit Whisper
+             (has_whisper=true, typisch der Jetson). Auf der Rettungsstation
+             (Surface) ist kein ASR noetig, deshalb wird dieser Block via
+             data-whisper-only ausgeblendet. -->
+        <div class="field" style="margin-top:8px" data-whisper-only>
             <label>Whisper Modell</label>
             <select id="model-select" onchange="loadModel(this.value)"></select>
             <div id="model-status" style="margin-top:4px;font-size:var(--fs-body-sm)"><span style="color:var(--text-dim)">Nicht geladen</span></div>
@@ -7971,6 +7975,18 @@
         if (status.default_page && !location.hash) {
             navigateTo(status.default_page);
         }
+        // Hardware-Monitor-Overlay: Geraete-Name (Subtitle) dynamisch
+        // setzen. Jetson bekommt "Jetson Orin Nano", Surface bekommt
+        // "Microsoft Surface / Rettungsstation" o.ae. Faellt zurueck
+        // auf unit_name wenn kein explizites system_name in der Config.
+        const hwName = document.getElementById('hw-overlay-device-name');
+        if (hwName) {
+            const devLabel = status.system_name
+                || (status.device === 'leitstelle'
+                    ? 'Microsoft Surface · ' + (status.unit_name || 'Rettungsstation')
+                    : 'Jetson Orin Nano · ' + (status.unit_name || 'BAT'));
+            hwName.textContent = devLabel;
+        }
         // Audio/Recording-Features ausblenden wenn nicht verfügbar
         if (status.has_audio === false || status.has_whisper === false) {
             const recordBtn = document.getElementById('record-btn');
@@ -7980,6 +7996,15 @@
                 recordBtn.style.opacity = '0.4';
                 recordBtn.style.cursor = 'not-allowed';
             }
+        }
+        // Whisper-only-UI-Elemente (Modell-Selector im Hardware-Monitor,
+        // evtl. andere ASR-bezogene Controls) verstecken wenn das
+        // Geraet kein Whisper hat. Das betrifft die Surface wo kein
+        // eigener ASR-Stack laeuft.
+        if (status.has_whisper === false) {
+            document.querySelectorAll('[data-whisper-only]').forEach(el => {
+                el.style.display = 'none';
+            });
         }
         if (status.has_vosk === false) {
             const voskInd = document.getElementById('vosk-indicator');
