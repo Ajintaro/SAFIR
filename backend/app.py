@@ -90,21 +90,40 @@ def save_patient(patient: dict):
 def load_patients():
     """Lädt alle Patienten aus JSON-Dateien.
     SIM-Patienten (Prefix SIM-) werden beim Start übersprungen und gelöscht,
-    da sie nur während einer aktiven Simulation existieren sollen."""
+    da sie nur während einer aktiven Simulation existieren sollen.
+
+    Robust gegen File-Locks (WinError 32): wenn eine Datei gerade belegt
+    ist (z.B. von einem gecrashten Vorprozess), wird sie uebersprungen.
+    Beim naechsten Boot wird sie dann entweder eingelesen oder geloescht."""
     for filepath in PATIENTS_DIR.glob("*.json"):
+        # Schritt 1: Lesen. Wenn File-Lock (WinError 32), sofort skip
+        # und auch KEINE Loesch-Versuche — das wuerde den gleichen
+        # Lock-Fehler produzieren.
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 patient = json.load(f)
-                pid = patient.get("patient_id")
-                if pid:
-                    # Simulations-/Test-Patienten beim Start entfernen
-                    if pid.startswith("SIM-") or pid.startswith("TEST-") or pid.startswith("P0-"):
-                        filepath.unlink()
-                        print(f"  Simulations-Patient {pid} entfernt")
-                        continue
-                    state.patients[pid] = patient
+        except OSError as e:
+            if getattr(e, "winerror", None) == 32:
+                print(f"  File-Lock auf {filepath.name} — skip (Datei wird von anderem Prozess genutzt)")
+            else:
+                print(f"Fehler beim Laden von {filepath.name}: {e}")
+            continue
         except Exception as e:
-            print(f"Fehler beim Laden von {filepath}: {e}")
+            print(f"Fehler beim Laden von {filepath.name}: {e}")
+            continue
+
+        # Schritt 2: Verarbeiten
+        pid = patient.get("patient_id")
+        if not pid:
+            continue
+        if pid.startswith("SIM-") or pid.startswith("TEST-") or pid.startswith("P0-"):
+            try:
+                filepath.unlink()
+                print(f"  Simulations-/Test-Patient {pid} entfernt")
+            except OSError as e:
+                print(f"  Konnte {pid} nicht entfernen (File-Lock?): {e}")
+            continue
+        state.patients[pid] = patient
 
 
 def save_state():

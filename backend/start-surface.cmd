@@ -21,6 +21,13 @@ REM Die alte SETUP-SURFACE.md erwaehnt Port 9090, aber die aktuelle
 REM Produktions-Konfig nutzt 8080 — dort lauscht auch der bisherige
 REM Surface-Prozess.
 
+REM WICHTIG: --reload-exclude fuer data/ und config.json — sonst triggert
+REM jeder save_patient()-Call einen Reload, was zu File-Locks auf
+REM Windows fuehrt (WinError 32 beim naechsten Boot). Auch die
+REM backend/config.json soll nicht reloaden, weil sie sich bei
+REM Operator-Registrierung aendert und mitten im Flow kein Restart
+REM passieren darf.
+
 cd /d "%~dp0"
 python -m uvicorn app:app ^
     --host 0.0.0.0 ^
@@ -31,4 +38,6 @@ python -m uvicorn app:app ^
     --reload-dir ..\templates ^
     --reload-include "*.py" ^
     --reload-include "*.html" ^
-    --reload-include "*.json"
+    --reload-exclude "data/*" ^
+    --reload-exclude "data/**/*" ^
+    --reload-exclude "config.json"
