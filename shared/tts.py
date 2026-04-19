@@ -255,15 +255,32 @@ def _ensure_worker():
 
 # Maximal-Backlog in der TTS-Queue. Bei langsamer Stimme (z.B. thorsten-
 # high auf CPU) dauert eine Ansage 2-4s. Wenn wir schneller enqueuen
-# als abspielen, kommen Ansagen minutenspaet und passen nicht mehr zur
-# aktuellen Situation. Deshalb: ueber diesem Limit werden ALTE Messages
-# aus der Queue entfernt damit die neuen (aktuell relevanten) Vorrang
-# haben. 3 ist ein guter Kompromiss — kurze Sequenzen wie "Karte 1. Mueller
-# auflegen" + "Karte fertig" + "Karte 2. Schmidt auflegen" passen rein.
-_TTS_MAX_BACKLOG = 3
+# als abspielen, stauen sich die Messages auf und kommen minutenspaet,
+# wo sie nicht mehr zur aktuellen Situation passen.
+#
+# Drop-Strategie (Keep-Head):
+#   qsize >= _TTS_MAX_BACKLOG → neue Message wird verworfen (wichtige
+#   alte Ansagen ueberleben und werden abgespielt). Das ist das
+#   Gegenteil der frueheren Logik — aeltere Messages waren "Karte 1.
+#   Mueller. Bitte auflegen", die wichtiger sind als die spaeter
+#   kommende "Scan erfolgreich"-Bestaetigung.
+#
+# Low-Prio-Filter (_TTS_LOW_PRIO_THRESHOLD):
+#   Status-Ansagen wie "Scan erfolgreich" landen in der Queue nur wenn
+#   sie fast leer ist. Beispiel: RFID-Karte bleibt auf dem Reader
+#   liegen, der Hardware-Service emittiert durch Debounce wieder-
+#   holt Scan-Events — ohne Low-Prio-Filter wuerden diese "Scan
+#   erfolgreich"-TTS die wichtigen Patient-Ansagen komplett ueber-
+#   deckelung.
+_TTS_MAX_BACKLOG = 5
+_TTS_LOW_PRIO_THRESHOLD = 2
+
+_PRIO_LOW = "low"
+_PRIO_NORMAL = "normal"
+_PRIO_HIGH = "high"
 
 
-def speak(text: str, blocking: bool = False):
+def speak(text: str, blocking: bool = False, priority: str = "normal"):
     """Spricht Text aus. Non-blocking per Default (queue-basiert).
 
     Einzelner Worker-Thread serialisiert alle Ausgaben — kein
@@ -271,9 +288,18 @@ def speak(text: str, blocking: bool = False):
     _speak_internal direkt aufgerufen (z.B. fuer kritische Fehler-
     meldungen die synchron raus muessen).
 
-    Bei Queue-Backlog > _TTS_MAX_BACKLOG werden die aeltesten Messages
-    verworfen — sie sind sowieso nicht mehr aktuell und blockieren nur
-    die wichtigen naechsten Ansagen.
+    Priority-Stufen:
+      "low"    — Status-Ansagen die ueberspringbar sind wenn etwas
+                 wichtigeres ansteht (z.B. "Scan erfolgreich").
+                 Werden nur enqueued wenn qsize < _TTS_LOW_PRIO_THRESHOLD.
+      "normal" — Standard (Default). Werden enqueued bis MAX_BACKLOG,
+                 danach verworfen (Keep-Head).
+      "high"   — Kritische Ansagen (z.B. "Aufnahme fehlgeschlagen").
+                 Gleiches Verhalten wie "normal" aktuell, Platzhalter
+                 fuer kuenftige Preemption-Logik.
+
+    Bei Queue-Backlog > _TTS_MAX_BACKLOG werden NEUE Messages verworfen
+    (Keep-Head) — die bereits eingereihten Ansagen kommen dran.
     """
     if not _enabled or _voice is None:
         print(f"[TTS] dropped (enabled={_enabled}, voice-loaded={_voice is not None}): {text[:60]!r}", flush=True)
@@ -282,17 +308,19 @@ def speak(text: str, blocking: bool = False):
         _speak_internal(text)
         return
     _ensure_worker()
-    # Backlog-Drop: wenn zu viele Messages anstehen, alteste entfernen
-    dropped = 0
-    while _tts_queue.qsize() >= _TTS_MAX_BACKLOG:
-        try:
-            _tts_queue.get_nowait()
-            _tts_queue.task_done()
-            dropped += 1
-        except Exception:
-            break
-    if dropped > 0:
-        print(f"[TTS] backlog drop: {dropped} alte Messages entfernt vor enqueue '{text[:40]}'", flush=True)
+    qsize = _tts_queue.qsize()
+    # Low-Prio-Ansagen komplett ueberspringen wenn Queue nicht (fast) leer.
+    # So verhindern wir dass wiederholte "Scan erfolgreich" etc. die
+    # Queue ueberfluten und die wichtigen Ansagen ausbremsen.
+    if priority == _PRIO_LOW and qsize >= _TTS_LOW_PRIO_THRESHOLD:
+        print(f"[TTS] low-prio skip (qsize={qsize}): {text[:40]!r}", flush=True)
+        return
+    # Keep-Head-Drop: Queue voll → neue Message verwerfen, alte Spielen lassen.
+    # Die aelteren Ansagen sind typischerweise wichtiger (z.B. "Karte 1.
+    # Mueller. Bitte auflegen") als spaetere Status-Messages ("Scan erfolgreich").
+    if qsize >= _TTS_MAX_BACKLOG:
+        print(f"[TTS] queue voll (qsize={qsize}), verwerfe: {text[:40]!r}", flush=True)
+        return
     _tts_queue.put(text)
 
 
@@ -405,13 +433,18 @@ def announce_recording_stop():
     speak("Aufnahme beendet")
 
 def announce_transcription_done():
-    speak("Transkription fertig")
+    # Status-Ansage — low-prio, wird uebersprungen wenn wichtigeres ansteht
+    speak("Transkription fertig", priority=_PRIO_LOW)
 
 def announce_patient_ready():
     speak("Patient fertig. Scan vorbereiten.")
 
 def announce_rfid_linked():
-    speak("Scan erfolgreich")
+    # Low-Prio: Wenn die Karte auf dem Reader liegt und der Hardware-
+    # Service durch Debounce oder RC522-Reset mehrmals "Scan"-Events
+    # emittiert, sollen diese Ansagen ueberspringbar sein — wichtige
+    # Batch-Write-Ansagen haben Vorrang.
+    speak("Scan erfolgreich", priority=_PRIO_LOW)
 
 def announce_patient_count(count: int):
     speak(f"{count} Patienten angelegt")
@@ -429,7 +462,8 @@ def announce_error():
     speak("Fehler")
 
 def announce_confirmed():
-    speak("Verstanden")
+    # Status-Ansage — haeufige Bestaetigung, darf uebersprungen werden
+    speak("Verstanden", priority=_PRIO_LOW)
 
 def announce_batch_analysis(count: int):
     speak(f"{count} Patienten werden analysiert")

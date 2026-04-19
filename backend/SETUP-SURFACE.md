@@ -23,6 +23,20 @@ pip install fastapi uvicorn httpx
 
 ## 3. SAFIR Backend starten
 
+**Empfohlen (mit Auto-Reload):**
+
+```cmd
+start-surface.cmd
+```
+
+Das Script startet uvicorn mit `--reload` — d.h. Code-Änderungen in
+`backend/`, `shared/` und `templates/` werden automatisch erkannt,
+das Backend startet in ~1 s neu, WebSocket-Clients reconnecten
+automatisch. So muss nach einem `git pull` nichts manuell neu
+gestartet werden.
+
+**Alternativ (ohne Auto-Reload):**
+
 ```cmd
 python -m uvicorn app:app --host 0.0.0.0 --port 9090
 ```
