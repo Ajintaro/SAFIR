@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>SAFIR — One-Pager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        /*
+         * SAFIR Messe-One-Pager
+         * Druckbar als A4 PDF: Browser → Drucken → Als PDF speichern
+         *   Ränder: "Keine" oder "Standard"
+         *   Skalierung: 100 %
+         *   Hintergrundgrafiken: AN (wichtig fuer das dunkle Layout)
+         */
+        :root {
+            --bg: #0f1209;
+            --surface: #1a2012;
+            --elevated: #23291c;
+            --border: #3a3f2f;
+            --text: #e8e6d9;
+            --text-dim: #9aa09a;
+            --tan: #c8b878;
+            --green: #5a9e3a;
+            --amber: #d4871a;
+            --red: #cc2222;
+            --info: #5DADE2;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Rajdhani, Arial, sans-serif;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            padding: 10mm 12mm 8mm 12mm;
+            background: var(--bg);
+            display: grid;
+            grid-template-rows: auto auto 1fr auto auto;
+            gap: 6mm;
+        }
+
+        /* ========== Header ========== */
+        header {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 10mm;
+            padding-bottom: 6mm;
+            border-bottom: 2px solid var(--tan);
+        }
+        .logo-box {
+            width: 22mm;
+            height: 22mm;
+            background: var(--surface);
+            border: 2px solid var(--tan);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: monospace;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--tan);
+            letter-spacing: 0.05em;
+            line-height: 1;
+        }
+        .title-block h1 {
+            font-size: 32pt;
+            font-weight: 300;
+            letter-spacing: -0.01em;
+            color: var(--text);
+            line-height: 1;
+        }
+        .title-block h1 strong {
+            color: var(--tan);
+            font-weight: 700;
+        }
+        .title-block .sub {
+            font-family: monospace;
+            font-size: 9pt;
+            color: var(--text-dim);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-top: 2mm;
+        }
+        .meta-stack {
+            text-align: right;
+            font-family: monospace;
+            font-size: 8pt;
+            color: var(--text-dim);
+        }
+        .meta-stack strong { color: var(--tan); font-size: 10pt; display: block; }
+
+        /* ========== Tagline Strip ========== */
+        .tagline {
+            text-align: center;
+            padding: 5mm 8mm;
+            background: linear-gradient(90deg, transparent 0%, var(--surface) 50%, transparent 100%);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+        .tagline h2 {
+            font-size: 15pt;
+            color: var(--tan);
+            font-weight: 600;
+            font-style: italic;
+            line-height: 1.3;
+        }
+        .tagline p {
+            font-size: 9pt;
+            color: var(--text-dim);
+            margin-top: 2mm;
+        }
+
+        /* ========== 3-Column Main ========== */
+        main {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 5mm;
+        }
+        .col {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-top: 3px solid var(--tan);
+            padding: 5mm 4mm 4mm 4mm;
+            border-radius: 1mm;
+        }
+        .col .col-icon {
+            font-size: 20pt;
+            margin-bottom: 2mm;
+        }
+        .col h3 {
+            font-size: 11pt;
+            color: var(--tan);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin-bottom: 3mm;
+            padding-bottom: 2mm;
+            border-bottom: 1px solid var(--border);
+        }
+        .col p {
+            font-size: 9pt;
+            line-height: 1.5;
+            color: var(--text);
+            margin-bottom: 2mm;
+        }
+        .col ul {
+            font-size: 8.5pt;
+            line-height: 1.55;
+            padding-left: 4mm;
+            color: var(--text);
+        }
+        .col ul li {
+            margin-bottom: 1mm;
+        }
+        .col ul li::marker {
+            color: var(--tan);
+        }
+        .col strong { color: var(--tan); }
+
+        /* ========== Visual strip ========== */
+        .visual-strip {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 4mm;
+            border-radius: 1mm;
+        }
+        .visual-strip .vs-title {
+            font-size: 9pt;
+            color: var(--tan);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin-bottom: 3mm;
+            text-align: center;
+        }
+        .vs-flow {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            align-items: center;
+            gap: 2mm;
+        }
+        .vs-step {
+            text-align: center;
+            padding: 2mm 1mm;
+            background: var(--elevated);
+            border: 1px solid var(--border);
+            border-radius: 1mm;
+            position: relative;
+        }
+        .vs-step .vs-num {
+            position: absolute;
+            top: -3mm;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--tan);
+            color: var(--bg);
+            width: 6mm;
+            height: 6mm;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8pt;
+            font-weight: 700;
+        }
+        .vs-step .vs-label {
+            font-size: 8pt;
+            color: var(--tan);
+            font-weight: 700;
+            margin-top: 2mm;
+        }
+        .vs-step .vs-desc {
+            font-size: 7.5pt;
+            color: var(--text-dim);
+            margin-top: 1mm;
+            line-height: 1.3;
+        }
+        .vs-arrow {
+            color: var(--tan);
+            font-size: 14pt;
+            text-align: center;
+        }
+
+        /* ========== Tech-Bar ========== */
+        .tech-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 3mm;
+        }
+        .tech-item {
+            background: var(--elevated);
+            border: 1px solid var(--border);
+            border-left: 2px solid var(--green);
+            padding: 3mm;
+            text-align: center;
+        }
+        .tech-item .tech-val {
+            font-size: 14pt;
+            color: var(--tan);
+            font-weight: 700;
+            font-family: monospace;
+            line-height: 1;
+        }
+        .tech-item .tech-label {
+            font-size: 7.5pt;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-top: 1.5mm;
+        }
+
+        /* ========== Footer ========== */
+        footer {
+            padding-top: 4mm;
+            border-top: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6mm;
+            font-size: 8pt;
+            color: var(--text-dim);
+            align-items: center;
+        }
+        footer .ft-block strong {
+            color: var(--tan);
+            display: block;
+            font-size: 9pt;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 1.5mm;
+        }
+        footer .ft-center {
+            text-align: center;
+        }
+        footer .ft-right {
+            text-align: right;
+        }
+        footer .made-by {
+            font-style: italic;
+            color: var(--tan);
+            font-size: 9pt;
+        }
+
+        /* ========== Print ========== */
+        @media print {
+            @page {
+                size: A4;
+                margin: 0;
+            }
+            html, body {
+                background: var(--bg);
+                margin: 0;
+                padding: 0;
+            }
+            .page {
+                page-break-after: always;
+                margin: 0;
+            }
+            .print-hint {
+                display: none;
+            }
+        }
+
+        .print-hint {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            background: var(--elevated);
+            border: 1px solid var(--tan);
+            padding: 6px 12px;
+            font-size: 11px;
+            color: var(--tan);
+            font-family: monospace;
+            z-index: 999;
+            border-radius: 3px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+        }
+    </style>
+</head>
+<body>
+
+<div class="print-hint">
+    Drucken: Strg+P → Als PDF → <strong>Hintergrundgrafiken AN</strong>
+</div>
+
+<div class="page">
+
+    <!-- ================ Header ================ -->
+    <header>
+        <div class="logo-box">SAFIR</div>
+        <div class="title-block">
+            <h1><strong>SAFIR</strong></h1>
+            <div class="sub">Sprachgestützte Assistenz · Informationserfassung · Rettungskette</div>
+        </div>
+        <div class="meta-stack">
+            <strong>CGI Deutschland</strong>
+            Bundeswehr Sanitätsdienst<br>
+            AFCEA 2026<br>
+            Version 2.1
+        </div>
+    </header>
+
+    <!-- ================ Tagline ================ -->
+    <section class="tagline">
+        <h2>„KI-Assistenz für den Combat Medic — offline, verschlüsselt, deutsch."</h2>
+        <p>Ein gesprochener Befund. Strukturierte Patientendaten auf der RFID-Karte. Live-Sync zur Rettungsstation. Alles im Feld, ohne Cloud.</p>
+    </section>
+
+    <!-- ================ 3-Column Main ================ -->
+    <main>
+        <div class="col">
+            <div class="col-icon">⚕</div>
+            <h3>Das Problem</h3>
+            <p>In der <strong>Goldenen Stunde</strong> versorgt ein Sanitäter mehrere Verwundete gleichzeitig. Die Paperwork bleibt meist auf der Strecke.</p>
+            <ul>
+                <li>Papier-TCCC-Karten unleserlich bei Regen/Blut</li>
+                <li>Transkription in der Rettungsstation kostet Zeit</li>
+                <li>Führungsstab erfährt oft zu spät von Verwundeten</li>
+                <li>Keine Echtzeit-Lageübersicht</li>
+                <li>Kognitive Last beim Sanitäter</li>
+            </ul>
+        </div>
+
+        <div class="col">
+            <div class="col-icon">🎯</div>
+            <h3>Die Lösung</h3>
+            <p>Der Sanitäter <strong>diktiert frei</strong> was er sieht. SAFIR transkribiert, segmentiert nach Patienten, extrahiert Daten.</p>
+            <ul>
+                <li>Whisper ASR — deutsche Sprache, GPU-beschleunigt</li>
+                <li>Gemma 3 4B — Multi-Patient-Segmentierung</li>
+                <li>RFID-Karte pro Patient mit ID + Basisdaten</li>
+                <li>Live-Sync zur Rettungsstation via WireGuard</li>
+                <li>Lagekarte mit Triage-Counts für den Arzt</li>
+            </ul>
+        </div>
+
+        <div class="col">
+            <div class="col-icon">🛡</div>
+            <h3>Das Prinzip</h3>
+            <p>Medizinische KI darf <strong>nie halluzinieren</strong>. SAFIR ist konservativ: lieber vergessen als erfinden.</p>
+            <ul>
+                <li>4-Stufen Post-Processing härtet LLM-Output</li>
+                <li>Konfidenz-Badges pro Feld (grün/gelb/rot)</li>
+                <li>Triage <em>nur</em> durch Arzt (nicht durch KI)</li>
+                <li>Ende-zu-Ende verschlüsselt (ChaCha20-Poly1305)</li>
+                <li>100 % on-device — kein Cloud-Leck möglich</li>
+            </ul>
+        </div>
+    </main>
+
+    <!-- ================ Visual Flow Strip ================ -->
+    <section class="visual-strip">
+        <div class="vs-title">Vom Befund zum Patientenrecord in ~30 Sekunden</div>
+        <div class="vs-flow">
+            <div class="vs-step">
+                <div class="vs-num">1</div>
+                <div class="vs-label">DIKTAT</div>
+                <div class="vs-desc">Sanitäter spricht frei, bis zu 10 min, mehrere Patienten</div>
+            </div>
+            <div class="vs-arrow">▶</div>
+            <div class="vs-step">
+                <div class="vs-num">2</div>
+                <div class="vs-label">KI-ANALYSE</div>
+                <div class="vs-desc">Whisper + Gemma 3 segmentieren und extrahieren</div>
+            </div>
+            <div class="vs-arrow">▶</div>
+            <div class="vs-step">
+                <div class="vs-num">3</div>
+                <div class="vs-label">RFID + SYNC</div>
+                <div class="vs-desc">Karte pro Patient, Live-Sync zur Rettungsstation</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================ Tech Bar ================ -->
+    <section class="tech-bar">
+        <div class="tech-item">
+            <div class="tech-val">7.4 GB</div>
+            <div class="tech-label">Edge-Hardware<br>Jetson Orin Nano</div>
+        </div>
+        <div class="tech-item">
+            <div class="tech-val">15 W</div>
+            <div class="tech-label">Leistungs-<br>budget</div>
+        </div>
+        <div class="tech-item">
+            <div class="tech-val">0</div>
+            <div class="tech-label">Halluzinationen<br>im Test</div>
+        </div>
+        <div class="tech-item">
+            <div class="tech-val">∞</div>
+            <div class="tech-label">Offline-<br>Betriebsstunden</div>
+        </div>
+    </section>
+
+    <!-- ================ Footer ================ -->
+    <footer>
+        <div class="ft-block">
+            <strong>Einsatzgebiete</strong>
+            Bundeswehr · NATO-Partner · THW · Feuerwehr · DRK/JUH · Industrie-Sicherheit
+        </div>
+        <div class="ft-block ft-center">
+            <span class="made-by">Entwickelt mit der Bundeswehr für die Bundeswehr — konzipiert für mehr.</span>
+        </div>
+        <div class="ft-block ft-right">
+            <strong>Kontakt</strong>
+            CGI Deutschland<br>
+            AFCEA-Messe 2026
+        </div>
+    </footer>
+
+</div>
+
+</body>
+</html>
