@@ -326,6 +326,12 @@
             "icon": "&#128196;"
         },
         {
+            "id": "handbook",
+            "label": "Handbuch",
+            "icon": "&#128218;",
+            "subtitle": "Bedienungsanleitung"
+        },
+        {
             "id": "vision",
             "label": "Vision",
             "icon": "&#127919;",

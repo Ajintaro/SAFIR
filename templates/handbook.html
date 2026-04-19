@@ -1,0 +1,819 @@
+<!--
+  SAFIR Handbuch — eigenstaendige HTML-Page, aus index.html inkludiert als
+  <div class="page" id="page-handbook">. Alle Styles sind ".hb-*"-praefixed
+  um Konflikte mit dem restlichen Template zu vermeiden. SVG-Diagramme sind
+  inline, damit keine externen Assets geladen werden muessen.
+-->
+<style>
+    /* === Handbuch-Layout === */
+    #page-handbook.active { display: flex; flex-direction: column; overflow: hidden; height: 100%; }
+    .hb-layout { display: grid; grid-template-columns: 240px 1fr; gap: 20px; height: 100%; overflow: hidden; padding: 16px; }
+    .hb-toc { position: sticky; top: 0; align-self: start; max-height: calc(100vh - 80px); overflow-y: auto; padding: 14px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); }
+    .hb-toc-title { font-size: var(--fs-body-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--mil-tan, #c8b878); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .hb-toc a { display: block; padding: 6px 8px; font-size: var(--fs-body-sm); color: var(--text-secondary); text-decoration: none; border-radius: 3px; transition: background 0.15s; border-left: 2px solid transparent; margin-bottom: 2px; }
+    .hb-toc a:hover { background: var(--bg-elevated); color: var(--text-primary); }
+    .hb-toc a.hb-toc-active { background: var(--bg-elevated); color: var(--mil-tan, #c8b878); border-left-color: var(--mil-tan, #c8b878); font-weight: 600; }
+
+    .hb-content { overflow-y: auto; padding: 0 24px 80px 8px; scroll-behavior: smooth; }
+    .hb-content section { margin-bottom: 48px; scroll-margin-top: 16px; }
+    .hb-content h1 { font-size: 26px; margin: 0 0 6px 0; color: var(--text-primary); font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .hb-content h1 .hb-num { background: var(--mil-tan, #c8b878); color: var(--mil-bg, #0f1209); padding: 2px 10px; border-radius: 4px; font-size: 16px; font-weight: 700; }
+    .hb-content h2 { font-size: 18px; margin: 28px 0 8px 0; color: var(--mil-tan, #c8b878); text-transform: uppercase; letter-spacing: 0.08em; }
+    .hb-content h3 { font-size: 15px; margin: 18px 0 6px 0; color: var(--text-primary); }
+    .hb-content p { line-height: 1.6; color: var(--text-secondary); margin: 0 0 10px 0; }
+    .hb-content strong { color: var(--text-primary); }
+    .hb-content ul, .hb-content ol { line-height: 1.7; color: var(--text-secondary); padding-left: 22px; margin: 4px 0 14px 0; }
+    .hb-content ul li, .hb-content ol li { margin-bottom: 4px; }
+    .hb-content code { background: var(--bg-elevated); padding: 1px 6px; border-radius: 3px; font-size: 0.9em; color: var(--mil-tan, #c8b878); }
+    .hb-content kbd { display: inline-block; padding: 1px 7px; margin: 0 2px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; font-family: monospace; font-size: 0.88em; color: var(--text-primary); box-shadow: 0 1px 0 var(--border); }
+    .hb-content .hb-section-lead { font-size: 14px; color: var(--text-dim); margin-bottom: 20px; border-left: 3px solid var(--mil-tan, #c8b878); padding-left: 14px; font-style: italic; }
+
+    /* Boxen und Panels */
+    .hb-note { padding: 12px 14px; margin: 12px 0; border-radius: var(--radius); font-size: var(--fs-body-sm); border-left: 3px solid; background: var(--bg-elevated); }
+    .hb-note.info { border-color: #5DADE2; }
+    .hb-note.warn { border-color: var(--mil-amber, #d4871a); }
+    .hb-note.danger { border-color: var(--cgi-red, #cc2222); }
+    .hb-note.ok { border-color: var(--mil-green, #5a9e3a); }
+    .hb-note-title { font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; margin-bottom: 4px; }
+    .hb-note.info .hb-note-title { color: #5DADE2; }
+    .hb-note.warn .hb-note-title { color: var(--mil-amber, #d4871a); }
+    .hb-note.danger .hb-note-title { color: var(--cgi-red, #cc2222); }
+    .hb-note.ok .hb-note-title { color: var(--mil-green, #5a9e3a); }
+
+    /* Steps (nummerierte Workflow-Boxen) */
+    .hb-steps { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+    .hb-step { display: grid; grid-template-columns: 40px 1fr; gap: 12px; padding: 10px 14px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); border-left: 3px solid var(--mil-tan, #c8b878); }
+    .hb-step-num { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: var(--mil-tan, #c8b878); color: var(--mil-bg, #0f1209); border-radius: 50%; font-weight: 700; font-size: 14px; }
+    .hb-step-body { padding-top: 4px; }
+    .hb-step-title { font-weight: 700; color: var(--text-primary); margin-bottom: 3px; font-size: var(--fs-body); }
+    .hb-step-desc { color: var(--text-secondary); font-size: var(--fs-body-sm); line-height: 1.5; }
+
+    /* Voice-Command Tabelle */
+    .hb-vc-table { width: 100%; border-collapse: collapse; margin: 10px 0 18px 0; font-size: var(--fs-body-sm); }
+    .hb-vc-table th { text-align: left; padding: 8px 10px; background: var(--bg-elevated); color: var(--mil-tan, #c8b878); text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; border-bottom: 1px solid var(--border); }
+    .hb-vc-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: top; }
+    .hb-vc-table tr:hover td { background: var(--bg-elevated); color: var(--text-primary); }
+    .hb-vc-table td code { display: inline-block; margin: 1px 3px 1px 0; background: var(--bg-elevated); padding: 1px 6px; border-radius: 3px; }
+
+    /* Faux-UI-Mockups */
+    .hb-mock { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin: 10px 0; }
+    .hb-mock-caption { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; text-align: center; }
+    .hb-mock svg { display: block; max-width: 100%; margin: 0 auto; }
+
+    /* 2-Spalten Grid */
+    .hb-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0; }
+    @media (max-width: 980px) { .hb-grid-2 { grid-template-columns: 1fr; } }
+
+    /* Druck-Version */
+    @media print {
+        .hb-toc { display: none; }
+        .hb-layout { grid-template-columns: 1fr; padding: 0; }
+        .hb-content { overflow: visible; padding: 0; }
+        .hb-content section { page-break-inside: avoid; }
+    }
+</style>
+
+<div class="page" id="page-handbook">
+    <div class="hb-layout">
+
+        <!-- ================== SIDEBAR TOC ================== -->
+        <aside class="hb-toc">
+            <div class="hb-toc-title">Inhalt</div>
+            <a href="#hb-intro" class="hb-toc-active">1. Was ist SAFIR?</a>
+            <a href="#hb-devices">2. Geräte-Übersicht</a>
+            <a href="#hb-firststeps">3. Erste Schritte</a>
+            <a href="#hb-workflow">4. Diktat-Workflow</a>
+            <a href="#hb-voice">5. Voice-Commands</a>
+            <a href="#hb-rfid">6. RFID-Karten</a>
+            <a href="#hb-sync">7. Melden an Rettungsstation</a>
+            <a href="#hb-role1">8. Rettungsstation</a>
+            <a href="#hb-oled">9. OLED-Display</a>
+            <a href="#hb-settings">10. Einstellungen-Tour</a>
+            <a href="#hb-troubleshoot">11. Troubleshooting</a>
+            <a href="#hb-glossar">12. Glossar</a>
+        </aside>
+
+        <!-- ================== CONTENT ================== -->
+        <article class="hb-content">
+
+            <!-- ========== 1. Was ist SAFIR? ========== -->
+            <section id="hb-intro">
+                <h1><span class="hb-num">1</span> Was ist SAFIR?</h1>
+                <p class="hb-section-lead">Sprachgestützte Assistenz für Informationserfassung in der Rettungskette.</p>
+
+                <p>SAFIR ist ein KI-gestütztes Dokumentationssystem für den Sanitätsdienst der Bundeswehr. Ein Sanitäter im Feld diktiert seine Befunde frei in natürlicher Sprache. Die Software segmentiert das Diktat in einzelne Patienten, extrahiert strukturierte Daten (Name, Verletzungen, Vitalwerte) und schreibt die Patient-ID auf RFID-Karten, die dem Verwundeten mitgegeben werden. Über ein verschlüsseltes Mesh-Netz werden die Patientendaten live an die Leitstelle in der Rettungsstation gespiegelt, wo Ärzte auf einer taktischen Lagekarte Triage und Transport koordinieren.</p>
+
+                <div class="hb-mock">
+                    <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Rettungsketten-Diagramm -->
+                        <defs>
+                            <marker id="arrow-intro" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                                <path d="M0,0 L10,5 L0,10 z" fill="#c8b878"/>
+                            </marker>
+                        </defs>
+                        <text x="350" y="20" text-anchor="middle" fill="#c8b878" font-family="monospace" font-size="11" letter-spacing="1">RETTUNGSKETTE BUNDESWEHR</text>
+                        <!-- Phase 0 -->
+                        <rect x="20" y="60" width="110" height="90" fill="#1a2012" stroke="#5a9e3a" stroke-width="2" rx="4"/>
+                        <text x="75" y="80" text-anchor="middle" fill="#5a9e3a" font-size="11" font-weight="700">PHASE 0</text>
+                        <text x="75" y="98" text-anchor="middle" fill="#c8b878" font-size="10">Feld / BAT</text>
+                        <text x="75" y="116" text-anchor="middle" fill="#9aa09a" font-size="9">Jetson Orin</text>
+                        <text x="75" y="130" text-anchor="middle" fill="#9aa09a" font-size="9">Selbsthilfe</text>
+                        <text x="75" y="144" text-anchor="middle" fill="#9aa09a" font-size="9">Kameradenhilfe</text>
+                        <!-- Role 1 -->
+                        <rect x="150" y="60" width="110" height="90" fill="#1a2012" stroke="#c8b878" stroke-width="2" rx="4"/>
+                        <text x="205" y="80" text-anchor="middle" fill="#c8b878" font-size="11" font-weight="700">ROLE 1</text>
+                        <text x="205" y="98" text-anchor="middle" fill="#c8b878" font-size="10">Rettungsstation</text>
+                        <text x="205" y="116" text-anchor="middle" fill="#9aa09a" font-size="9">MS Surface</text>
+                        <text x="205" y="130" text-anchor="middle" fill="#9aa09a" font-size="9">Erste aerztl.</text>
+                        <text x="205" y="144" text-anchor="middle" fill="#9aa09a" font-size="9">Behandlung</text>
+                        <!-- Role 2 -->
+                        <rect x="280" y="60" width="110" height="90" fill="#1a2012" stroke="#7a8478" stroke-width="1" rx="4"/>
+                        <text x="335" y="80" text-anchor="middle" fill="#9aa09a" font-size="11" font-weight="700">ROLE 2</text>
+                        <text x="335" y="98" text-anchor="middle" fill="#7a8478" font-size="10">Rettungszentrum</text>
+                        <text x="335" y="120" text-anchor="middle" fill="#6a6e68" font-size="9">Chirurgische</text>
+                        <text x="335" y="134" text-anchor="middle" fill="#6a6e68" font-size="9">Akutversorgung</text>
+                        <!-- Role 3 -->
+                        <rect x="410" y="60" width="110" height="90" fill="#1a2012" stroke="#7a8478" stroke-width="1" rx="4"/>
+                        <text x="465" y="80" text-anchor="middle" fill="#9aa09a" font-size="11" font-weight="700">ROLE 3</text>
+                        <text x="465" y="98" text-anchor="middle" fill="#7a8478" font-size="10">Einsatzlazarett</text>
+                        <text x="465" y="120" text-anchor="middle" fill="#6a6e68" font-size="9">Erweiterte</text>
+                        <text x="465" y="134" text-anchor="middle" fill="#6a6e68" font-size="9">Versorgung</text>
+                        <!-- Role 4 -->
+                        <rect x="540" y="60" width="110" height="90" fill="#1a2012" stroke="#7a8478" stroke-width="1" rx="4"/>
+                        <text x="595" y="80" text-anchor="middle" fill="#9aa09a" font-size="11" font-weight="700">ROLE 4</text>
+                        <text x="595" y="98" text-anchor="middle" fill="#7a8478" font-size="10">BW-Krankenhaus</text>
+                        <text x="595" y="120" text-anchor="middle" fill="#6a6e68" font-size="9">Rehabilitation</text>
+                        <!-- Pfeile -->
+                        <line x1="130" y1="105" x2="150" y2="105" stroke="#c8b878" stroke-width="1.5" marker-end="url(#arrow-intro)"/>
+                        <line x1="260" y1="105" x2="280" y2="105" stroke="#c8b878" stroke-width="1.5" marker-end="url(#arrow-intro)"/>
+                        <line x1="390" y1="105" x2="410" y2="105" stroke="#7a8478" stroke-width="1" marker-end="url(#arrow-intro)"/>
+                        <line x1="520" y1="105" x2="540" y2="105" stroke="#7a8478" stroke-width="1" marker-end="url(#arrow-intro)"/>
+                        <!-- Legende -->
+                        <text x="75" y="180" text-anchor="middle" fill="#5a9e3a" font-size="10">[SAFIR BAT]</text>
+                        <text x="205" y="180" text-anchor="middle" fill="#c8b878" font-size="10">[SAFIR Leitstelle]</text>
+                        <text x="465" y="195" text-anchor="middle" fill="#6a6e68" font-size="9" font-style="italic">Kuenftige Roadmap</text>
+                        <!-- Goldene Stunde -->
+                        <text x="350" y="210" text-anchor="middle" fill="#d4871a" font-size="10" font-style="italic">"Goldene Stunde" — innerhalb 60 Minuten medizinische Versorgung</text>
+                    </svg>
+                    <div class="hb-mock-caption">Abb. 1 — Rettungskette der Bundeswehr und SAFIR-Abdeckung</div>
+                </div>
+
+                <h2>Wer nutzt welches Gerät?</h2>
+                <ul>
+                    <li><strong>Sanitäter im Feld (Phase 0):</strong> Jetson Orin Nano — batteriebetrieben, headless, mit 2 physischen Tastern, OLED-Display und RFID-Reader. Diktat erfolgt per Mikrofon direkt am Feldgerät.</li>
+                    <li><strong>Arzt in der Rettungsstation (Role 1):</strong> Microsoft Surface — Web-UI mit taktischer Lagekarte, Patientendatenbank, Triage-Counts und Omnikey-Kartenleser für direkte Patientenaufrufung.</li>
+                </ul>
+
+                <h2>Was macht SAFIR NICHT?</h2>
+                <ul>
+                    <li>Es ersetzt den Sanitäter nicht — der Arzt bleibt im Loop und setzt Triage, bestätigt Befunde, korrigiert Extraktionen.</li>
+                    <li>Es stellt keine Diagnosen und schlägt keine Medikamente vor.</li>
+                    <li>Es sendet keine Daten an die Cloud. Alle Modelle laufen lokal auf den Geräten (Whisper, Gemma, Piper).</li>
+                </ul>
+            </section>
+
+            <!-- ========== 2. Geräte-Übersicht ========== -->
+            <section id="hb-devices">
+                <h1><span class="hb-num">2</span> Geräte-Übersicht</h1>
+                <p class="hb-section-lead">Zwei Geräte, verbunden über verschlüsseltes Mesh-Netz. Jedes Gerät hat klar definierte Rolle, Hardware und Bedienoberfläche.</p>
+
+                <div class="hb-grid-2">
+                    <div>
+                        <h3>Feldgerät (BAT)</h3>
+                        <p><strong>NVIDIA Jetson Orin Nano Super</strong>, 7.4 GB Unified Memory (CPU+GPU shared), CUDA 12.6.</p>
+                        <ul>
+                            <li>Whisper large-v3-turbo — Echtzeit-Transkription auf GPU</li>
+                            <li>Gemma 3 4B — Segmentierung und Feld-Extraktion</li>
+                            <li>Vosk — Offline-Sprachbefehle</li>
+                            <li>Piper TTS — deutsche Sprachausgabe (Thorsten-high)</li>
+                            <li>2 GPIO-Taster (Rot / Grün), SSD1306 OLED (I²C), RC522 RFID-Reader (SPI), LEDs</li>
+                            <li>Betrieb über Powerbank (20 000 mAh / 15 V / 65 W) für einen Demo-Tag</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3>Leitstelle (Role 1)</h3>
+                        <p><strong>Microsoft Surface</strong> mit Windows, Tailscale-Hostname <code>ai-station</code>.</p>
+                        <ul>
+                            <li>Web-Dashboard mit taktischer Lagekarte (Leaflet)</li>
+                            <li>Patientendatenbank mit Volltext-Durchsuchung</li>
+                            <li>Triage-Counts T1–T4, BAT-Transport-Marker</li>
+                            <li>HID Omnikey RFID-Reader für direkte Patientenaufrufung</li>
+                            <li>FastAPI-Backend (Python) mit WebSocket-Live-Updates</li>
+                            <li>Peer-Discovery-Heartbeat (erkennt alle BATs im Netz)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h2>Netzwerk-Topologie</h2>
+                <div class="hb-mock">
+                    <svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <marker id="arrow-net" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                                <path d="M0,0 L10,5 L0,10 z" fill="#5DADE2"/>
+                            </marker>
+                        </defs>
+                        <!-- Tailscale Cloud -->
+                        <ellipse cx="350" cy="70" rx="170" ry="32" fill="#0a0f14" stroke="#5DADE2" stroke-dasharray="4,3" stroke-width="1.5"/>
+                        <text x="350" y="62" text-anchor="middle" fill="#5DADE2" font-size="11" font-weight="700">TAILSCALE MESH (WireGuard)</text>
+                        <text x="350" y="78" text-anchor="middle" fill="#7a8478" font-size="9">Ende-zu-Ende verschluesselt · ChaCha20-Poly1305</text>
+                        <text x="350" y="92" text-anchor="middle" fill="#7a8478" font-size="9">Keine Daten an Tailscale Inc. (Zero-Trust)</text>
+                        <!-- Jetson BAT 1 -->
+                        <rect x="40" y="150" width="150" height="80" fill="#1a2012" stroke="#5a9e3a" stroke-width="2" rx="4"/>
+                        <text x="115" y="172" text-anchor="middle" fill="#5a9e3a" font-size="12" font-weight="700">BAT-Jetson</text>
+                        <text x="115" y="190" text-anchor="middle" fill="#c8b878" font-size="9">100.126.179.27</text>
+                        <text x="115" y="205" text-anchor="middle" fill="#9aa09a" font-size="9">Phase 0 Feldgeraet</text>
+                        <text x="115" y="220" text-anchor="middle" fill="#9aa09a" font-size="9">:8080</text>
+                        <!-- Jetson BAT 2 (Ghost) -->
+                        <rect x="210" y="150" width="120" height="80" fill="#0a0f14" stroke="#3a3e38" stroke-width="1" stroke-dasharray="3,3" rx="4"/>
+                        <text x="270" y="172" text-anchor="middle" fill="#6a6e68" font-size="11">BAT-N</text>
+                        <text x="270" y="192" text-anchor="middle" fill="#6a6e68" font-size="9" font-style="italic">weitere</text>
+                        <text x="270" y="205" text-anchor="middle" fill="#6a6e68" font-size="9" font-style="italic">Feldgeraete</text>
+                        <!-- Surface -->
+                        <rect x="500" y="150" width="160" height="80" fill="#1a2012" stroke="#c8b878" stroke-width="2" rx="4"/>
+                        <text x="580" y="172" text-anchor="middle" fill="#c8b878" font-size="12" font-weight="700">Surface</text>
+                        <text x="580" y="190" text-anchor="middle" fill="#c8b878" font-size="9">ai-station · 100.101.80.64</text>
+                        <text x="580" y="205" text-anchor="middle" fill="#9aa09a" font-size="9">Role 1 Leitstelle</text>
+                        <text x="580" y="220" text-anchor="middle" fill="#9aa09a" font-size="9">:8080</text>
+                        <!-- Pfeile -->
+                        <line x1="115" y1="150" x2="250" y2="102" stroke="#5DADE2" stroke-width="1.5" marker-end="url(#arrow-net)"/>
+                        <line x1="270" y1="150" x2="330" y2="102" stroke="#5DADE2" stroke-width="1" stroke-dasharray="3,3"/>
+                        <line x1="580" y1="150" x2="450" y2="102" stroke="#5DADE2" stroke-width="1.5" marker-end="url(#arrow-net)"/>
+                        <!-- Label -->
+                        <text x="350" y="255" text-anchor="middle" fill="#7a8478" font-size="10" font-style="italic">Bidirektional: Jetson pusht via POST /api/ingest, Surface broadcastet Updates via WebSocket</text>
+                    </svg>
+                    <div class="hb-mock-caption">Abb. 2 — Netzwerk-Topologie mit Tailscale-Mesh</div>
+                </div>
+
+                <div class="hb-note info">
+                    <div class="hb-note-title">Offline-Fähig</div>
+                    Beide Geräte arbeiten auch ohne Internet. Tailscale läuft über lokales WLAN oder Direkt-Ethernet. Kein Cloud-Service ist zwingend erforderlich. KI-Inferenz ist 100 % lokal.
+                </div>
+            </section>
+
+            <!-- ========== 3. Erste Schritte ========== -->
+            <section id="hb-firststeps">
+                <h1><span class="hb-num">3</span> Erste Schritte</h1>
+                <p class="hb-section-lead">Vom Einschalten bis zum ersten Diktat in unter einer Minute.</p>
+
+                <h2>Feldgerät (Jetson) einschalten</h2>
+                <div class="hb-steps">
+                    <div class="hb-step">
+                        <div class="hb-step-num">1</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Powerbank verbinden</div>
+                            <div class="hb-step-desc">USB-C-Kabel von der Powerbank (15 V / 65 W) an den Jetson stecken. <strong>Wichtig:</strong> Kein 12 V-Hub — der Jetson braucht stabile 15 V unter Last, sonst Brownout-Reboots.</div>
+                        </div>
+                    </div>
+                    <div class="hb-step">
+                        <div class="hb-step-num">2</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Boot abwarten (~30 s)</div>
+                            <div class="hb-step-desc">Das OLED zeigt den Startverlauf. SAFIR startet automatisch via <code>safir.service</code> (systemd). Ollama lädt zuerst, dann Whisper. Wenn die OLED-Seite „MODELLE" grün ist, ist das System bereit.</div>
+                        </div>
+                    </div>
+                    <div class="hb-step">
+                        <div class="hb-step-num">3</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Operator-Login per RFID-Karte</div>
+                            <div class="hb-step-desc">Die persönliche Sanitäter-Karte auf den RC522-Reader halten. SAFIR erkennt sie über die UID-Whitelist in der Config, TTS sagt „Willkommen, [Rang] [Name]". Ab dann sind Write- und Analyse-Befehle freigeschaltet.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Gerät-Layout (Taster und Reader)</h2>
+                <div class="hb-mock">
+                    <svg viewBox="0 0 580 300" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Jetson Box -->
+                        <rect x="40" y="30" width="500" height="240" fill="#1a2012" stroke="#c8b878" stroke-width="2" rx="8"/>
+                        <text x="290" y="55" text-anchor="middle" fill="#c8b878" font-size="12" font-weight="700" letter-spacing="2">JETSON ORIN NANO · SAFIR BAT</text>
+                        <!-- OLED -->
+                        <rect x="70" y="75" width="170" height="90" fill="#000" stroke="#5DADE2" stroke-width="1" rx="2"/>
+                        <text x="155" y="100" text-anchor="middle" fill="#5DADE2" font-family="monospace" font-size="11">OLED 128x64</text>
+                        <text x="155" y="120" text-anchor="middle" fill="#c8b878" font-family="monospace" font-size="10">MODELLE  NETZ</text>
+                        <text x="155" y="135" text-anchor="middle" fill="#c8b878" font-family="monospace" font-size="10">OPERATOR PATIENT</text>
+                        <text x="155" y="155" text-anchor="middle" fill="#9aa09a" font-family="monospace" font-size="9">(4 Seiten via Taster A)</text>
+                        <!-- Taster A (rot) -->
+                        <circle cx="320" cy="120" r="28" fill="#cc2222" stroke="#c8b878" stroke-width="1.5"/>
+                        <text x="320" y="124" text-anchor="middle" fill="#fff" font-weight="700" font-size="14">A</text>
+                        <text x="320" y="170" text-anchor="middle" fill="#c8b878" font-size="10" font-weight="700">ROT · Pin 11</text>
+                        <text x="320" y="184" text-anchor="middle" fill="#9aa09a" font-size="9">Kurz: OLED-Seite</text>
+                        <text x="320" y="196" text-anchor="middle" fill="#9aa09a" font-size="9">Lang: Menue</text>
+                        <!-- Taster B (grün) -->
+                        <circle cx="410" cy="120" r="28" fill="#5a9e3a" stroke="#c8b878" stroke-width="1.5"/>
+                        <text x="410" y="124" text-anchor="middle" fill="#fff" font-weight="700" font-size="14">B</text>
+                        <text x="410" y="170" text-anchor="middle" fill="#c8b878" font-size="10" font-weight="700">GRUEN · Pin 26</text>
+                        <text x="410" y="184" text-anchor="middle" fill="#9aa09a" font-size="9">Kurz: Action</text>
+                        <text x="410" y="196" text-anchor="middle" fill="#9aa09a" font-size="9">Lang: Aufnahme</text>
+                        <!-- RFID-Reader -->
+                        <rect x="470" y="90" width="55" height="60" fill="#0a0f14" stroke="#5DADE2" stroke-width="1" rx="3"/>
+                        <text x="497" y="114" text-anchor="middle" fill="#5DADE2" font-size="10">RC522</text>
+                        <text x="497" y="128" text-anchor="middle" fill="#5DADE2" font-size="10">RFID</text>
+                        <text x="497" y="140" text-anchor="middle" fill="#5DADE2" font-size="9">13.56 MHz</text>
+                        <!-- LEDs -->
+                        <circle cx="85" cy="225" r="8" fill="#cc2222"/>
+                        <circle cx="115" cy="225" r="8" fill="#5a9e3a"/>
+                        <circle cx="145" cy="225" r="8" fill="#d4871a"/>
+                        <text x="175" y="229" fill="#9aa09a" font-size="10">LEDs (Status + Aufnahme + Fehler)</text>
+                        <!-- Shutdown-Combo -->
+                        <text x="290" y="255" text-anchor="middle" fill="#d4871a" font-size="10" font-style="italic">Shutdown: Taster A + B gleichzeitig 3 s halten</text>
+                    </svg>
+                    <div class="hb-mock-caption">Abb. 3 — Jetson-Hardware-Layout (schematisch)</div>
+                </div>
+
+                <h2>Rettungsstation öffnen (Surface)</h2>
+                <div class="hb-steps">
+                    <div class="hb-step">
+                        <div class="hb-step-num">1</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Surface-Backend starten</div>
+                            <div class="hb-step-desc">Doppelklick auf <code>backend\start-surface.cmd</code>. Das Terminal-Fenster bleibt offen und loggt Anfragen. Auto-Reload ist aktiv — Code-Änderungen im Repository sind ~1 s später live.</div>
+                        </div>
+                    </div>
+                    <div class="hb-step">
+                        <div class="hb-step-num">2</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Browser auf http://localhost:8080</div>
+                            <div class="hb-step-desc">Die taktische Lagekarte ist die Default-Seite. BAT-Geräte werden automatisch per Tailscale-Peer-Discovery erkannt und mit Positionsmarker auf der Karte eingeblendet.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== 4. Diktat-Workflow ========== -->
+            <section id="hb-workflow">
+                <h1><span class="hb-num">4</span> Diktat-Workflow</h1>
+                <p class="hb-section-lead">Vom gesprochenen Befund zum strukturierten Patient-Record in 3 Schritten.</p>
+
+                <div class="hb-mock">
+                    <svg viewBox="0 0 700 170" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <marker id="arrow-wf" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                                <path d="M0,0 L10,5 L0,10 z" fill="#c8b878"/>
+                            </marker>
+                        </defs>
+                        <!-- Box 1: Mikrofon -->
+                        <rect x="20" y="40" width="130" height="80" fill="#1a2012" stroke="#5a9e3a" stroke-width="2" rx="4"/>
+                        <text x="85" y="65" text-anchor="middle" fill="#5a9e3a" font-size="11" font-weight="700">1. MIKROFON</text>
+                        <text x="85" y="85" text-anchor="middle" fill="#c8b878" font-size="10">Sanitaeter</text>
+                        <text x="85" y="100" text-anchor="middle" fill="#c8b878" font-size="10">diktiert frei</text>
+                        <text x="85" y="115" text-anchor="middle" fill="#9aa09a" font-size="9">Max. 10 min</text>
+                        <!-- Box 2: Whisper -->
+                        <rect x="180" y="40" width="130" height="80" fill="#1a2012" stroke="#5DADE2" stroke-width="2" rx="4"/>
+                        <text x="245" y="65" text-anchor="middle" fill="#5DADE2" font-size="11" font-weight="700">2. WHISPER</text>
+                        <text x="245" y="85" text-anchor="middle" fill="#c8b878" font-size="10">ASR (GPU)</text>
+                        <text x="245" y="100" text-anchor="middle" fill="#c8b878" font-size="10">large-v3-turbo</text>
+                        <text x="245" y="115" text-anchor="middle" fill="#9aa09a" font-size="9">Deutsch</text>
+                        <!-- Box 3: Gemma -->
+                        <rect x="340" y="40" width="130" height="80" fill="#1a2012" stroke="#9f68d5" stroke-width="2" rx="4"/>
+                        <text x="405" y="65" text-anchor="middle" fill="#9f68d5" font-size="11" font-weight="700">3. GEMMA 3</text>
+                        <text x="405" y="85" text-anchor="middle" fill="#c8b878" font-size="10">LLM Segment.</text>
+                        <text x="405" y="100" text-anchor="middle" fill="#c8b878" font-size="10">+ Extraktion</text>
+                        <text x="405" y="115" text-anchor="middle" fill="#9aa09a" font-size="9">4B Parameter</text>
+                        <!-- Box 4: Patient -->
+                        <rect x="500" y="40" width="170" height="80" fill="#1a2012" stroke="#c8b878" stroke-width="2" rx="4"/>
+                        <text x="585" y="65" text-anchor="middle" fill="#c8b878" font-size="11" font-weight="700">4. PATIENT</text>
+                        <text x="585" y="85" text-anchor="middle" fill="#c8b878" font-size="10">strukturiert</text>
+                        <text x="585" y="100" text-anchor="middle" fill="#c8b878" font-size="10">Name / Verletzung</text>
+                        <text x="585" y="115" text-anchor="middle" fill="#9aa09a" font-size="9">Vitals / 9-Liner</text>
+                        <!-- Pfeile -->
+                        <line x1="150" y1="80" x2="180" y2="80" stroke="#c8b878" stroke-width="1.5" marker-end="url(#arrow-wf)"/>
+                        <line x1="310" y1="80" x2="340" y2="80" stroke="#c8b878" stroke-width="1.5" marker-end="url(#arrow-wf)"/>
+                        <line x1="470" y1="80" x2="500" y2="80" stroke="#c8b878" stroke-width="1.5" marker-end="url(#arrow-wf)"/>
+                        <!-- Footer -->
+                        <text x="350" y="150" text-anchor="middle" fill="#7a8478" font-size="10" font-style="italic">Multi-Patient: Ein Diktat, mehrere Patienten — SAFIR segmentiert anhand sprachlicher Marker automatisch</text>
+                    </svg>
+                    <div class="hb-mock-caption">Abb. 4 — Pipeline vom Sprachbefund zum strukturierten Patient</div>
+                </div>
+
+                <h2>Aufnahme starten</h2>
+                <p>Drei gleichwertige Wege:</p>
+                <ol>
+                    <li><strong>Voice:</strong> „Aufnahme starten"</li>
+                    <li><strong>Taster:</strong> <kbd>B</kbd> (grün) lang drücken (≥ 500 ms)</li>
+                    <li><strong>GUI:</strong> Button „+ Neuer Patient" oder „Neue Aufnahme" im Dashboard</li>
+                </ol>
+                <p>Nach dem Start: TTS bestätigt mit „Aufnahme", die grüne LED blinkt dauerhaft. Whisper schreibt im Hintergrund live in 25-s-Chunks mit.</p>
+
+                <h2>Diktieren</h2>
+                <p>Der Sanitäter spricht <strong>frei und ohne Vorlage</strong>. Mehrere Patienten nacheinander sind möglich — einfach mit einem Einleitungssatz wechseln:</p>
+                <ul>
+                    <li>„<em>Der nächste Patient ist ...</em>"</li>
+                    <li>„<em>Weiter mit der Feldwebel Schmidt ...</em>"</li>
+                    <li>„<em>Zweiter Patient ein Stabsgefreiter ...</em>"</li>
+                </ul>
+                <div class="hb-note info">
+                    <div class="hb-note-title">Einleitungen und Small-Talk sind erlaubt</div>
+                    Sätze wie „Hier spricht Oberfeldarzt Müller" oder „Ich bin auf dem Platz der Verwundeten" werden automatisch als <strong>Intro</strong> erkannt und nicht als Patient angelegt. Auch medizinisch irrelevante Kommentare („Morgen möchte ich Motorrad fahren") werden gefiltert.
+                </div>
+
+                <h2>Aufnahme stoppen</h2>
+                <p>Drei gleichwertige Wege — spiegelsymmetrisch zum Start:</p>
+                <ol>
+                    <li><strong>Voice:</strong> „Aufnahme beenden" oder „Aufnahme stoppen"</li>
+                    <li><strong>Taster:</strong> <kbd>B</kbd> lang drücken</li>
+                    <li><strong>GUI:</strong> roter „Stopp"-Button im Aufnahme-Panel</li>
+                </ol>
+                <p>Das Transkript landet als aufklappbare Karte auf dem Dashboard mit Status <strong>UNANALYSIERT</strong>. Der Sanitäter kann es visuell prüfen und ggf. eine weitere Aufnahme anhängen.</p>
+
+                <h2>Analyse auslösen</h2>
+                <p>Die Analyse trennt das Transkript in einzelne Patienten und füllt Stammdaten-Felder:</p>
+                <ul>
+                    <li><strong>Voice:</strong> „Analysieren" oder „Alle Patienten analysieren"</li>
+                    <li><strong>OLED-Menü:</strong> Taster A lang → „Analysieren"</li>
+                    <li><strong>GUI:</strong> „🧠 Analyse"-Button auf der Pending-Karte</li>
+                </ul>
+                <p>Dauer: <strong>10–40 Sekunden pro Patient</strong>, abhängig von Transkript-Länge. Während der Analyse läuft ein Progress-Spinner; das System ist danach wieder frei.</p>
+            </section>
+
+            <!-- ========== 5. Voice-Commands ========== -->
+            <section id="hb-voice">
+                <h1><span class="hb-num">5</span> Voice-Commands</h1>
+                <p class="hb-section-lead">Alle offline-verfügbaren Sprachbefehle. Erkennung durch Vosk (~15 ms Latenz).</p>
+
+                <h2>Aufnahme &amp; Analyse</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:30%">Aktion</th><th>Sprachbefehle</th></tr></thead>
+                    <tbody>
+                        <tr><td>Aufnahme starten</td><td><code>aufnahme starten</code> · <code>neuer patient</code> · <code>aufnahme</code></td></tr>
+                        <tr><td>Aufnahme beenden</td><td><code>aufnahme beenden</code> · <code>aufnahme stoppen</code> · <code>stopp aufnahme</code></td></tr>
+                        <tr><td>Analysieren</td><td><code>analysieren</code> · <code>alle patienten analysieren</code></td></tr>
+                        <tr><td>9-Liner-Modus</td><td><code>neuner liner</code> · <code>medevac</code></td></tr>
+                    </tbody>
+                </table>
+
+                <h2>RFID</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th>Aktion</th><th>Sprachbefehle</th></tr></thead>
+                    <tbody>
+                        <tr><td>Karten schreiben (Batch)</td><td><code>karte schreiben</code> · <code>patient auf karte</code></td></tr>
+                        <tr><td>Schreiben abbrechen</td><td><code>abbrechen</code> · <code>schreiben stoppen</code></td></tr>
+                        <tr><td>Karte löschen</td><td><code>karte loeschen</code> · <code>karte leeren</code> · <code>karte bereinigen</code></td></tr>
+                    </tbody>
+                </table>
+
+                <h2>Triage (nur in der Rettungsstation)</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th>Aktion</th><th>Sprachbefehle</th></tr></thead>
+                    <tbody>
+                        <tr><td>Triage Rot (T1)</td><td><code>triage rot</code></td></tr>
+                        <tr><td>Triage Gelb (T2)</td><td><code>triage gelb</code></td></tr>
+                        <tr><td>Triage Grün (T3)</td><td><code>triage gruen</code></td></tr>
+                        <tr><td>Triage Blau (T4)</td><td><code>triage blau</code></td></tr>
+                    </tbody>
+                </table>
+
+                <h2>Sonstiges</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th>Aktion</th><th>Sprachbefehle</th></tr></thead>
+                    <tbody>
+                        <tr><td>An Leitstelle melden</td><td><code>patient melden</code> · <code>daten senden</code> · <code>an leitstelle senden</code></td></tr>
+                        <tr><td>DOCX-Export</td><td><code>export</code> · <code>dokument erstellen</code></td></tr>
+                        <tr><td>Patient-Count</td><td><code>wie viele patienten</code></td></tr>
+                        <tr><td>Letzten Eintrag löschen</td><td><code>letzten eintrag loeschen</code></td></tr>
+                        <tr><td>Mikrofon-Test</td><td><code>mikrofontest</code> · <code>audio test</code></td></tr>
+                        <tr><td>Rückfahrt zur Rettungsstation</td><td><code>rueckfahrt zur rettungsstation</code> · <code>fahre zur rettungsstation</code></td></tr>
+                    </tbody>
+                </table>
+
+                <div class="hb-note info">
+                    <div class="hb-note-title">Bearbeitbar</div>
+                    Alle Trigger sind in <em>Einstellungen → Sprachbefehle</em> editierbar. Du kannst eigene Alternativen hinzufügen, ohne Code-Änderungen.
+                </div>
+            </section>
+
+            <!-- ========== 6. RFID-Karten ========== -->
+            <section id="hb-rfid">
+                <h1><span class="hb-num">6</span> RFID-Karten</h1>
+                <p class="hb-section-lead">Jeder Patient bekommt eine MIFARE-Classic-Karte mit seiner Patient-ID. Die Karte dient als physische Identifikation entlang der Rettungskette.</p>
+
+                <h2>Wie wird geschrieben?</h2>
+                <p>Das Schreiben erfolgt <strong>im Batch</strong> — alle Patienten ohne bereits geschriebene Karte werden nacheinander abgearbeitet. Der Sanitäter hält einfach Karten nacheinander auf den Reader:</p>
+                <div class="hb-steps">
+                    <div class="hb-step">
+                        <div class="hb-step-num">1</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Sprachbefehl „Karte schreiben" oder Button RFID-Batch</div>
+                            <div class="hb-step-desc">SAFIR zählt wie viele Patienten auf Karten kommen müssen, Rot-LED blinkt, OLED zeigt „KARTE 1/3".</div>
+                        </div>
+                    </div>
+                    <div class="hb-step">
+                        <div class="hb-step-num">2</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">TTS sagt „Karte 1. Hauptfeldwebel Müller. Bitte auflegen."</div>
+                            <div class="hb-step-desc">Karte auflegen → wird geschrieben (Sektor 1 + 2) und verifiziert durch Re-Read. Grüne LED kurz bei Erfolg.</div>
+                        </div>
+                    </div>
+                    <div class="hb-step">
+                        <div class="hb-step-num">3</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Karte abziehen → nächste kommt dran</div>
+                            <div class="hb-step-desc">Wiederholung bis alle Patienten durch sind. TTS „Alle Karten fertig", Rot-LED aus.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Was steht auf der Karte?</h2>
+                <ul>
+                    <li><strong>Magic-Bytes</strong> — damit SAFIR erkennt dass die Karte zu unserem System gehört</li>
+                    <li><strong>Patient-ID</strong> (16 Byte) — eindeutiger Primärschlüssel</li>
+                    <li><strong>Triage + Alter + Geschlecht + Vitals</strong> (Block 6, 16 Byte) — kompakt als Bytes kodiert</li>
+                    <li><strong>Name</strong> (Block 8-9, 32 Byte UTF-8)</li>
+                    <li><strong>Zeitstempel</strong> — wann wurde die Karte geschrieben</li>
+                </ul>
+
+                <h2>Kartenzuordnung aufheben (Erase)</h2>
+                <p>Zwei Use-Cases:</p>
+                <ul>
+                    <li><strong>Security-Wipe:</strong> Nach der Demo keine Patientendaten auf Karten zurücklassen.</li>
+                    <li><strong>Karte wiederverwenden:</strong> Ein fertig behandelter Patient — seine Karte soll für den nächsten Einsatz leer sein.</li>
+                </ul>
+                <p><strong>Ablauf:</strong></p>
+                <ol>
+                    <li>Sprachbefehl „Karte löschen" oder Button „Karte löschen" in Einstellungen → System</li>
+                    <li>TTS: „Karte löschen. Bitte auflegen."</li>
+                    <li>Eine einzelne Karte auflegen → alle SAFIR-Nutzblöcke werden auf Null gesetzt</li>
+                    <li>Die Zuordnung zu dem Patient wird lokal und auf der Surface aufgelöst</li>
+                    <li>TTS: „Karte gelöscht. [Patientenname]"</li>
+                </ol>
+
+                <div class="hb-note ok">
+                    <div class="hb-note-title">Sicherheit</div>
+                    Operator-Karten (Sanitäter-Login) werden erkannt und <strong>NIE</strong> gelöscht. Es erscheint TTS „Keine Operator-Karte. Nur Patienten-Karten können gelöscht werden."
+                </div>
+            </section>
+
+            <!-- ========== 7. Melden an Rettungsstation ========== -->
+            <section id="hb-sync">
+                <h1><span class="hb-num">7</span> Melden an die Rettungsstation</h1>
+                <p class="hb-section-lead">Patienten werden per HTTP-Push und WebSocket-Broadcast an die Rettungsstation gespiegelt — bidirektional und verschlüsselt.</p>
+
+                <h2>Wie wird gemeldet?</h2>
+                <ol>
+                    <li><strong>Voice:</strong> „Patient melden" oder „Daten senden"</li>
+                    <li><strong>Button:</strong> „Alle melden" (grüner Button)</li>
+                </ol>
+                <p>Nur Patienten mit <code>analyzed=True</code> und <code>synced=False</code> werden gesendet. Jeder einzelne Patient geht als eigener POST <code>/api/ingest</code>-Request raus. Bei Erfolg: <code>synced=True</code> gesetzt + TTS „Daten gesendet".</p>
+
+                <h2>Was passiert auf der Surface-Seite?</h2>
+                <ul>
+                    <li>Patient erscheint <strong>sofort</strong> in der Patientendatenbank</li>
+                    <li>Triage-Count wird aktualisiert (T1/T2/T3/T4 Balken)</li>
+                    <li>BAT-Marker auf der Lagekarte mit Unit-Name erscheint</li>
+                    <li>Ein Event im Live-Ticker: „Neuer Patient vom BAT Alpha42"</li>
+                    <li>Falls Triage T1 gesetzt — akustisches Signal auf der Surface (optional)</li>
+                </ul>
+
+                <h2>Live-Sync zurück zum BAT</h2>
+                <p>Der Jetson hat einen <strong>persistenten WebSocket-Client</strong> zum Surface. Wenn der Arzt auf der Surface den Patient bearbeitet (Triage setzen, Status ändern), wird der Update automatisch zurück an den Jetson broadcastet. So hat auch der Sanitäter im Feld immer den aktuellen Stand.</p>
+
+                <div class="hb-note info">
+                    <div class="hb-note-title">Bidirektional, aber nicht kollisions-frei</div>
+                    Wenn beide Seiten gleichzeitig den selben Patient bearbeiten, gewinnt der Stand mit dem neuesten <code>timestamp_updated</code>. Bei Demo-Workflows kommt das in der Praxis nicht vor.
+                </div>
+            </section>
+
+            <!-- ========== 8. Rettungsstation ========== -->
+            <section id="hb-role1">
+                <h1><span class="hb-num">8</span> Rettungsstation (Role 1)</h1>
+                <p class="hb-section-lead">Was der Arzt auf dem Surface sieht — und was er tun kann.</p>
+
+                <h2>Taktische Lagekarte</h2>
+                <p>Leaflet-basierte Karte zentriert auf die eigene Rettungsstation (Bonn-Hardthöhe oder konfigurierbar). Zeigt:</p>
+                <ul>
+                    <li><strong>Rettungsstations-Marker</strong> (eigene Position)</li>
+                    <li><strong>BAT-Marker</strong> (alle aktiven Feldgeräte) — aktualisiert sich live bei Standort-Wechsel</li>
+                    <li><strong>Distanz + ETA</strong> pro BAT, berechnet per Haversine-Formel</li>
+                    <li><strong>Transport-Cluster</strong> — wenn ein BAT Patienten an die Rettungsstation bringt</li>
+                </ul>
+
+                <h2>Patientendatenbank</h2>
+                <p>Tabellarische Übersicht aller Patienten (analysierte und Entwürfe). Filter „Nur gemeldete Patienten anzeigen" (Standard) blendet Entwürfe aus.</p>
+
+                <h2>RFID-Scan am Omnikey</h2>
+                <p>Der Arzt hat einen HID Omnikey-Kartenleser am Surface. Wenn ein Verwundeter ankommt, legt der Arzt dessen Karte auf den Leser:</p>
+                <div class="hb-steps">
+                    <div class="hb-step">
+                        <div class="hb-step-num">1</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Karte auflegen</div>
+                            <div class="hb-step-desc">Omnikey liest UID, Backend sucht per Linear-Scan den Patient mit passender <code>rfid_tag_id</code>.</div>
+                        </div>
+                    </div>
+                    <div class="hb-step">
+                        <div class="hb-step-num">2</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Navigation zur Patientendatenbank</div>
+                            <div class="hb-step-desc">Die Seite wechselt automatisch, die Zeile des erkannten Patienten scrollt ins Zentrum und blinkt in Cyan.</div>
+                        </div>
+                    </div>
+                    <div class="hb-step">
+                        <div class="hb-step-num">3</div>
+                        <div class="hb-step-body">
+                            <div class="hb-step-title">Detail-Modal öffnet automatisch</div>
+                            <div class="hb-step-desc">Vitals, Verletzungen, Transkripte, Timeline — alles auf einer Seite. Kein manueller „Öffnen"-Klick nötig.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Triage setzen</h2>
+                <p>Triage wird <strong>erst hier</strong> in Role 1 gesetzt — nicht schon am Feldgerät. Warum? Weil die Triage eine medizinische Entscheidung des Arztes ist, nicht eine ML-Extraktion aus dem Sanitäter-Diktat.</p>
+                <ul>
+                    <li><strong>Voice:</strong> „Triage rot" / „Triage gelb" / „Triage grün" / „Triage blau"</li>
+                    <li><strong>GUI:</strong> 4 farbige Buttons T1–T4 in der Patientenkarte</li>
+                </ul>
+            </section>
+
+            <!-- ========== 9. OLED-Display ========== -->
+            <section id="hb-oled">
+                <h1><span class="hb-num">9</span> OLED-Display erklärt</h1>
+                <p class="hb-section-lead">128×64 Pixel monochrom — vier Informations-Seiten, navigierbar mit Taster A.</p>
+
+                <div class="hb-grid-2">
+                    <div class="hb-mock">
+                        <svg viewBox="0 0 260 130" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="10" y="10" width="240" height="110" fill="#000" stroke="#5DADE2" stroke-width="1"/>
+                            <text x="130" y="32" text-anchor="middle" fill="#fff" font-family="monospace" font-size="13" font-weight="700">MODELLE</text>
+                            <text x="20" y="55" fill="#5a9e3a" font-family="monospace" font-size="11">WHISPER  OK</text>
+                            <text x="20" y="72" fill="#5a9e3a" font-family="monospace" font-size="11">GEMMA3   ONLINE</text>
+                            <text x="20" y="89" fill="#5a9e3a" font-family="monospace" font-size="11">VOSK     OK</text>
+                            <text x="20" y="106" fill="#d4871a" font-family="monospace" font-size="11">PIPER    OK</text>
+                        </svg>
+                        <div class="hb-mock-caption">Seite 1 — Modelle (KI-Status)</div>
+                    </div>
+                    <div class="hb-mock">
+                        <svg viewBox="0 0 260 130" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="10" y="10" width="240" height="110" fill="#000" stroke="#5DADE2" stroke-width="1"/>
+                            <text x="130" y="32" text-anchor="middle" fill="#fff" font-family="monospace" font-size="13" font-weight="700">NETZWERK</text>
+                            <text x="20" y="55" fill="#c8b878" font-family="monospace" font-size="11">WLAN    SAFIR-5G</text>
+                            <text x="20" y="72" fill="#c8b878" font-family="monospace" font-size="11">IP      192.168.1.7</text>
+                            <text x="20" y="89" fill="#5a9e3a" font-family="monospace" font-size="11">TAILSCALE ON</text>
+                            <text x="20" y="106" fill="#5a9e3a" font-family="monospace" font-size="11">BACKEND OK</text>
+                        </svg>
+                        <div class="hb-mock-caption">Seite 2 — Netzwerk</div>
+                    </div>
+                    <div class="hb-mock">
+                        <svg viewBox="0 0 260 130" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="10" y="10" width="240" height="110" fill="#000" stroke="#5DADE2" stroke-width="1"/>
+                            <text x="130" y="32" text-anchor="middle" fill="#fff" font-family="monospace" font-size="13" font-weight="700">OPERATOR</text>
+                            <text x="20" y="62" fill="#c8b878" font-family="monospace" font-size="12">OFw Hugendubel</text>
+                            <text x="20" y="82" fill="#9aa09a" font-family="monospace" font-size="10">Rolle: arzt</text>
+                            <text x="20" y="102" fill="#5a9e3a" font-family="monospace" font-size="10">Angemeldet</text>
+                        </svg>
+                        <div class="hb-mock-caption">Seite 3 — Operator (Login)</div>
+                    </div>
+                    <div class="hb-mock">
+                        <svg viewBox="0 0 260 130" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="10" y="10" width="240" height="110" fill="#000" stroke="#5DADE2" stroke-width="1"/>
+                            <text x="130" y="32" text-anchor="middle" fill="#fff" font-family="monospace" font-size="13" font-weight="700">PATIENT 3/10</text>
+                            <text x="20" y="58" fill="#c8b878" font-family="monospace" font-size="12">Mueller, M.</text>
+                            <text x="20" y="76" fill="#d4871a" font-family="monospace" font-size="10">T2 · Major</text>
+                            <text x="20" y="95" fill="#9aa09a" font-family="monospace" font-size="10">Schussverletzung</text>
+                            <text x="20" y="112" fill="#9aa09a" font-family="monospace" font-size="10">Puls 110 SpO2 94</text>
+                        </svg>
+                        <div class="hb-mock-caption">Seite 4 — Patient (mit Scrolling)</div>
+                    </div>
+                </div>
+
+                <h2>Navigation</h2>
+                <ul>
+                    <li><strong>Taster A kurz:</strong> Nächste Seite (zyklisch Modelle → Netzwerk → Operator → Patient → ...)</li>
+                    <li><strong>Taster A lang:</strong> Hauptmenü öffnen (Analysieren, Karten schreiben, Shutdown, etc.)</li>
+                    <li><strong>Taster B kurz (auf Patient-Seite):</strong> „Patient wählen"-Modus — durch Liste scrollen</li>
+                </ul>
+            </section>
+
+            <!-- ========== 10. Einstellungen-Tour ========== -->
+            <section id="hb-settings">
+                <h1><span class="hb-num">10</span> Einstellungen-Tour</h1>
+                <p class="hb-section-lead">Ein Überblick der wichtigsten Konfigurationspunkte — in der Reihenfolge, in der sie im Settings-Menü erscheinen.</p>
+
+                <h2>🎙 Spracherkennung</h2>
+                <ul>
+                    <li><strong>Whisper-Modell</strong> — <code>large-v3-turbo</code> ist Standard (beste Genauigkeit)</li>
+                    <li><strong>Sprache</strong> — Deutsch (Default)</li>
+                    <li><strong>Audio-Eingang</strong> — Mikrofon-Device-Auswahl mit Live-Rescan-Button</li>
+                    <li><strong>TTS-Stimme</strong> — Piper-Voice (Thorsten-high, Thorsten-medium, Kerstin-low)</li>
+                </ul>
+
+                <h2>🧠 KI-Modell (LLM)</h2>
+                <ul>
+                    <li><strong>Ollama-URL</strong> — <code>http://127.0.0.1:11434</code></li>
+                    <li><strong>Modell</strong> — <code>gemma3:4b</code> (Default seit 17.04.2026)</li>
+                </ul>
+
+                <h2>⚙ Gerät</h2>
+                <ul>
+                    <li>Unit-Name („BAT Alpha42") — wird auf der Surface-Karte als Label angezeigt</li>
+                    <li>Device-ID, Default-Medic</li>
+                    <li>Backend-URL (Tailscale-IP des Surface)</li>
+                </ul>
+
+                <h2>🔐 Sicherheit</h2>
+                <ul>
+                    <li>Auto-Lock nach X Minuten Inaktivität</li>
+                    <li>Tailscale-Status-Karte (live)</li>
+                </ul>
+
+                <h2>🛈 Philosophie</h2>
+                <p>Erklärt die Designprinzipien von SAFIR: „Eher vergessen als erfinden", „Menschliche Nachkontrolle", „On-Device statt Cloud". Nützlich für Messe-Besucher die Fragen stellen.</p>
+
+                <h2>📋 System</h2>
+                <ul>
+                    <li>Daten zurücksetzen</li>
+                    <li>Testdaten generieren</li>
+                    <li>Demo-Szenarien laden (Standard, Massenanfall, 9-Liner, Role-1-Übergabe)</li>
+                    <li>Export (DOCX / PDF / JSON / XML)</li>
+                    <li>RFID-Karte löschen</li>
+                </ul>
+            </section>
+
+            <!-- ========== 11. Troubleshooting ========== -->
+            <section id="hb-troubleshoot">
+                <h1><span class="hb-num">11</span> Troubleshooting</h1>
+                <p class="hb-section-lead">Häufige Situationen und wie man sie behebt.</p>
+
+                <h3>TTS spielt keine Ansage mehr ab</h3>
+                <p>Prüfe die OLED-Seite „MODELLE" — zeigt sie „PIPER OK"? Falls nicht, Service neu starten (Taster A lang → „Neustart" oder via SSH <code>sudo systemctl restart safir</code>). Audio-Device neu scannen via Settings → Spracherkennung → „Geräte neu scannen".</p>
+
+                <h3>RFID-Karte wird nicht erkannt</h3>
+                <p>Metall-Oberfläche unter dem Reader? Die 13.56 MHz-Antenne wird durch Metall abgeschirmt. Teste die Karte 1–2 cm Abstand. Falls immer noch nichts: Taster A lang → „RFID-Test".</p>
+
+                <h3>„Alle Patienten schon auf Karten"</h3>
+                <p>Die Patienten haben alle ein <code>rfid_tag_id</code>-Feld gesetzt. Wenn du eine neue Karte schreiben willst, entweder das Tag zuvor löschen (Voice: „Karte löschen") oder den Patient löschen und neu anlegen.</p>
+
+                <h3>Surface erkennt die gelöschte Karte immer noch</h3>
+                <p>Der Surface-Backend-Prozess läuft möglicherweise mit einem alten Code-Stand. Einmal neu starten: Terminal schließen und <code>start-surface.cmd</code> neu ausführen. Danach ist Auto-Reload aktiv und zukünftige Änderungen werden automatisch gepicked.</p>
+
+                <h3>Ein Patient wurde beim Diktieren „vergessen"</h3>
+                <p>Das LLM ist konservativ — es erfindet keine Patienten. Bei unterbrochener Rede („Name hab ich vergessen... ach ja, Müller") kann ein Patient-Start übersehen werden. Lösung: Transkript-Preview öffnen, Text prüfen, Patient manuell anlegen (+ Neuer Patient, Name eintragen).</p>
+
+                <h3>Whisper läuft langsam oder schlägt fehl</h3>
+                <p>Memory-Druck prüfen: <code>tegrastats</code> auf dem Jetson. Wenn RAM voll ist, Gemma temporär entladen („Swap-Mode"). Im normalen Betrieb wechseln Whisper und Gemma sich im Speicher ab — nach jedem Diktat wird Gemma vor der Analyse geladen und nach Abschluss wieder entladen.</p>
+
+                <h3>Operator-Login funktioniert nicht</h3>
+                <p>Die Operator-Karten-UID muss in <code>config.json</code> unter <code>rfid.operators</code> eingetragen sein. Ohne Eintrag wird die Karte als „Unbekannte Karte" behandelt. Voice: „Operator-Liste" zeigt alle eingetragenen IDs.</p>
+            </section>
+
+            <!-- ========== 12. Glossar ========== -->
+            <section id="hb-glossar">
+                <h1><span class="hb-num">12</span> Glossar</h1>
+
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:25%">Begriff</th><th>Bedeutung</th></tr></thead>
+                    <tbody>
+                        <tr><td><strong>ASR</strong></td><td>Automatic Speech Recognition — Sprache → Text. In SAFIR: Whisper large-v3-turbo</td></tr>
+                        <tr><td><strong>BAT</strong></td><td>„Beweglicher Arzt-Trupp" — Feldgerät in Phase 0 (hier: Jetson)</td></tr>
+                        <tr><td><strong>DBA</strong></td><td>„Diktier-Baustein", Abschnitt eines Multi-Patient-Diktats</td></tr>
+                        <tr><td><strong>Gemma 3 4B</strong></td><td>Google Open-Source-LLM mit 4 Mrd. Parametern, quantisiert auf Q4_K_M (~4.3 GB)</td></tr>
+                        <tr><td><strong>Goldene Stunde</strong></td><td>Zeitfenster von 60 Min nach Verwundung in dem medizinische Versorgung stattfinden muss</td></tr>
+                        <tr><td><strong>MIFARE Classic</strong></td><td>RFID-Kartentyp mit 1 KB Speicher, 13.56 MHz, aufgeteilt in 16 Sektoren à 4 Blöcken à 16 Byte</td></tr>
+                        <tr><td><strong>9-Liner MEDEVAC</strong></td><td>NATO-Standard-Formular mit 9 Pflicht-Feldern zur Anforderung eines medizinischen Evakuierungs-Fluges</td></tr>
+                        <tr><td><strong>Omnikey</strong></td><td>HID-Desktop-RFID-Leser, an der Rettungsstation per USB verbunden</td></tr>
+                        <tr><td><strong>Piper</strong></td><td>Neural-Text-to-Speech von Rhasspy, läuft lokal auf CPU</td></tr>
+                        <tr><td><strong>RC522</strong></td><td>SPI-RFID-Modul am Jetson (13.56 MHz, MIFARE-kompatibel)</td></tr>
+                        <tr><td><strong>Role 1–4</strong></td><td>Stufen der militärischen Rettungskette (s. Kapitel 1)</td></tr>
+                        <tr><td><strong>TCCC</strong></td><td>Tactical Combat Casualty Care — NATO-Standard für taktische Verwundetenversorgung</td></tr>
+                        <tr><td><strong>Tailscale</strong></td><td>Mesh-VPN auf WireGuard-Basis, verbindet Jetson und Surface End-to-End-verschlüsselt</td></tr>
+                        <tr><td><strong>Triage</strong></td><td>Priorisierung nach Behandlungsdringlichkeit: T1 rot (sofort), T2 gelb (dringlich), T3 grün (leicht), T4 blau (hoffnungslos/warten)</td></tr>
+                        <tr><td><strong>Vosk</strong></td><td>Offline-ASR-Engine speziell für Kurz-Befehle, läuft auf CPU mit ~15 ms Latenz</td></tr>
+                        <tr><td><strong>Whisper</strong></td><td>OpenAI-ASR-Modell, bei uns über whisper.cpp auf Jetson-GPU</td></tr>
+                        <tr><td><strong>WireGuard</strong></td><td>Moderner VPN-Protokoll-Standard (ChaCha20-Poly1305 + Curve25519 + Blake2s), Grundlage von Tailscale</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="hb-note info" style="margin-top: 32px;">
+                    <div class="hb-note-title">Weiterführend</div>
+                    Diese In-App-Bedienungsanleitung ist auch als standalone HTML-Datei in <code>docs/project.html</code> verfügbar (vollständige Projekt-Dokumentation) und als Paper-Style-Doku unter <code>docs/SCIENTIFIC.md</code> (wissenschaftlich orientiert).
+                </div>
+            </section>
+
+        </article>
+    </div>
+</div>
+
+<script>
+    // TOC-Highlight basierend auf Scroll-Position
+    (function() {
+        const updateTocActive = () => {
+            const content = document.querySelector('#page-handbook .hb-content');
+            if (!content) return;
+            const sections = content.querySelectorAll('section[id^="hb-"]');
+            const toc = document.querySelector('#page-handbook .hb-toc');
+            if (!toc) return;
+            const scrollTop = content.scrollTop + 100;
+            let active = null;
+            sections.forEach(s => {
+                if (s.offsetTop <= scrollTop) active = s.id;
+            });
+            if (active) {
+                toc.querySelectorAll('a').forEach(a => a.classList.remove('hb-toc-active'));
+                const link = toc.querySelector(`a[href="#${active}"]`);
+                if (link) link.classList.add('hb-toc-active');
+            }
+        };
+        document.addEventListener('DOMContentLoaded', () => {
+            const content = document.querySelector('#page-handbook .hb-content');
+            if (content) content.addEventListener('scroll', updateTocActive);
+        });
+    })();
+</script>
