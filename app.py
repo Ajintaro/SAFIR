@@ -1782,12 +1782,20 @@ async def voice_mic_test():
 
 
 def _patient_has_written_rfid(patient: dict) -> bool:
-    """Prüft ob der Patient schon mindestens einmal auf eine Karte
-    geschrieben wurde (Timeline-Event 'rfid_written' vorhanden)."""
-    for ev in patient.get("timeline", []) or []:
-        if ev.get("event") == "rfid_written":
-            return True
-    return False
+    """Prüft ob der Patient aktuell eine gueltige RFID-Karten-Zuordnung hat.
+
+    Wahrheitsquelle ist ``patient["rfid_tag_id"]`` (das wird beim Write
+    gesetzt, beim Erase auf "" zurueckgesetzt). Die Timeline-Events
+    ``rfid_written`` / ``rfid_erased`` sind nur Historie und nicht der
+    richtige Check-Punkt — ein Patient dessen Karte geloescht wurde hat
+    weiterhin einen ``rfid_written``-Eintrag in der Historie, aber eine
+    leere ``rfid_tag_id``.
+
+    Wichtig fuer den voice_write_card-Batch: Nur Patienten OHNE
+    rfid_tag_id werden dort einbezogen. Nach einem Erase darf dieselbe
+    Person sofort wieder auf eine neue Karte geschrieben werden.
+    """
+    return bool((patient.get("rfid_tag_id") or "").strip())
 
 
 async def voice_write_card():
@@ -2062,14 +2070,37 @@ async def voice_erase_card():
             # Patient-Zuordnung aufloesen damit der Record wieder "schreibbar"
             # wird und auf der Karte keine Daten mehr liegen die das Surface
             # mit irgendwem assoziiert.
-            affected_pid = state.rfid_map.pop(uid, None)
+            #
+            # WICHTIG: Wir duerfen uns NICHT nur auf state.rfid_map verlassen.
+            # Die Map ist in-memory und wird bei Jetson-Restart oder Backend-
+            # Reconnect nicht zwingend exakt rekonstruiert. Deshalb machen wir
+            # zusaetzlich einen Linear-Scan durch state.patients fuer Matches
+            # auf UID. So wird auch ein Patient der ueber Backend-WS mit
+            # rfid_tag_id=<UID> reingekommen ist aber nie in der lokalen
+            # rfid_map landete, zuverlaessig bereinigt.
+            uid_upper = uid.strip().upper()
+            state.rfid_map.pop(uid, None)
+            state.rfid_map.pop(uid_upper, None)
+
+            affected_patients: list[dict] = []
+            for pid_scan, p_scan in state.patients.items():
+                tag = (p_scan.get("rfid_tag_id") or "").strip().upper()
+                if tag and tag == uid_upper:
+                    affected_patients.append(p_scan)
+
             patient_name = None
-            if affected_pid and affected_pid in state.patients:
-                patient = state.patients[affected_pid]
-                patient_name = patient.get("name") or affected_pid
+            affected_pid = None
+            for patient in affected_patients:
+                affected_pid = patient["patient_id"]
+                patient_name = patient_name or patient.get("name") or affected_pid
                 patient["rfid_tag_id"] = ""
                 # rfid_written-Events rausnehmen, damit der naechste
-                # RFID-Batch den Patient wieder beruecksichtigt
+                # RFID-Batch den Patient wieder beruecksichtigt. (Jetzt
+                # ueberfluessig weil _patient_has_written_rfid auf
+                # rfid_tag_id basiert — aber die Timeline sauber zu halten
+                # hilft dem Arzt am Surface der sich die Historie anschaut:
+                # statt "Karte geschrieben" + "Karte geloescht" sieht er
+                # nur "Karte geloescht".)
                 tl = patient.get("timeline", []) or []
                 patient["timeline"] = [
                     ev for ev in tl if ev.get("event") != "rfid_written"
