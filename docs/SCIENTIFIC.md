@@ -1,169 +1,169 @@
-# SAFIR: Edge-Deployed Multi-Speaker Medical Dictation via Cascade-Composed Small-Language-Model Pipeline
+# SAFIR: Edge-basierte medizinische Multi-Patienten-Diktierpipeline auf Basis kleiner Sprachmodelle
 
-**A Systems Paper on Defense-in-Depth Post-Processing for Field-Grade Speech Recognition**
+**Ein Systems-Paper zum Defense-in-Depth-Post-Processing für feldtaugliche Spracherkennung**
 
-*Author(s):* SAFIR Engineering Team, CGI Deutschland
+*Autoren:* SAFIR-Entwicklungsteam, CGI Deutschland
 *Affiliation:* CGI Deutschland GmbH · Bundeswehr Sanitätsdienst
-*Date:* April 2026
+*Datum:* April 2026
 *Version:* 2.1-preprint
 
 ---
 
-## Abstract
+## Zusammenfassung (Abstract)
 
-We present SAFIR, an edge-deployed speech-to-structured-record pipeline for military medical field documentation. The system combines OpenAI Whisper (large-v3-turbo) for automatic speech recognition (ASR) with Google Gemma 3 4B for downstream multi-patient segmentation and field extraction, running entirely on a 7.4 GB NVIDIA Jetson Orin Nano under 15 W power budget. A novel four-stage deterministic post-merge strategy hardens the non-deterministic LLM output against common failure modes (pronoun boundaries, intro phrases, content-free fragments, and mid-dictation metacommunication). We evaluate system robustness on adversarial test transcripts including intentional small-talk injection, interrupted patient introductions, and heavily accented dictations. Results show the pipeline achieves zero hallucinated patients across all test cases — trading recall for precision in alignment with the medical-domain requirement to "never invent a patient." We discuss the design philosophy, architectural trade-offs, ethical implications of deploying LLMs in high-stakes decision-support contexts, and directions for future work including prompt-engineering for conversational dictations and integration of retrieval-augmented confidence scoring.
+Wir stellen SAFIR vor, eine edge-basierte Spracherkennungs- und Extraktionspipeline für die militärische medizinische Felddokumentation. Das System kombiniert OpenAI Whisper (large-v3-turbo) zur automatischen Spracherkennung (ASR) mit Google Gemma 3 4B für die nachgelagerte Multi-Patienten-Segmentierung und Feldextraktion. Beide Modelle laufen vollständig auf einem 7.4 GB NVIDIA Jetson Orin Nano unter einem Leistungsbudget von 15 W. Eine neuartige vierstufige, deterministische Post-Merge-Strategie härtet die nicht-deterministische LLM-Ausgabe gegen typische Fehlermuster ab (pronominale Abschnittsgrenzen, Einleitungsphrasen, inhaltsleere Fragmente und Meta-Kommunikation mitten im Diktat). Wir evaluieren die Robustheit des Systems an adversariellen Testtranskripten, die gezielt Small-Talk-Einschübe, unterbrochene Patienten-Einleitungen und stark akzentuierte Diktate enthalten. Die Ergebnisse zeigen: Die Pipeline produziert in allen Testfällen **null halluzinierte Patienten** — sie tauscht Recall gegen Precision in Übereinstimmung mit der medizinischen Anforderung „Niemals einen Patienten erfinden". Wir diskutieren die Design-Philosophie, die architektonischen Kompromisse, die ethischen Implikationen des Einsatzes von LLMs in Hochrisiko-Entscheidungsunterstützungskontexten sowie Richtungen für zukünftige Arbeit — darunter Prompt-Engineering für konversationelle Diktate und Integration retrieval-gestützter Konfidenzbewertung.
 
-**Keywords:** edge AI, automatic speech recognition, large language models, medical NLP, military health informatics, defense-in-depth, conservative hallucination avoidance, on-device inference, prompt engineering, Bundeswehr rescue chain
-
----
-
-## 1. Introduction
-
-### 1.1 Problem Statement
-
-Military field medicine operates under what NATO doctrine calls the "Golden Hour" — the 60-minute window from wounding to definitive medical care that maximizes patient survival. Within this window, a single combat medic (Sanitäter) may triage multiple casualties, initiate treatment, and must generate documentation that follows the patient through four progressive levels of care (Phase 0 self-aid through Role 4 rehabilitation).
-
-Traditional documentation uses paper-based Tactical Combat Casualty Care (TCCC) cards. This approach has well-documented problems:
-
-1. **Cognitive load:** The medic writes while actively treating
-2. **Legibility:** Field conditions (rain, dirt, blood) degrade handwriting
-3. **Transcription errors:** Paper data must be manually entered at Role 1
-4. **No real-time situational awareness:** Command posts learn of casualties minutes or hours after the fact
-
-A speech-driven alternative addresses all four problems but introduces new challenges:
-
-1. **Connectivity:** Fighter deployment often lacks stable network for cloud-based ASR/NLP
-2. **Multi-patient dictation:** A single medic voice-memo may describe several casualties
-3. **Domain-specific vocabulary:** Military ranks, medical terms, drug names
-4. **High stakes:** A hallucinated patient or fabricated vital sign could cause harm downstream
-5. **Language:** Bundeswehr medics operate in German, a lower-resourced language for medical NLP
-
-SAFIR is our answer: an end-to-end, offline-capable pipeline deployed on a 15-W edge device, built explicitly around the principle that **omitting information is always preferable to inventing it**.
-
-### 1.2 Contributions
-
-This paper makes the following contributions:
-
-1. A deployed system architecture for edge-resident medical speech-to-record on resource-constrained hardware (7.4 GB unified memory), solving the Whisper + LLM co-residency problem via explicit swap-mode orchestration
-2. A four-stage deterministic post-merge algorithm that hardens LLM-produced patient-boundary predictions against three distinct failure modes (pronoun continuation, intro phrasing, content-free fragments)
-3. A prompt-engineering methodology for German-language multi-patient dictation, including a tested template of four canonical few-shot examples covering typical linguistic patterns in military medical German
-4. An empirical robustness evaluation against adversarial transcripts deliberately engineered to test intro-filtering, irrelevance-filtering, and interrupted-speech handling
-5. An explicit articulation of the "conservative hallucination" design philosophy for medical-domain ML, with measurable implications for precision-vs-recall trade-offs
-
-### 1.3 Paper Structure
-
-Section 2 surveys related work in medical NLP, on-device inference, and LLM post-processing. Section 3 describes the system architecture. Section 4 details the methodology — the Whisper ASR pipeline, the Gemma-based segmentation with explicit prompt design, the four-stage post-merge, and the feature-level confidence scoring. Section 5 discusses key design decisions and their trade-offs. Section 6 presents robustness evaluation on adversarial transcripts. Section 7 discusses limitations, ethical considerations, and open questions. Section 8 outlines future work. Section 9 concludes.
+**Schlagworte:** Edge-KI, automatische Spracherkennung, große Sprachmodelle, medizinisches NLP, militärische Gesundheitsinformatik, Defense-in-Depth, konservative Halluzinationsvermeidung, On-Device-Inferenz, Prompt-Engineering, Rettungskette der Bundeswehr
 
 ---
 
-## 2. Related Work
+## 1. Einführung
 
-### 2.1 Medical Speech Recognition
+### 1.1 Problemstellung
 
-Commercial dictation systems such as Nuance Dragon Medical One (Microsoft) dominate clinical transcription but are cloud-based, require stable connectivity, and offer limited customization for non-English military contexts [1, 2]. Domain-tuned Whisper variants have been published for English clinical dictation [3], but German medical corpora for fine-tuning remain scarce due to privacy constraints.
+Die militärische Feldmedizin operiert unter dem von der NATO-Doktrin definierten Begriff der **„Goldenen Stunde"** — dem 60-Minuten-Fenster zwischen Verwundung und definitiver medizinischer Versorgung, in dem die Überlebenschance des Patienten maximiert wird. Innerhalb dieses Fensters triagiert ein einzelner Sanitäter (Combat Medic) möglicherweise mehrere Verwundete, initiiert Behandlungen und muss eine Dokumentation erstellen, die den Patienten durch vier aufeinanderfolgende Versorgungsstufen begleitet (Phase 0 Selbsthilfe bis Role 4 Rehabilitation).
 
-Our approach differs in three key ways: (1) we use Whisper unmodified (large-v3-turbo) and rely on LLM post-processing for domain adaptation, (2) we operate fully offline, and (3) we handle multi-patient single-session dictation — a scenario common in mass-casualty triage but not addressed in existing clinical systems.
+Die traditionelle Dokumentation erfolgt über papierbasierte TCCC-Karten (Tactical Combat Casualty Care). Dieser Ansatz hat mehrere dokumentierte Probleme:
 
-### 2.2 LLM-Based Information Extraction
+1. **Kognitive Last:** Der Sanitäter schreibt, während er gleichzeitig behandelt
+2. **Lesbarkeit:** Feldbedingungen (Regen, Schmutz, Blut) beeinträchtigen die Handschrift
+3. **Transkriptionsfehler:** Papierdaten müssen an der Rettungsstation manuell übertragen werden
+4. **Kein Echtzeit-Lagebild:** Kommandostellen erfahren erst Minuten oder Stunden später von Verwundeten
 
-Recent work demonstrates that smaller LLMs (sub-10B parameters) can achieve competitive performance on structured extraction tasks when combined with careful prompt engineering and post-processing [4, 5]. Prompt engineering for medical NLP has been shown to benefit from few-shot examples, explicit negative examples, and output format constraints [6].
+Eine sprachgestützte Alternative löst alle vier Probleme, bringt aber neue Herausforderungen mit sich:
 
-Our contribution is not in model fine-tuning but in the **composition layer**: how to compose a small LLM (Gemma 3 4B) with deterministic pre- and post-processing to achieve production reliability despite the inherent non-determinism of generative models.
+1. **Konnektivität:** Gefechtseinsätze haben oft kein stabiles Netz für Cloud-basierte ASR/NLP
+2. **Multi-Patient-Diktat:** Ein einzelnes Sanitäter-Sprachmemo kann mehrere Verwundete beschreiben
+3. **Domänenspezifisches Vokabular:** Militärische Dienstgrade, medizinische Fachbegriffe, Medikamentennamen
+4. **Hohe Einsätze:** Ein halluzinierter Patient oder erfundene Vitalwerte können Schaden verursachen
+5. **Sprache:** Bundeswehr-Sanitäter arbeiten auf Deutsch, einer ressourcenärmeren Sprache für medizinisches NLP
 
-### 2.3 Edge AI for Defense Applications
+SAFIR ist unsere Antwort: eine vollständige, offline-fähige Pipeline auf einem 15-W-Edge-Gerät, die explizit auf dem Prinzip aufbaut, dass **das Auslassen von Informationen stets dem Erfinden vorzuziehen ist**.
 
-DARPA-funded projects such as the "Squad X" initiative have explored voice-to-text for dismounted operations, but published evaluations focus on keyword spotting rather than free-form medical dictation [7]. The NATO Allied Command Transformation has identified edge-deployed AI as a priority capability area [8], though concrete medical applications remain scarce in open literature.
+### 1.2 Beiträge dieses Papers
 
-SAFIR contributes the first (to our knowledge) openly described edge-deployed medical documentation pipeline designed explicitly for a national military (Bundeswehr), with the architectural trade-offs made transparent for replication.
+Dieses Paper leistet die folgenden Beiträge:
 
-### 2.4 Hallucination Mitigation in Generative Models
+1. Eine produktiv eingesetzte Systemarchitektur für edge-residente medizinische Sprach-zu-Datensatz-Verarbeitung auf ressourcenbeschränkter Hardware (7.4 GB unified memory). Insbesondere lösen wir das Koexistenzproblem von Whisper und LLM durch explizite Swap-Mode-Orchestrierung
+2. Ein vierstufiger deterministischer Post-Merge-Algorithmus, der LLM-generierte Patientengrenzen-Vorhersagen gegen drei unterschiedliche Fehlermuster härtet (Pronomen-Fortsetzung, Einleitungsphrasen, inhaltsleere Fragmente)
+3. Eine Prompt-Engineering-Methodologie für deutschsprachige Multi-Patienten-Diktate, einschließlich eines getesteten Templates mit vier kanonischen Few-Shot-Beispielen, die typische sprachliche Muster in militärmedizinischem Deutsch abdecken
+4. Eine empirische Robustheits-Evaluation gegen adversarielle Transkripte, die gezielt Intro-Filterung, Irrelevanz-Filterung und unterbrochene Rede testen
+5. Eine explizite Formulierung der Design-Philosophie „Konservative Halluzinationsvermeidung" für medizinische ML-Domänen, mit messbaren Implikationen für den Precision-vs-Recall-Kompromiss
 
-Approaches to LLM hallucination mitigation fall into three broad categories [9]:
+### 1.3 Struktur des Papers
 
-1. **Training-time:** RLHF, DPO, and constitutional AI
-2. **Inference-time:** Chain-of-thought, self-consistency, verifier models
-3. **Post-processing:** Rule-based filtering, retrieval-augmented consistency checks
-
-SAFIR adopts the post-processing approach for practical reasons: we cannot retrain Gemma 3 without proprietary weights, and inference-time techniques (chain-of-thought, self-consistency) would multiply latency in a 15-W power-budget context. Our four-stage post-merge can be seen as an instance of rule-based consistency enforcement layered on top of a non-deterministic boundary prediction.
+Abschnitt 2 gibt einen Überblick über verwandte Arbeit in medizinischem NLP, On-Device-Inferenz und LLM-Post-Processing. Abschnitt 3 beschreibt die Systemarchitektur. Abschnitt 4 beschreibt detailliert die Methodologie — Whisper-ASR-Pipeline, Gemma-basierte Segmentierung mit explizitem Prompt-Design, das vierstufige Post-Merge und das feldbezogene Konfidenz-Scoring. Abschnitt 5 diskutiert wichtige Designentscheidungen und deren Kompromisse. Abschnitt 6 präsentiert die Robustheits-Evaluation an adversariellen Transkripten. Abschnitt 7 diskutiert Limitierungen, ethische Überlegungen und offene Fragen. Abschnitt 8 skizziert zukünftige Arbeit. Abschnitt 9 schließt.
 
 ---
 
-## 3. System Architecture
+## 2. Verwandte Arbeit
 
-### 3.1 Overview
+### 2.1 Medizinische Spracherkennung
 
-SAFIR deploys as a two-device system:
+Kommerzielle Diktiersysteme wie Nuance Dragon Medical One (Microsoft) dominieren die klinische Transkription, sind jedoch cloud-basiert, benötigen stabile Konnektivität und bieten nur begrenzte Anpassung für nicht-englische militärische Kontexte [1, 2]. Domänen-angepasste Whisper-Varianten wurden für die englische klinische Diktate publiziert [3], jedoch bleiben deutsche medizinische Korpora für Fine-Tuning aufgrund von Datenschutzbeschränkungen knapp.
 
-1. **Field Device (BAT — "Beweglicher Arzt-Trupp"):** NVIDIA Jetson Orin Nano Super, 7.4 GB unified memory, headless Ubuntu with systemd service auto-start. Carried by the medic. Interacts via microphone, two GPIO buttons, an SSD1306 OLED display, an RC522 RFID reader, and three status LEDs.
-2. **Rescue Station (Role 1):** Microsoft Surface running Windows + Tailscale. Interacts via browser-based tactical map (Leaflet) plus HID Omnikey desktop RFID reader.
+Unser Ansatz unterscheidet sich in drei Punkten: (1) Wir nutzen Whisper unverändert (large-v3-turbo) und verlassen uns für die Domänenadaption auf LLM-Post-Processing, (2) wir arbeiten vollständig offline und (3) wir verarbeiten Multi-Patienten-Einzel-Sessions — ein Szenario, das in der Massenanfall-Triage häufig vorkommt, aber in bestehenden klinischen Systemen nicht abgedeckt wird.
 
-The two devices communicate exclusively through the Tailscale mesh VPN (a WireGuard overlay with Curve25519 ECDH, ChaCha20-Poly1305, Blake2s hashing — collectively classified as state-of-the-art symmetric cryptography [10]).
+### 2.2 LLM-basierte Informationsextraktion
 
-### 3.2 Software Stack on the Field Device
+Aktuelle Arbeit zeigt, dass kleinere LLMs (unter 10 Mrd. Parameter) bei strukturierter Extraktion konkurrenzfähige Leistung erreichen können, wenn sie mit sorgfältigem Prompt-Engineering und Post-Processing kombiniert werden [4, 5]. Prompt-Engineering für medizinisches NLP profitiert erwiesenermaßen von Few-Shot-Beispielen, expliziten Negativbeispielen und Output-Format-Beschränkungen [6].
+
+Unser Beitrag liegt nicht im Modell-Fine-Tuning, sondern in der **Kompositionsschicht**: wie kombiniert man ein kleines LLM (Gemma 3 4B) mit deterministischer Vor- und Nachbearbeitung, um trotz der inhärenten Nicht-Determinismus generativer Modelle Produktions-Zuverlässigkeit zu erreichen.
+
+### 2.3 Edge-KI für Verteidigungsanwendungen
+
+DARPA-finanzierte Projekte wie die „Squad X"-Initiative haben Voice-to-Text für abgesetzte Operationen erforscht, jedoch fokussieren publizierte Evaluationen auf Keyword-Spotting statt auf freie medizinische Diktate [7]. Das NATO Allied Command Transformation hat edge-basierte KI als prioritären Fähigkeitsbereich identifiziert [8], obwohl konkrete medizinische Anwendungen in der offenen Literatur selten sind.
+
+SAFIR ist unseres Wissens nach die erste öffentlich beschriebene edge-basierte medizinische Dokumentationspipeline, die explizit für eine nationale Streitmacht (Bundeswehr) entwickelt wurde, und deren architektonische Kompromisse transparent für Reproduktion dokumentiert sind.
+
+### 2.4 Halluzinationsvermeidung in generativen Modellen
+
+Ansätze zur Halluzinationsvermeidung in LLMs lassen sich in drei Kategorien einteilen [9]:
+
+1. **Training-basiert:** RLHF, DPO, Constitutional AI
+2. **Inferenz-basiert:** Chain-of-Thought, Self-Consistency, Verifier-Modelle
+3. **Post-Processing:** Regelbasierte Filterung, retrieval-gestützte Konsistenzprüfungen
+
+SAFIR wählt den Post-Processing-Ansatz aus praktischen Gründen: Gemma 3 können wir ohne proprietäre Gewichte nicht nachtrainieren, und Inferenz-Techniken (Chain-of-Thought, Self-Consistency) würden die Latenz in einem 15-W-Leistungsbudget vervielfachen. Unser vierstufiges Post-Merge ist eine Instanz regelbasierter Konsistenzerzwingung auf nicht-deterministischer Grenzen-Vorhersage.
+
+---
+
+## 3. Systemarchitektur
+
+### 3.1 Überblick
+
+SAFIR ist ein Zwei-Geräte-System:
+
+1. **Feldgerät (BAT — „Beweglicher Arzt-Trupp"):** NVIDIA Jetson Orin Nano Super, 7.4 GB unified memory, headless Ubuntu mit systemd-Service-Auto-Start. Vom Sanitäter getragen. Bedienung über Mikrofon, zwei GPIO-Taster, ein SSD1306-OLED-Display, einen RC522-RFID-Reader sowie drei Status-LEDs.
+2. **Rettungsstation (Role 1):** Microsoft Surface mit Windows + Tailscale. Bedienung über browserbasierte taktische Lagekarte (Leaflet) sowie einen HID-Omnikey-Desktop-RFID-Reader.
+
+Die beiden Geräte kommunizieren ausschließlich über das Tailscale-Mesh-VPN (ein WireGuard-Overlay mit Curve25519-ECDH, ChaCha20-Poly1305 und Blake2s-Hashing — als moderne symmetrische Kryptographie klassifiziert [10]).
+
+### 3.2 Software-Stack auf dem Feldgerät
 
 ```
 ┌─ UI/Presentation ────────────────────────────────────────────┐
-│ Jinja2 templates, vanilla JS, WebSocket for live state sync  │
+│ Jinja2-Templates, Vanilla JS, WebSocket für Live-State-Sync  │
 ├─ Application Layer ──────────────────────────────────────────┤
-│ FastAPI (uvicorn), app.py with domain logic for segmenter,   │
-│ extractor, patient lifecycle, RFID batch-write, backend sync │
+│ FastAPI (uvicorn), app.py mit Domain-Logik für Segmenter,    │
+│ Extractor, Patient-Lifecycle, RFID-Batch-Write, Backend-Sync │
 ├─ Inference Layer ────────────────────────────────────────────┤
 │ Whisper (large-v3-turbo via whisper.cpp, GPU-resident)       │
-│ Gemma 3 4B (Q4_K_M, via Ollama, GPU-resident when active)   │
-│ Vosk (German small model, CPU, ~15 ms command latency)       │
-│ Piper TTS (neural CPU-based, Thorsten-high voice)            │
+│ Gemma 3 4B (Q4_K_M, via Ollama, GPU-resident wenn aktiv)     │
+│ Vosk (dt. Klein-Modell, CPU, ~15 ms Command-Latenz)          │
+│ Piper TTS (neural CPU-basiert, Thorsten-high-Stimme)         │
 ├─ Hardware Abstraction ───────────────────────────────────────┤
-│ RC522 SPI driver (shared/rfid.py)                            │
-│ SSD1306 I²C OLED (jetson/oled.py)                            │
-│ GPIO button polling, LED pattern state machine               │
+│ RC522-SPI-Treiber (shared/rfid.py)                           │
+│ SSD1306-I²C-OLED (jetson/oled.py)                            │
+│ GPIO-Button-Polling, LED-Pattern-State-Machine               │
 └─ OS ────────────────────────────────────────────────────────┘
-    NVIDIA JetPack 5.x (Ubuntu 20.04) with CUDA 12.6
+    NVIDIA JetPack 5.x (Ubuntu 20.04) mit CUDA 12.6
 ```
 
-### 3.3 The Co-Residency Problem
+### 3.3 Das Koexistenz-Problem
 
-A key architectural challenge: Whisper (large-v3-turbo quantized ~1.2 GB) and Gemma 3 4B (Q4_K_M quantized ~4.3 GB) cannot both reside in the 7.4 GB unified memory simultaneously while leaving ~1 GB for CUDA/Tegra overhead.
+Eine zentrale architektonische Herausforderung: Whisper (large-v3-turbo quantisiert ~1.2 GB) und Gemma 3 4B (Q4_K_M quantisiert ~4.3 GB) können nicht gleichzeitig im 7.4 GB unified memory resident sein und dabei ~1 GB für CUDA/Tegra-Overhead freilassen.
 
-We solved this with an explicit **swap-mode orchestration** at application level:
+Wir lösen das durch eine explizite **Swap-Mode-Orchestrierung** auf Applikationsebene:
 
-- **Recording phase:** Whisper resident, Gemma unloaded. Maximum ~1.2 GB used, ~6.2 GB free.
-- **Analysis phase:** Whisper explicitly unloaded (`ollama stop`), Gemma loaded with `keep_alive=-1`. Maximum ~4.3 GB used, ~3.1 GB free.
-- **Transitions:** Triggered by application state transitions (recording stop → analysis start). Takes ~4-8 s for model swap.
+- **Recording-Phase:** Whisper resident, Gemma entladen. Maximal ~1.2 GB belegt, ~6.2 GB frei
+- **Analyse-Phase:** Whisper explizit entladen (`ollama stop`), Gemma geladen mit `keep_alive=-1`. Maximal ~4.3 GB belegt, ~3.1 GB frei
+- **Übergänge:** Getriggert durch Anwendungszustandsänderungen (Recording stop → Analyse start). Dauert ~4–8 s für den Modell-Swap
 
-This avoids the need for more expensive hardware while preserving single-phase latency characteristics for each use case.
+Damit vermeiden wir teurere Hardware, erhalten aber die Einzel-Phase-Latenzcharakteristiken für beide Anwendungsfälle.
 
 ---
 
-## 4. Methodology
+## 4. Methodologie
 
-### 4.1 Automatic Speech Recognition Pipeline
+### 4.1 Automatische Spracherkennungs-Pipeline
 
-Audio is captured at 16 kHz mono from a USB freespeak microphone. Whisper large-v3-turbo runs as a GPU-resident `whisper.cpp` server, processing the live audio in 25-second chunks with a 2-second overlap to avoid cutting words at chunk boundaries. The German language is explicitly prefixed into the Whisper prompt:
+Audio wird bei 16 kHz mono über ein USB-Freisprech-Mikrofon erfasst. Whisper large-v3-turbo läuft als GPU-residenter `whisper.cpp`-Server und verarbeitet das Live-Audio in 25-Sekunden-Chunks mit 2 Sekunden Overlap, um Wortabschneidungen an Chunk-Grenzen zu vermeiden. Die deutsche Sprache wird explizit in den Whisper-Prompt gesetzt:
 
 ```
 <|startoftranscript|><|de|><|transcribe|>
 ```
 
-Post-ASR, the resulting transcript is split into sentences using a deterministic regex-based splitter on German sentence-terminal punctuation (`.`, `!`, `?`). Short fragments (< 30 characters) are merged into the preceding segment to avoid mini-segments that confuse downstream LLM boundary prediction.
+Nach dem ASR wird das resultierende Transkript mithilfe eines deterministischen, regex-basierten Splitters an deutschen Satzend-Zeichen (`.`, `!`, `?`) in Sätze aufgeteilt. Kurze Fragmente (< 30 Zeichen) werden in das vorherige Segment eingefügt, um Mini-Segmente zu vermeiden, die die nachgelagerte LLM-Grenzen-Vorhersage verwirren.
 
-### 4.2 LLM-Based Segmentation
+### 4.2 LLM-basierte Segmentierung
 
-**Problem formulation:** Given N numbered sentences, predict the indices where a new patient's description begins. E.g., for 12 sentences describing three patients, the expected output is `{"starts":[0,4,8]}`.
+**Problemformulierung:** Gegeben seien N nummerierte Sätze; sage die Indizes vorher, an denen die Beschreibung eines neuen Patienten beginnt. Beispielsweise für 12 Sätze, die drei Patienten beschreiben, ist die erwartete Ausgabe `{"starts":[0,4,8]}`.
 
-**Model:** Gemma 3 4B at Q4_K_M quantization (4.3 GB), served by Ollama with parameters:
+**Modell:** Gemma 3 4B mit Q4_K_M-Quantisierung (4.3 GB), ausgeliefert von Ollama mit Parametern:
 
 ```python
 options = {
-    "num_gpu": -1,        # all layers on GPU
-    "temperature": 0.0,    # greedy decoding
-    "num_predict": 400,    # output budget
+    "num_gpu": -1,        # alle Layer auf GPU
+    "temperature": 0.0,   # greedy decoding
+    "num_predict": 400,   # Output-Budget
     "top_k": 1,
-    "num_ctx": 2048,       # context window
-    "keep_alive": -1,      # permanent residency during analysis phase
+    "num_ctx": 2048,      # Context-Window
+    "keep_alive": -1,     # permanente Residenz während Analyse-Phase
 }
 ```
 
-**Prompt Structure (BOUNDARY_PROMPT):** We use a prompt-defense preamble [11], followed by an explicit task definition, four canonical few-shot examples, and a strict output format constraint.
+**Prompt-Struktur (BOUNDARY_PROMPT):** Wir verwenden eine Prompt-Defense-Präambel [11], gefolgt von einer expliziten Aufgabendefinition, vier kanonischen Few-Shot-Beispielen und einer strikten Output-Format-Beschränkung.
 
 ```
 <prompt_defense_preamble>
@@ -186,7 +186,7 @@ WEITERE REGELN:
 
 Antwort: JSON {"starts":[liste]} — sonst NICHTS.
 
-[4 canonical examples]
+[4 kanonische Beispiele]
 
 Sätze:
 [0] Satz eins
@@ -194,58 +194,58 @@ Sätze:
 ...
 ```
 
-Each example demonstrates one of four linguistic patterns:
+Jedes Beispiel demonstriert eines von vier sprachlichen Mustern:
 
-1. Multi-patient with medic introduction (3 patients)
-2. "Der nächste Patient ist X" as own boundary
-3. Single patient with continuation clauses
-4. Patients introduced via "Wir haben noch eine weitere..."
+1. Multi-Patient mit Arzt-Einleitung (3 Patienten)
+2. „Der nächste Patient ist X" als eigene Grenze
+3. Einzelpatient mit Fortsetzungsklauseln
+4. Patienten eingeführt durch „Wir haben noch eine weitere …"
 
-### 4.3 Four-Stage Deterministic Post-Merge
+### 4.3 Vierstufiges deterministisches Post-Merge
 
-Even with `temperature=0.0`, LLM output is not reproducible across different Gemma versions, different system loads, or different quantization paths. We therefore apply four deterministic rules in sequence to harden the `starts` list:
-
-```
-Input: starts = [s₀, s₁, ..., sₙ]
-Output: patients = [P₁, P₂, ..., Pₘ] where m ≤ n+1
-```
-
-**Stage 1 — Short Fragment Merge** (`_split_sentences` preprocessing)
-
-Already at the sentence-splitter level, fragments < 30 characters are appended to the preceding segment. This prevents single-word fragments from being mispredicted as patient starts.
-
-**Stage 2 — Pronoun Continuation Merge**
-
-If segment *k* begins with a pronoun or possessive that refers back to a person ("Er hat...", "Sie hat...", "Bei ihm..."), it must describe the preceding patient. We merge it into *k-1*.
-
-**Stage 3 — Content-Free Segment Merge**
-
-A segment is considered "patient-initiating" only if it contains either:
-- A `START_MARKER` (e.g., "nächste patient", "weiter mit", "zweiter patient", "ein weiterer patient ist")
-- A `PATIENT_MARKER` (e.g., "patient", "verwundete", "soldat", "sanitäter")
-
-If neither is present, the segment is a continuation and is merged into the previous one. This stage catches interjections like "Wir müssten das später nachschauen" that the LLM sometimes misinterprets as new-patient signals.
-
-**Stage 4 — Intro Filter**
-
-The first patient-predicted segment is inspected for phrases typical of an introduction:
-- "Hier spricht [Rank] [Name]"
-- "Ich bin am Platz der Verwundeten"
-
-If such a phrase constitutes the entire segment (i.e., no actual patient data), it is merged into the next real patient segment. This ensures the dictating medic can introduce themselves without creating a phantom patient record.
-
-### 4.4 Field Extraction
-
-After segmentation, each patient segment is passed to a second Gemma invocation with `EXTRACT_PROMPT`:
+Selbst mit `temperature=0.0` ist LLM-Output nicht reproduzierbar über verschiedene Gemma-Versionen, Systemlasten oder Quantisierungspfade hinweg. Wir wenden daher vier deterministische Regeln nacheinander an, um die `starts`-Liste zu härten:
 
 ```
-Extrahiere aus dem folgenden Sanitaetsbefund strukturierte Felder.
+Input:  starts = [s₀, s₁, ..., sₙ]
+Output: patients = [P₁, P₂, ..., Pₘ] mit m ≤ n+1
+```
+
+**Stufe 1 — Merge kurzer Fragmente** (im `_split_sentences`-Preprocessing)
+
+Bereits auf der Satz-Splitter-Ebene werden Fragmente < 30 Zeichen an das vorhergehende Segment angehängt. Das verhindert, dass Einzelwort-Fragmente fälschlicherweise als Patienten-Anfänge vorhergesagt werden.
+
+**Stufe 2 — Pronomen-Fortsetzungs-Merge**
+
+Wenn Segment *k* mit einem Pronomen oder Possessivum beginnt, das sich auf eine Person zurückbezieht („Er hat …", „Sie hat …", „Bei ihm …"), muss es den vorhergehenden Patienten beschreiben. Wir merken es in *k−1* ein.
+
+**Stufe 3 — Merge inhaltsleerer Segmente**
+
+Ein Segment gilt als „patienten-initiierend" nur dann, wenn es entweder enthält:
+- Einen `START_MARKER` (z.B. „nächste patient", „weiter mit", „zweiter patient", „ein weiterer patient ist")
+- Einen `PATIENT_MARKER` (z.B. „patient", „verwundete", „soldat", „sanitäter")
+
+Wenn keines vorhanden ist, ist das Segment eine Fortsetzung und wird mit dem vorherigen vereint. Diese Stufe fängt Einschübe wie „Wir müssten das später nachschauen" ab, die das LLM manchmal fälschlicherweise als neue-Patient-Signale interpretiert.
+
+**Stufe 4 — Intro-Filter**
+
+Das erste patienten-vorhergesagte Segment wird auf typische Einleitungsphrasen geprüft:
+- „Hier spricht [Rang] [Name]"
+- „Ich bin am Platz der Verwundeten"
+
+Wenn eine solche Phrase das gesamte Segment ausmacht (d.h. keine tatsächlichen Patientendaten enthält), wird es mit dem nächsten echten Patientensegment vereint. Das stellt sicher, dass der diktierende Sanitäter sich selbst vorstellen kann, ohne einen Phantom-Patienten zu erzeugen.
+
+### 4.4 Feldextraktion
+
+Nach der Segmentierung wird jedes Patientensegment mit dem zweiten Gemma-Aufruf und `EXTRACT_PROMPT` verarbeitet:
+
+```
+Extrahiere aus dem folgenden Sanitätsbefund strukturierte Felder.
 Format: JSON mit den Feldern: name, rank, injuries, mechanism,
 vitals (pulse, bp, resp_rate, spo2, gcs, temp).
 
 Regeln:
-- Falls ein Feld nicht erwaehnt ist, lasse es leer/weg.
-- Keine Triage! Das ist Aerztesache.
+- Falls ein Feld nicht erwähnt ist, lasse es leer/weg.
+- Keine Triage! Das ist Ärztesache.
 - Vitals NUR wenn explizit gesagt.
 
 Text: [segment]
@@ -253,247 +253,247 @@ Text: [segment]
 Antwort:
 ```
 
-We explicitly do **not** ask for triage classification — triage is reserved for the physician at Role 1.
+Wir fragen explizit **keine** Triage-Klassifikation ab — die Triage bleibt dem Arzt in Role 1 vorbehalten.
 
-### 4.5 Feature-Level Confidence Scoring
+### 4.5 Feld-Level-Konfidenz-Scoring
 
-For each extracted field, we compute a confidence score in [0, 1]:
+Für jedes extrahierte Feld berechnen wir einen Konfidenzwert in [0, 1]:
 
-- **Name:** Bundeswehr rank-whitelist match → base 0.9, fuzzy match → 0.6-0.8
-- **Rank:** Strict whitelist match → 1.0, alias match → 0.85, no match → 0.0
-- **Injuries:** Medical keyword overlap heuristic (see `shared/content_filter.py`)
-- **Vitals:** Physiological plausibility (pulse ∈ [40, 180] ideal, [30, 220] acceptable)
+- **Name:** Bundeswehr-Rang-Whitelist-Match → Basis 0.9, Fuzzy-Match → 0.6–0.8
+- **Rang:** Strikter Whitelist-Match → 1.0, Alias-Match → 0.85, kein Match → 0.0
+- **Verletzungen:** Heuristik der Überlappung medizinischer Schlüsselwörter (siehe `shared/content_filter.py`)
+- **Vitals:** Physiologische Plausibilität (Puls ∈ [40, 180] ideal, [30, 220] akzeptabel)
 
-Scores are surfaced in the UI as colored dots next to each field (green ≥ 0.9, yellow 0.6–0.9, red < 0.6), giving the medic explicit visibility into "what the system knows vs. what it guessed" — a direct counter to the typical hallucination critique of LLM-based medical NLP.
+Die Werte werden in der UI als farbige Punkte neben jedem Feld angezeigt (grün ≥ 0.9, gelb 0.6–0.9, rot < 0.6) und geben dem Sanitäter explizit Sichtbarkeit darüber, „was das System weiß vs. was es vermutet hat" — ein direkter Gegenpol zum üblichen Halluzinations-Kritikpunkt bei LLM-basiertem medizinischem NLP.
 
-### 4.6 Content Filter (Prompt Defense + Topic Gating)
+### 4.6 Content-Filter (Prompt-Defense + Topic-Gating)
 
-Before passing any transcript to Gemma, we check whether it contains at least 2 German medical keywords from a curated whitelist (~150 terms: "Verletzung", "Puls", "Blutung", "Fraktur", "Schuss", "Splitter", ...). If not, we prompt the user for explicit confirmation before LLM processing:
+Bevor ein Transkript an Gemma übergeben wird, prüfen wir, ob es mindestens 2 deutsche medizinische Schlüsselwörter aus einer kuratierten Whitelist (~150 Begriffe: „Verletzung", „Puls", „Blutung", „Fraktur", „Schuss", „Splitter", …) enthält. Ist das nicht der Fall, fragen wir den Nutzer vor der LLM-Verarbeitung nach expliziter Bestätigung:
 
-> "Das Transkript scheint nicht medizinisch zu sein. Trotzdem analysieren?"
+> „Das Transkript scheint nicht medizinisch zu sein. Trotzdem analysieren?"
 
-This prevents accidental LLM processing of non-medical content (e.g., a medic's private phone call captured by the microphone) — both saves GPU time and reduces potential for false-positive extractions.
+Das verhindert die ungewollte LLM-Verarbeitung nicht-medizinischer Inhalte (z.B. ein privates Sanitäter-Telefongespräch, das vom Mikrofon aufgenommen wurde) — spart GPU-Zeit und reduziert das Risiko falsch-positiver Extraktionen.
 
 ---
 
-## 5. Design Decisions and Trade-offs
+## 5. Designentscheidungen und Kompromisse
 
 ### 5.1 Edge vs. Cloud
 
-**Decision:** All inference runs on-device.
+**Entscheidung:** Alle Inferenz läuft on-device.
 
-**Rationale:**
-- Operational sovereignty: field deployment cannot assume stable network
-- Data protection: sensitive medical data never leaves the encrypted Bundeswehr network
-- Latency: round-trip to cloud would add ~200-500 ms per request vs ~30 s on-device
+**Begründung:**
+- Operative Souveränität: Feld-Deployment kann keine stabile Netzverbindung voraussetzen
+- Datenschutz: Sensible medizinische Daten verlassen nie das verschlüsselte Bundeswehr-Netz
+- Latenz: Round-Trip zur Cloud würde ~200–500 ms pro Anfrage hinzufügen vs ~30 s on-device
 
-**Trade-off:** Requires Jetson Orin Nano class hardware (~$500), which is acceptable for military deployment but would not scale to consumer medical devices.
+**Kompromiss:** Benötigt Jetson-Orin-Nano-Klasse-Hardware (~500 €), was für militärisches Deployment akzeptabel ist, aber für Consumer-Medizingeräte nicht skaliert.
 
-### 5.2 Gemma 3 4B vs. Larger Models
+### 5.2 Gemma 3 4B vs. größere Modelle
 
-**Decision:** Gemma 3 4B at Q4_K_M quantization (4.3 GB).
+**Entscheidung:** Gemma 3 4B mit Q4_K_M-Quantisierung (4.3 GB).
 
-**Rationale:**
-- 7B+ models exceed the VRAM budget even with 4-bit quantization when co-resident with Whisper
-- We evaluated Qwen 2.5 1.5B initially but found its boundary prediction unreliable (segmentation errors of ~20% on multi-patient test sets)
-- Gemma 3 4B delivered ~2-5 % boundary error rate on the same tests — sufficient for production
+**Begründung:**
+- 7B+-Modelle überschreiten das VRAM-Budget selbst mit 4-Bit-Quantisierung bei Koresidenz mit Whisper
+- Wir haben zunächst Qwen 2.5 1.5B evaluiert und seine Grenzen-Vorhersage als unzuverlässig befunden (Segmentierungsfehler ~20 % auf Multi-Patienten-Testsets)
+- Gemma 3 4B lieferte ~2–5 % Fehlerrate auf denselben Tests — ausreichend für die Produktion
 
-**Trade-off:** Cannot use larger-scale capabilities like GPT-4 reasoning for edge cases. Our four-stage post-merge substitutes for the deeper language understanding a larger model would provide.
+**Kompromiss:** Keine Nutzung größerer Reasoning-Fähigkeiten wie GPT-4 für Randfälle möglich. Unser vierstufiges Post-Merge ersetzt die tiefere Sprachverarbeitung, die ein größeres Modell böte.
 
-### 5.3 Conservative Hallucination Philosophy
+### 5.3 Konservative Halluzinations-Philosophie
 
-**Decision:** Prefer recall loss over precision loss.
+**Entscheidung:** Recall-Verlust wird Precision-Verlust vorgezogen.
 
-Concretely:
-- LLM prompt explicitly instructs: "If unclear, assume continuation of previous patient"
-- Post-merges prefer merging over splitting
-- UI surfaces confidence scores so the medic always knows what was extracted vs. guessed
-- No auto-triage — physician must confirm
+Konkret:
+- Der LLM-Prompt instruiert explizit: „Bei Unklarheit annehmen, es ist Fortsetzung des vorherigen Patienten"
+- Post-Merges bevorzugen Zusammenlegen gegenüber Splitten
+- Die UI zeigt Konfidenzwerte, damit der Sanitäter immer weiß, was extrahiert vs. was vermutet wurde
+- Keine Auto-Triage — der Arzt muss bestätigen
 
-**Empirical:** In adversarial testing (Section 6), we verified zero hallucinated patients across 12 test transcripts. One patient was missed due to heavily conversational interruption — we prefer this failure mode to inventing a patient.
+**Empirisch:** In adversarielen Tests (Abschnitt 6) haben wir null halluzinierte Patienten in 12 Testtranskripten verifiziert. Ein Patient wurde aufgrund einer stark konversationellen Unterbrechung verpasst — dieses Fehlermuster ziehen wir dem Erfinden eines Patienten vor.
 
-### 5.4 Why RFID Cards?
+### 5.4 Warum RFID-Karten?
 
-**Decision:** MIFARE Classic 1K + RC522 module.
+**Entscheidung:** MIFARE Classic 1K + RC522-Modul.
 
-**Rationale:**
-- Physical token tied to the patient follows the person through the rescue chain
-- Works without network (the card itself is a portable data carrier)
-- Industry-standard, cheap (~0.50 € per card)
+**Begründung:**
+- Physisches Token, das an den Patienten gebunden ist und ihn durch die Rettungskette begleitet
+- Funktioniert ohne Netzwerk (die Karte selbst ist ein tragbarer Datenträger)
+- Industrie-Standard, günstig (~0.50 € pro Karte)
 
-**Trade-off:** MIFARE Classic Crypto1 is not cryptographically secure (broken by Nohl et al. 2007 [12]). We address this by treating the card as a pointer to the (encrypted) backend store — sensitive data is never stored on the card itself.
+**Kompromiss:** MIFARE Classic Crypto1 ist kryptographisch nicht sicher (2007 von Nohl et al. per Brute-Force gebrochen [12]). Wir adressieren das, indem die Karte als Zeiger auf den (verschlüsselten) Backend-Store behandelt wird — sensible Daten werden nie auf der Karte selbst gespeichert.
 
-### 5.5 Tailscale over Custom VPN
+### 5.5 Tailscale statt Eigen-VPN
 
-**Decision:** Use Tailscale mesh VPN rather than implementing custom cryptography.
+**Entscheidung:** Tailscale-Mesh-VPN nutzen, nicht eigene Kryptographie implementieren.
 
-**Rationale:**
-- WireGuard's cryptographic primitives (ChaCha20-Poly1305, Curve25519, Blake2s) are state-of-the-art and widely peer-reviewed
-- Tailscale adds identity management on top of WireGuard without exposing payload to the coordination service (zero-trust)
-- Rolling our own crypto is rarely justified — NIST guidance [13] and decades of post-mortems [14] confirm this
+**Begründung:**
+- WireGuards kryptographische Primitive (ChaCha20-Poly1305, Curve25519, Blake2s) sind State-of-the-Art und breit peer-reviewed
+- Tailscale fügt Identity-Management über WireGuard hinzu, ohne Payload der Koordinationsdienst zu exponieren (Zero-Trust)
+- Eigene Kryptographie zu schreiben ist selten gerechtfertigt — NIST-Empfehlung [13] und Jahrzehnte von Post-Mortems [14] bestätigen dies
 
-**Trade-off:** Dependency on a third-party service (Tailscale Inc.). Mitigated by: all traffic is end-to-end encrypted; only peer metadata (public keys, IPs) is visible to coordination.
+**Kompromiss:** Abhängigkeit von einem Drittanbieter-Dienst (Tailscale Inc.). Das wird durch folgende Maßnahmen mitigiert: Alle Traffic ist Ende-zu-Ende verschlüsselt; nur Peer-Metadaten (Public Keys, IPs) sind der Koordination sichtbar.
 
 ---
 
-## 6. Empirical Evaluation
+## 6. Empirische Evaluation
 
-### 6.1 Test Set
+### 6.1 Test-Corpus
 
-We constructed a test corpus of 12 German dictations covering:
+Wir haben ein Test-Corpus von 12 deutschen Diktaten konstruiert, das folgende Kategorien abdeckt:
 
-- **Standard dictations (n=4):** Clear patient introductions with canonical markers
-- **Medical introductions (n=3):** Beginning with "Hier spricht Oberfeldarzt..."
-- **Irrelevance injection (n=3):** One medically irrelevant sentence per dictation
-- **Interrupted speech (n=2):** Mid-patient pause + name correction ("... den Namen vergessen... ach ja...")
+- **Standard-Diktate (n=4):** Klare Patienten-Einleitungen mit kanonischen Markern
+- **Medizinische Einleitungen (n=3):** Beginn mit „Hier spricht Oberfeldarzt …"
+- **Irrelevanz-Einschübe (n=3):** Ein medizinisch irrelevanter Satz pro Diktat
+- **Unterbrochene Rede (n=2):** Mitten im Patient Pause + Namenskorrektur („… den Namen vergessen … ach ja …")
 
-### 6.2 Metrics
+### 6.2 Metriken
 
-Primary metrics:
+Primäre Metriken:
 
-- **Patient-boundary accuracy:** (correct-predicted-patients) / (actual-patients)
-- **Hallucinated patients:** patients in output that have no corresponding dictated content
-- **Extraction completeness:** fraction of actual patients whose name, rank, primary injury are correctly extracted
+- **Patientengrenzen-Genauigkeit:** (korrekt-vorhergesagte-Patienten) / (tatsächliche Patienten)
+- **Halluzinierte Patienten:** Patienten im Output ohne entsprechenden diktierten Inhalt
+- **Extraktions-Vollständigkeit:** Anteil der tatsächlichen Patienten, deren Name, Rang und Hauptverletzung korrekt extrahiert wurden
 
-### 6.3 Results
+### 6.3 Ergebnisse
 
 ```
 ┌───────────────────────────┬──────────┬──────────┬──────────────┐
-│ Test Category             │ Accuracy │ Halluci- │ Extract.     │
-│                           │ (n=patients) │ nations │ Complete   │
+│ Test-Kategorie            │ Genauig- │ Halluzi- │ Extraktions- │
+│                           │ keit     │ nationen │ Vollständigk.│
 ├───────────────────────────┼──────────┼──────────┼──────────────┤
 │ Standard                   │ 98%      │ 0        │ 95%          │
-│ Medical Introductions      │ 100%     │ 0        │ 100%         │
-│ Irrelevance Injection      │ 100%     │ 0        │ 100%         │
-│ Interrupted Speech         │ 50%     │ 0        │ 100% (of     │
-│                           │          │          │   detected)  │
+│ Medizinische Einleitungen  │ 100%     │ 0        │ 100%         │
+│ Irrelevanz-Einschübe       │ 100%     │ 0        │ 100%         │
+│ Unterbrochene Rede         │ 50%      │ 0        │ 100% (der    │
+│                           │          │          │  erkannten)  │
 ├───────────────────────────┼──────────┼──────────┼──────────────┤
-│ Overall                    │ 87.5%    │ 0        │ 97%          │
+│ Gesamt                     │ 87.5%    │ 0        │ 97%          │
 └───────────────────────────┴──────────┴──────────┴──────────────┘
 ```
 
-### 6.4 Analysis
+### 6.4 Analyse
 
-**Standard and Medical Introduction cases** achieve near-perfect accuracy. Post-Merge Stage 4 (Intro Filter) reliably strips medic self-introductions from the segmentation output.
+**Standard- und medizinische Einleitungs-Fälle** erreichen nahezu perfekte Genauigkeit. Post-Merge-Stufe 4 (Intro-Filter) entfernt zuverlässig Sanitäter-Selbst-Einleitungen aus dem Segmentierungs-Output.
 
-**Irrelevance Injection** (e.g., "Morgen möchte ich auch Motorrad fahren") is correctly handled at the extraction stage — the sentence appears in the transcript but is not transposed into the `injuries` list. This confirms that Gemma 3 at 4B scale can distinguish medically relevant from irrelevant content given the explicit prompt instruction.
+**Irrelevanz-Einschübe** (z.B. „Morgen möchte ich auch Motorrad fahren") werden korrekt auf der Extraktions-Stufe behandelt — der Satz erscheint im Transkript, wird aber nicht in die `injuries`-Liste transponiert. Dies bestätigt, dass Gemma 3 auf der 4-Mrd.-Parameter-Skala medizinisch relevante von irrelevanten Inhalten bei expliziter Prompt-Anweisung unterscheiden kann.
 
-**Interrupted Speech** is the failure mode. In the case:
+**Unterbrochene Rede** ist das Fehlermuster. Im Fall:
 
-> "Ein weiterer Patient ist der... Jetzt habe ich den Namen vergessen. Ach ja, genau. Es ist der Herr Major Herbert Müller. Er hat nur leichte Oberschenkelschmerzen."
+> „Ein weiterer Patient ist der … Jetzt habe ich den Namen vergessen. Ach ja, genau. Es ist der Herr Major Herbert Müller. Er hat nur leichte Oberschenkelschmerzen."
 
-Gemma predicted `starts=[1, 6]` instead of the expected `starts=[1, 6, 8]`, missing the third patient. Analysis suggests Gemma interpreted the meta-communication ("Namen vergessen", "Ach ja") as continuation rather than as delimiter. This is consistent with the fact that few-shot prompt examples in BOUNDARY_PROMPT do not cover interrupted-speech patterns.
+sagte Gemma `starts=[1, 6]` statt des erwarteten `starts=[1, 6, 8]` vorher und verpasste damit den dritten Patienten. Die Analyse legt nahe, dass Gemma die Meta-Kommunikation („Namen vergessen", „Ach ja") als Fortsetzung statt als Begrenzung interpretiert hat. Das ist konsistent damit, dass die Few-Shot-Beispiele im BOUNDARY_PROMPT keine Muster unterbrochener Rede abdecken.
 
-**Crucially: zero hallucinated patients across all 12 test transcripts.** The system degrades toward under-reporting rather than over-reporting, consistent with the design philosophy.
+**Entscheidend: null halluzinierte Patienten in allen 12 Testtranskripten.** Das System degradiert in Richtung Unter-Berichterstattung, nicht Über-Berichterstattung — konsistent mit der Design-Philosophie.
 
-### 6.5 Latency Measurements
+### 6.5 Latenzmessungen
 
-Measured on a production Jetson Orin Nano running swap-mode:
+Gemessen auf einem produktiven Jetson Orin Nano im Swap-Mode:
 
 ```
-Phase                          | Typical  | Max
-─────────────────────────────────┼──────────┼────────
-Whisper transcription (per 25s) | 3-5 s    | 8 s
-Model swap (Whisper → Gemma)    | 4-8 s    | 12 s
-Gemma boundary segmentation     | 5-8 s    | 12 s
-Gemma extraction (per patient)  | 10-20 s  | 40 s
-End-to-end (1-patient, 30s)     | ~30 s    | ~60 s
+Phase                               │ Typisch  │ Max
+────────────────────────────────────┼──────────┼────────
+Whisper-Transkription (pro 25s)     │ 3–5 s    │ 8 s
+Modell-Swap (Whisper → Gemma)       │ 4–8 s    │ 12 s
+Gemma Boundary-Segmentierung        │ 5–8 s    │ 12 s
+Gemma-Extraktion (pro Patient)      │ 10–20 s  │ 40 s
+End-to-End (1 Patient, 30 s Diktat) │ ~30 s    │ ~60 s
 ```
 
 ---
 
-## 7. Discussion
+## 7. Diskussion
 
-### 7.1 Limitations
+### 7.1 Limitierungen
 
-**Interrupted-speech failure.** Our current BOUNDARY_PROMPT does not include few-shot examples of interrupted patient introductions. A fifth canonical example could be added, but we defer this for future work to avoid overfitting the prompt to a specific linguistic pattern.
+**Fehlermuster unterbrochene Rede.** Unser aktueller BOUNDARY_PROMPT enthält keine Few-Shot-Beispiele für unterbrochene Patienten-Einleitungen. Ein fünftes kanonisches Beispiel könnte ergänzt werden, wir verschieben dies aber auf zukünftige Arbeit, um das Overfitten des Prompts auf ein spezifisches sprachliches Muster zu vermeiden.
 
-**Fixed-schema assumption.** The PATIENT_SCHEMA is designed around German military medical terminology. Adaptation to other domains (civilian ER, NATO cross-border operations) would require re-designed prompts and re-trained confidence scoring.
+**Fix-Schema-Annahme.** Das PATIENT_SCHEMA ist um deutsche militärmedizinische Terminologie entworfen. Anpassung auf andere Domänen (ziviler Notfall, NATO-grenzübergreifende Operationen) würde neu entworfene Prompts und neu-trainiertes Konfidenz-Scoring erfordern.
 
-**Single-turn extraction.** We do not support iterative refinement — if the extraction is wrong, the user must edit manually. A conversational repair mechanism ("Actually, the rank is Major, not Oberstabsfeldwebel") would require architectural changes.
+**Single-Turn-Extraktion.** Wir unterstützen keine iterative Verfeinerung — wenn die Extraktion falsch ist, muss der Nutzer manuell editieren. Ein konversationeller Korrektur-Mechanismus („Eigentlich ist der Rang Major, nicht Oberstabsfeldwebel") würde architektonische Änderungen erfordern.
 
-**MIFARE Classic Crypto1 insecurity.** Acknowledged limitation; mitigated by keeping sensitive data off the card.
+**MIFARE-Classic-Crypto1-Unsicherheit.** Anerkannte Limitierung; mitigiert durch Daten-Minimalismus auf der Karte.
 
-### 7.2 Ethical Considerations
+### 7.2 Ethische Überlegungen
 
-**Accountability.** SAFIR is a decision-support tool, not a decision-maker. The medic remains accountable for every recorded patient. This is enforced in three ways: (1) confidence badges make uncertainty visible, (2) no auto-triage, (3) all data can be manually edited.
+**Verantwortlichkeit.** SAFIR ist ein Entscheidungs-Unterstützungs-Tool, kein Entscheidungs-Treffer. Der Sanitäter bleibt für jeden erfassten Patienten verantwortlich. Das wird auf drei Wegen durchgesetzt: (1) Konfidenz-Badges machen Unsicherheit sichtbar, (2) keine Auto-Triage, (3) alle Daten können manuell editiert werden.
 
-**Data minimization.** Transcripts and audio recordings are retained locally on the Jetson for the duration of the mission but are purged after each reset. Only structured patient records are synced to the Rescue Station. This minimizes the attack surface in case of device capture.
+**Datenminimierung.** Transkripte und Audio-Aufnahmen werden auf dem Jetson lokal für die Dauer des Einsatzes aufbewahrt, aber bei jedem Reset gelöscht. Nur strukturierte Patientenrecords werden zur Rettungsstation synchronisiert. Das minimiert die Angriffsoberfläche bei Geräte-Verlust.
 
-**Hallucination in medical contexts.** The "conservative hallucination" philosophy explicitly trades recall for precision. This is the appropriate trade-off for documentation (missing a record can be corrected later; a fabricated record can mislead treatment). It would not be appropriate for, e.g., triage recommendation where missing a critical patient is fatal.
+**Halluzination in medizinischen Kontexten.** Die Philosophie der „konservativen Halluzinationsvermeidung" tauscht explizit Recall gegen Precision. Das ist der angemessene Kompromiss für Dokumentation (ein fehlender Eintrag kann später korrigiert werden; ein erfundener Eintrag kann die Behandlung irreführen). Für Triage-Empfehlung wäre dieser Kompromiss nicht angemessen, da das Übersehen eines kritischen Patienten tödlich sein kann.
 
-**Dual-use concerns.** Military speech-to-record technology could be repurposed for surveillance or interrogation. We address this by: (1) scope-limiting the LLM prompt to medical extraction, (2) open-sourcing the prompt structure so misuse is inspectable, (3) tightly coupling the hardware (RC522 RFID, two-button UX, OLED) to the medical use case.
+**Dual-Use-Bedenken.** Militärische Sprach-zu-Datensatz-Technologie könnte für Überwachung oder Befragung zweckentfremdet werden. Wir adressieren das durch: (1) Scope-Begrenzung des LLM-Prompts auf medizinische Extraktion, (2) Open-Source-Zugang zur Prompt-Struktur, sodass Missbrauch inspizierbar ist, (3) enge Kopplung der Hardware (RC522-RFID, Zwei-Tasten-UX, OLED) an den medizinischen Anwendungsfall.
 
-### 7.3 Broader Implications
+### 7.3 Breitere Implikationen
 
-**Small-language-models in high-stakes domains.** Our results show that a 4B-parameter LLM, when composed with careful pre- and post-processing, can achieve production reliability in a high-stakes medical context. This suggests that the "large model + simple prompt" paradigm common in current LLM deployments may be suboptimal for domains requiring deterministic behavior.
+**Kleine Sprachmodelle in hochsensiblen Domänen.** Unsere Ergebnisse zeigen, dass ein 4-Mrd.-Parameter-LLM bei sorgfältiger Vor- und Nachverarbeitung Produktions-Zuverlässigkeit in einem medizinischen Hochrisiko-Kontext erreichen kann. Dies legt nahe, dass das in aktuellen LLM-Deployments übliche Paradigma „großes Modell + einfacher Prompt" für Domänen mit deterministischer Verhaltensanforderung suboptimal sein kann.
 
-**Defense-in-depth as architecture pattern.** Our four-stage post-merge is, in software engineering terms, a "defense in depth" pattern: no single layer is assumed correct; reliability emerges from composition. This pattern transfers to other LLM-based systems where determinism matters.
+**Defense-in-Depth als Architektur-Muster.** Unser vierstufiges Post-Merge ist in softwareingenieurischer Terminologie ein „Defense-in-Depth"-Muster: Keine einzelne Schicht wird als korrekt angenommen; Zuverlässigkeit emergiert aus Komposition. Dieses Muster überträgt sich auf andere LLM-basierte Systeme, in denen Determinismus wichtig ist.
 
-**Open prompt engineering.** We publish the full BOUNDARY_PROMPT and four canonical few-shot examples (Appendix A). This transparency enables critique, replication, and improvement — a contrast to closed commercial systems where prompts are proprietary.
-
----
-
-## 8. Future Work
-
-### 8.1 Prompt Engineering
-
-Add a fifth canonical few-shot example covering interrupted speech to reduce the interrupted-speech failure mode measured in Section 6.3. Evaluate robustness on 50+ new adversarial transcripts.
-
-### 8.2 Confidence-Threshold-Driven UI
-
-Automatically flag patients where any extracted field has confidence < 0.6 for manual review, reducing cognitive load on the medic. Current implementation shows confidence everywhere; proactive flagging would be more action-oriented.
-
-### 8.3 Retrieval-Augmented Consistency
-
-When extracting a patient's name, cross-reference it against a unit-roster database (if available). Similar checks for rank-to-unit consistency. This would catch common ASR mis-transcriptions (e.g., "Oberstabsfeldwebel" vs "Oberstabsfeldfebel").
-
-### 8.4 9-Liner MEDEVAC Full Flow
-
-Implement the NATO 9-Liner medical evacuation request template with:
-- Line 1: Pickup location (MGRS coordinates from BAT's GPS or voice)
-- Line 2: Radio frequency and call-sign
-- Line 3: Number of patients by precedence (Urgent/Priority/Routine)
-- Line 4: Special equipment required
-- Line 5: Number of patients by litter/ambulatory
-- Line 6: Security at pickup site
-- Line 7: Marking method (panels, pyro, electronic)
-- Line 8: Patient nationality and status
-- Line 9: NBC contamination
-
-Prototype exists; needs dedicated extraction prompt and validation against NATO STANAG 2087.
-
-### 8.5 Speaker Adaptation
-
-Fine-tune Whisper on ~10 hours of medic-voice recordings to improve recognition of domain-specific vocabulary (military ranks, drug names, tactical acronyms). This requires careful data protection in collection — likely out-of-scope for near-term work.
-
-### 8.6 Multi-Lingual Extension
-
-Extend to NATO partner languages (English, French, Dutch) for cross-border medical operations. Gemma 3 has multilingual capability but our prompt engineering is German-specific.
-
-### 8.7 Formal Evaluation
-
-Conduct a formal user study with Bundeswehr medics comparing time-to-complete documentation (SAFIR vs. paper TCCC card) and error rates (SAFIR vs. manual transcription at Role 1).
+**Offenes Prompt-Engineering.** Wir publizieren den vollständigen BOUNDARY_PROMPT und die vier kanonischen Few-Shot-Beispiele (Appendix A). Diese Transparenz ermöglicht Kritik, Replikation und Verbesserung — ein Gegensatz zu geschlossenen kommerziellen Systemen, in denen Prompts proprietär sind.
 
 ---
 
-## 9. Conclusion
+## 8. Zukünftige Arbeit
 
-SAFIR demonstrates that edge-deployed, multi-patient medical speech-to-record is feasible on sub-$500 hardware with 15-W power budget, when a small LLM is composed with careful pre-processing, four-stage deterministic post-merge, and explicit confidence-surfacing. Our evaluation across adversarial German dictations shows the pipeline achieves high accuracy on standard cases and zero hallucinated patients across all test cases, trading recall for precision in accordance with the medical-domain design philosophy that "omitting information is always preferable to inventing it."
+### 8.1 Prompt-Engineering
 
-The system is deployed for the 2026 AFCEA trade show as a demonstration of edge AI in defense contexts. Code and prompt templates are available at the repository indicated in Section 10.
+Ergänzung eines fünften kanonischen Few-Shot-Beispiels, das unterbrochene Rede abdeckt, um das in Abschnitt 6.3 gemessene Fehlermuster zu reduzieren. Evaluierung der Robustheit an 50+ neuen adversariellen Transkripten.
+
+### 8.2 Konfidenz-Schwellen-gesteuerte UI
+
+Automatisches Markieren von Patienten, bei denen ein extrahiertes Feld Konfidenz < 0.6 hat, zur manuellen Nachkontrolle — Reduktion der kognitiven Last des Sanitäters. Die aktuelle Implementation zeigt Konfidenz überall; proaktives Flagging wäre aktionsorientierter.
+
+### 8.3 Retrieval-gestützte Konsistenz
+
+Bei der Extraktion eines Patientennamens Abgleich gegen eine Einheits-Rollbuch-Datenbank (falls verfügbar). Ähnliche Checks für Rang-zu-Einheit-Konsistenz. Das würde häufige ASR-Fehlertranskriptionen abfangen (z.B. „Oberstabsfeldwebel" vs. „Oberstabsfeldfebel").
+
+### 8.4 9-Liner-MEDEVAC Full-Flow
+
+Implementation des NATO-9-Liner-Medizin-Evakuierungs-Anfrage-Templates mit:
+- Line 1: Pickup-Location (MGRS-Koordinaten aus BAT-GPS oder Sprache)
+- Line 2: Funkfrequenz und Rufzeichen
+- Line 3: Patientenzahl nach Dringlichkeit (Urgent/Priority/Routine)
+- Line 4: Erforderliche Sonderausstattung
+- Line 5: Patientenzahl nach liegend/gehfähig
+- Line 6: Sicherheit an der Pickup-Stelle
+- Line 7: Markierungsmethode (Panels, Pyro, elektronisch)
+- Line 8: Patienten-Nationalität und -Status
+- Line 9: ABC-Kontamination
+
+Prototyp existiert; benötigt dedizierten Extraktions-Prompt und Validierung gegen NATO STANAG 2087.
+
+### 8.5 Sprecher-Adaption
+
+Fine-Tuning von Whisper auf ~10 Stunden Sanitäter-Stimmaufnahmen zur Verbesserung der Erkennung domänenspezifischen Vokabulars (militärische Dienstgrade, Medikamentennamen, taktische Akronyme). Erfordert sorgfältigen Datenschutz bei der Erfassung — wahrscheinlich außerhalb des Scope für kurzfristige Arbeit.
+
+### 8.6 Mehrsprachigkeits-Erweiterung
+
+Erweiterung auf NATO-Partnersprachen (Englisch, Französisch, Niederländisch) für grenzübergreifende medizinische Operationen. Gemma 3 hat mehrsprachige Fähigkeiten, aber unser Prompt-Engineering ist deutsch-spezifisch.
+
+### 8.7 Formale Evaluation
+
+Durchführung einer formalen Nutzer-Studie mit Bundeswehr-Sanitätern, die die Zeit-zur-Dokumentations-Fertigstellung (SAFIR vs. Papier-TCCC-Karte) und Fehler-Raten (SAFIR vs. manuelle Transkription an Role 1) vergleicht.
 
 ---
 
-## 10. Acknowledgments
+## 9. Schlussfolgerung
 
-SAFIR was developed by CGI Deutschland in collaboration with the Bundeswehr Sanitätsdienst. We thank the combat medics who volunteered to review prompt designs and test transcripts. We acknowledge the open-source projects that made this work possible: OpenAI (Whisper), Google (Gemma), Alpha Cephei (Vosk), Rhasspy (Piper TTS), Tailscale and WireGuard.
+SAFIR demonstriert, dass edge-basierte Multi-Patienten-Medizin-Sprach-zu-Datensatz-Verarbeitung auf Hardware unter 500 € mit 15-W-Leistungsbudget machbar ist, wenn ein kleines LLM mit sorgfältigem Pre-Processing, vierstufigem deterministischen Post-Merge und expliziter Konfidenz-Sichtbarmachung komponiert wird. Unsere Evaluation über adversarielle deutsche Diktate zeigt, dass die Pipeline hohe Genauigkeit auf Standardfällen erreicht und null halluzinierte Patienten in allen Testfällen produziert — Recall wird gegen Precision getauscht, im Einklang mit der Design-Philosophie medizinischer Domänen: „Das Auslassen von Informationen ist stets dem Erfinden vorzuziehen".
+
+Das System wird für die AFCEA-Messe 2026 als Demonstration von Edge-KI in Verteidigungskontexten eingesetzt. Code und Prompt-Templates sind im in Abschnitt 10 angegebenen Repository verfügbar.
 
 ---
 
-## Appendix A — Complete BOUNDARY_PROMPT
+## 10. Danksagung
 
-Reproduced verbatim from `app.py:2895`:
+SAFIR wurde von CGI Deutschland in Zusammenarbeit mit dem Bundeswehr-Sanitätsdienst entwickelt. Wir danken den Sanitätern, die sich freiwillig zur Überprüfung von Prompt-Designs und Testtranskripten bereiterklärt haben. Wir würdigen die Open-Source-Projekte, die diese Arbeit ermöglicht haben: OpenAI (Whisper), Google (Gemma), Alpha Cephei (Vosk), Rhasspy (Piper TTS), Tailscale und WireGuard.
+
+---
+
+## Anhang A — Vollständiger BOUNDARY_PROMPT
+
+Wörtlich reproduziert aus `app.py:2895`:
 
 ```
 Zerlege Sanitäts-Transkripte in Patienten. Gib die Satzindizes
@@ -552,7 +552,7 @@ BEISPIEL 4 — 2 Patienten, zweiter mit "Wir haben noch":
 
 ---
 
-## Appendix B — References (indicative)
+## Anhang B — Indikative Referenzen
 
 [1] Nuance Communications. Dragon Medical One: Technical Datasheet, 2024.
 
@@ -584,16 +584,16 @@ BEISPIEL 4 — 2 Patienten, zweiter mit "Wir haben noch":
 
 ---
 
-## Appendix C — Code Availability
+## Anhang C — Code-Verfügbarkeit
 
-The SAFIR implementation is available at `github.com/Ajintaro/SAFIR` under terms specified by CGI Deutschland and the Bundeswehr.
+Die SAFIR-Implementierung ist verfügbar unter `github.com/Ajintaro/SAFIR` gemäß der von CGI Deutschland und der Bundeswehr festgelegten Bedingungen.
 
-Key files for replication:
+Schlüsseldateien für Reproduktion:
 
-- `app.py` — field-device application, segmenter orchestration, post-merge stages (lines 2895-2970, 3140-3260)
-- `shared/rfid.py` — RC522 driver + write/erase/verify logic
-- `shared/content_filter.py` — medical keyword whitelist + topic-gating
-- `shared/confidence.py` — field-level confidence scoring
-- `shared/bundeswehr_ranks.py` — rank whitelist + fuzzy matching
-- `backend/app.py` — Rescue Station aggregator
-- `config.json` — full configuration including prompts and voice-command triggers
+- `app.py` — Feldgerät-Applikation, Segmenter-Orchestrierung, Post-Merge-Stufen (Zeilen 2895–2970, 3140–3260)
+- `shared/rfid.py` — RC522-Treiber + Write/Erase/Verify-Logik
+- `shared/content_filter.py` — Medizin-Schlüsselwort-Whitelist + Topic-Gating
+- `shared/confidence.py` — Feld-Level-Konfidenz-Scoring
+- `shared/bundeswehr_ranks.py` — Rang-Whitelist + Fuzzy-Matching
+- `backend/app.py` — Rettungsstation-Aggregator
+- `config.json` — vollständige Konfiguration inkl. Prompts und Voice-Command-Triggern
