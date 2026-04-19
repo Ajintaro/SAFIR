@@ -6051,21 +6051,35 @@
         // Zur Patientendatenbank navigieren (rendered die Tabelle neu)
         navigateTo('patients');
 
-        // Nach dem Render: Row finden, scrollen, Highlight-Klasse setzen
+        // Nach dem Render: Row finden, scrollen, Highlight-Klasse setzen,
+        // und direkt das Detail-Modal öffnen. Der Arzt legt die Karte auf
+        // den Reader und sieht sofort alle Patientendetails (Vitals,
+        // Verletzungen, Transkripte, Timeline) — kein zusätzlicher Klick
+        // auf "Öffnen" nötig. Der Highlight läuft im Hintergrund weiter
+        // damit man nach Schließen des Modals die Row noch visuell
+        // markiert sieht.
         setTimeout(() => {
             const row = document.getElementById('admin-row-' + pid);
-            if (!row) {
+            if (row) {
+                try { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+                // Bestehende Highlights entfernen (falls schnell hintereinander gescannt)
+                document.querySelectorAll('tr.rfid-hit').forEach(r => r.classList.remove('rfid-hit'));
+                // Force-reflow für Retrigger der Animation
+                void row.offsetWidth;
+                row.classList.add('rfid-hit');
+                // Nach 5 s den Highlight wieder abnehmen
+                setTimeout(() => row.classList.remove('rfid-hit'), 5000);
+            } else {
                 console.warn('[RFID] Row nicht gefunden für', pid);
-                return;
             }
-            try { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
-            // Bestehende Highlights entfernen (falls schnell hintereinander gescannt)
-            document.querySelectorAll('tr.rfid-hit').forEach(r => r.classList.remove('rfid-hit'));
-            // Force-reflow für Retrigger der Animation
-            void row.offsetWidth;
-            row.classList.add('rfid-hit');
-            // Nach 5 s den Highlight wieder abnehmen
-            setTimeout(() => row.classList.remove('rfid-hit'), 5000);
+            // Detail-Modal direkt öffnen — Kernanforderung: der Arzt am
+            // Omnikey-Reader soll nach Auflegen der Karte sofort alle
+            // Details sehen, nicht erst noch "Öffnen" klicken müssen.
+            try {
+                openPatientFromAdmin(pid);
+            } catch (e) {
+                console.warn('[RFID] openPatientFromAdmin fehlgeschlagen:', e);
+            }
         }, 120);
 
         showToast('RFID: ' + name + ' (' + uid + ')', '&#128179;', 'voice');
