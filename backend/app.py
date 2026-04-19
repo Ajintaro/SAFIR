@@ -249,10 +249,14 @@ async def get_status():
         "triage": triage_counts,
         "transports_active": len(state.transports),
         "positions": len(state.positions),
-        # Feature-Flags für die einheitliche UI
+        # Feature-Flags für die einheitliche UI. Die Surface hat KEINEN
+        # eigenen Mikrofon-Input und KEIN OLED-Display — das sind
+        # Jetson-spezifische Features. has_map bleibt True fuer die
+        # taktische Lagekarte.
         "has_whisper": False,
         "has_vosk": False,
-        "has_audio": True,
+        "has_audio": False,
+        "has_oled": False,
         "has_map": True,
         "default_page": "role1",
         # Lock-Zustand: wird vom Frontend beim initial /api/status Call

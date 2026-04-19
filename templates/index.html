@@ -3334,8 +3334,8 @@
     <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:10px">
         <button class="hw-tab active" data-tab="hw-system" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer">System</button>
         <button class="hw-tab" data-tab="hw-temps" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Temperatur</button>
-        <button class="hw-tab" data-tab="hw-audio" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Audio</button>
-        <button class="hw-tab" data-tab="hw-oled" onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">OLED</button>
+        <button class="hw-tab" data-tab="hw-audio" data-audio-only onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">Audio</button>
+        <button class="hw-tab" data-tab="hw-oled" data-oled-only onclick="hwTabSwitch(this)" style="flex:1;padding:5px 0;font-size:var(--fs-body-sm);font-weight:600;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer">OLED</button>
     </div>
 
     <!-- Tab: System -->
@@ -3395,7 +3395,7 @@
     </div>
 
     <!-- Tab: Audio -->
-    <div class="hw-tab-content" id="hw-audio" style="display:none">
+    <div class="hw-tab-content" id="hw-audio" data-audio-only style="display:none">
         <div class="field">
             <label>Audio-Eingang</label>
             <select id="device-select" onchange="selectDevice(this.value)"></select>
@@ -3442,7 +3442,7 @@
     </div>
 
     <!-- Tab: OLED-Simulator + virtuelle Taster -->
-    <div class="hw-tab-content" id="hw-oled" style="display:none">
+    <div class="hw-tab-content" id="hw-oled" data-oled-only style="display:none">
         <div style="text-align:center;margin-bottom:8px">
             <div style="display:inline-block;padding:8px;background:#0a0f05;border:1px solid var(--border);border-radius:4px">
                 <img id="oled-preview" alt="OLED" width="256" height="128"
@@ -7975,16 +7975,14 @@
         if (status.default_page && !location.hash) {
             navigateTo(status.default_page);
         }
-        // Hardware-Monitor-Overlay: Geraete-Name (Subtitle) dynamisch
-        // setzen. Jetson bekommt "Jetson Orin Nano", Surface bekommt
-        // "Microsoft Surface / Rettungsstation" o.ae. Faellt zurueck
-        // auf unit_name wenn kein explizites system_name in der Config.
+        // Hardware-Monitor-Overlay: NUR Geraete-Name als Subtitle.
+        // Keine Rollenbezeichnung (Unit-Name steht ohnehin in der Topbar).
         const hwName = document.getElementById('hw-overlay-device-name');
         if (hwName) {
             const devLabel = status.system_name
                 || (status.device === 'leitstelle'
-                    ? 'Microsoft Surface · ' + (status.unit_name || 'Rettungsstation')
-                    : 'Jetson Orin Nano · ' + (status.unit_name || 'BAT'));
+                    ? 'Microsoft Surface'
+                    : 'Jetson Orin Nano');
             hwName.textContent = devLabel;
         }
         // Audio/Recording-Features ausblenden wenn nicht verfügbar
@@ -7997,12 +7995,23 @@
                 recordBtn.style.cursor = 'not-allowed';
             }
         }
-        // Whisper-only-UI-Elemente (Modell-Selector im Hardware-Monitor,
-        // evtl. andere ASR-bezogene Controls) verstecken wenn das
-        // Geraet kein Whisper hat. Das betrifft die Surface wo kein
-        // eigener ASR-Stack laeuft.
+        // Feature-Flag-gesteuerte UI-Elemente verstecken. Pattern:
+        // data-X-only Attribut → Element nur sichtbar wenn has_X===true.
+        // Beispiele: Whisper-Modell-Loader, Audio-Tab, OLED-Tab im
+        // Hardware-Monitor. Die Surface hat weder ASR noch OLED noch
+        // eigenen Mikrofon-Input, deshalb alle drei Blocks unsichtbar.
         if (status.has_whisper === false) {
             document.querySelectorAll('[data-whisper-only]').forEach(el => {
+                el.style.display = 'none';
+            });
+        }
+        if (status.has_audio === false) {
+            document.querySelectorAll('[data-audio-only]').forEach(el => {
+                el.style.display = 'none';
+            });
+        }
+        if (status.has_oled === false) {
+            document.querySelectorAll('[data-oled-only]').forEach(el => {
                 el.style.display = 'none';
             });
         }
