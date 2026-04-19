@@ -56,6 +56,12 @@ class AppState:
         self.ws_clients: list = []
         self.events: list = []            # Chronologischer Event-Feed
         self.peers: dict = {}             # device_id -> {unit_name, ip, port, ...}
+        # Security-Lock: analog zum Jetson. Ein blauer Operator-Chip am Omnikey
+        # entsperrt, nochmal auflegen sperrt wieder. Idle-Watcher sperrt nach
+        # config.security.lock_idle_seconds (default 30 min) ohne Aktivitaet.
+        self.current_operator: dict | None = None  # {uid, label, name, role, since}
+        self.locked: bool = False
+        self.last_activity: float = 0.0  # monotonic timestamp
 
 state = AppState()
 
@@ -482,23 +488,145 @@ async def ingest_from_device(body: dict):
 
 
 # ---------------------------------------------------------------------------
+# Security-Lock: analog zum Jetson. Blaue Operator-Chips entsperren / sperren.
+# ---------------------------------------------------------------------------
+def _find_operator(uid: str) -> dict | None:
+    """Sucht in backend/config.json rfid.operators nach einer passenden UID.
+    Gibt das Operator-Dict zurueck oder None."""
+    uid_norm = (uid or "").strip().upper()
+    if not uid_norm:
+        return None
+    cfg = load_backend_config()
+    operators = (cfg.get("rfid", {}) or {}).get("operators", []) or []
+    for op in operators:
+        if (op.get("uid", "") or "").strip().upper() == uid_norm:
+            return op
+    return None
+
+
+async def _handle_operator_scan(uid: str, op: dict):
+    """Login/Logout-Toggle: selbe Karte auflegen = sperren + logout,
+    andere Karte = direkter Wechsel zu neuem Operator."""
+    import time as _t
+    now_iso = datetime.now().strftime("%H:%M")
+    uid_norm = (uid or "").strip().upper()
+    current = state.current_operator
+    if current and (current.get("uid", "") or "").strip().upper() == uid_norm:
+        # Gleicher Bediener scannt erneut → Logout + Sperren
+        state.current_operator = None
+        await _lock_system(reason="operator_logout")
+        await broadcast({
+            "type": "operator_logout",
+            "uid": uid_norm,
+            "name": op.get("name"),
+        })
+        add_event("operator_logout", f"Operator abgemeldet: {op.get('name', '?')}")
+        return
+
+    # Neuer Operator → ersetzen
+    state.current_operator = {
+        "uid": uid_norm,
+        "label": op.get("label", "?"),
+        "name": op.get("name", ""),
+        "role": op.get("role", ""),
+        "since": now_iso,
+    }
+    state.last_activity = _t.monotonic()
+    await _unlock_system(reason="operator_login")
+    await broadcast({
+        "type": "operator_login",
+        "uid": uid_norm,
+        "label": op.get("label"),
+        "name": op.get("name"),
+        "role": op.get("role"),
+    })
+    add_event("operator_login", f"Operator angemeldet: {op.get('name', '?')} ({op.get('role', '?')})")
+
+
+async def _lock_system(reason: str = "manual"):
+    """Sperrt das System. Idempotent."""
+    if state.locked:
+        return
+    state.locked = True
+    print(f"[LOCK] System gesperrt (reason={reason})", flush=True)
+    try:
+        await broadcast({"type": "system_locked", "reason": reason})
+    except Exception:
+        pass
+
+
+async def _unlock_system(reason: str = "manual"):
+    """Entsperrt + reset Idle-Timer."""
+    import time as _t
+    state.locked = False
+    state.last_activity = _t.monotonic()
+    print(f"[UNLOCK] System entsperrt (reason={reason})", flush=True)
+    try:
+        await broadcast({"type": "system_unlocked", "reason": reason})
+    except Exception:
+        pass
+
+
+async def _idle_watcher_loop():
+    """Hintergrund-Task: sperrt das System nach Inaktivitaet.
+    Schwelle aus backend/config.json security.lock_idle_seconds.
+    Default 30 min — ueberschreibbar via Settings-UI."""
+    import time as _t
+    while True:
+        await asyncio.sleep(30)  # alle 30 s pruefen
+        if state.locked:
+            continue
+        if not state.current_operator:
+            continue  # nur aktive Sessions auto-locken
+        cfg = load_backend_config()
+        threshold = int((cfg.get("security", {}) or {}).get("lock_idle_seconds", 1800))
+        idle = _t.monotonic() - (state.last_activity or 0)
+        if idle > threshold:
+            print(f"[LOCK] Idle-Timeout ({idle:.0f}s > {threshold}s)", flush=True)
+            state.current_operator = None
+            await _lock_system(reason="idle_timeout")
+            await broadcast({"type": "operator_logout", "uid": "", "name": "idle"})
+
+
+# ---------------------------------------------------------------------------
 # Omnikey RFID Lookup — Kern-Feature für die Role 1 Leitstelle
 # ---------------------------------------------------------------------------
 async def _handle_rfid_uid(uid: str) -> dict:
-    """Sucht einen Patienten anhand einer RFID-UID und broadcastet
-    das Ergebnis an alle verbundenen Clients. Wird sowohl vom
-    Omnikey-Background-Loop als auch vom manuellen /api/rfid/lookup
-    Endpoint aufgerufen.
+    """Routed einen RFID-Scan: erst Operator-Check, dann Patient-Lookup.
 
-    Match erfolgt gegen ``patient["rfid_tag_id"]`` — das Feld das der
-    Jetson nach erfolgreichem RC522-Write setzt und via /api/ingest an
-    uns schickt.
+    Reihenfolge kritisch:
+      1. Ist die Karte eine Operator-Karte (in rfid.operators)?
+         → Login/Logout-Toggle. Kein Patient-Lookup, kein rfid_scan_result.
+      2. Sonst: Patient per rfid_tag_id suchen und broadcastet
+         `rfid_scan_result` mit found=True/False.
     """
+    import time as _t
     uid_norm = (uid or "").strip().upper()
+
+    # Schritt 0 — Wenn Lern-Modus aktiv, UID merken und NICHT Login ausloesen.
+    # Erlaubt dem User in der UI, eine neue Karte zu registrieren ohne dass
+    # sie sofort als Login/Logout-Trigger wirkt.
+    if _operator_scan_pending["active"]:
+        _operator_scan_pending["uid"] = uid_norm
+        add_event("operator_scan_captured", f"Karte im Lern-Modus erfasst: {uid_norm}")
+        return {"type": "operator_scan_captured", "uid": uid_norm}
+
+    # Schritt 1 — Operator-Check (blauer Chip)
+    op = _find_operator(uid_norm)
+    if op is not None:
+        await _handle_operator_scan(uid_norm, op)
+        return {"type": "operator_scan", "uid": uid_norm, "matched": True}
+
+    # Schritt 2 — Patient-Lookup. Nur wenn entsperrt, sonst keine Daten-Enthuellung.
+    if state.locked:
+        add_event("rfid_scan_blocked", f"Karte gelesen im gesperrten Zustand: {uid_norm}")
+        return {"type": "rfid_scan_result", "uid": uid_norm, "found": False, "locked": True}
+
+    # Aktivitaets-Timer zuruecksetzen (Patient-Scan ist Aktivitaet)
+    state.last_activity = _t.monotonic()
+
     patient = None
     patient_id = None
-
-    # Linearsuche ist OK — selbst bei 1000 Patienten <1 ms
     for pid, p in state.patients.items():
         tag = (p.get("rfid_tag_id") or "").strip().upper()
         if tag and tag == uid_norm:
@@ -515,7 +643,6 @@ async def _handle_rfid_uid(uid: str) -> dict:
         "timestamp": datetime.now().isoformat(),
     }
 
-    # Event in den Feed damit man den Scan im Verlauf sieht
     if patient:
         add_event(
             "rfid_scan",
@@ -544,6 +671,109 @@ async def rfid_lookup(body: dict):
     if not uid:
         return {"status": "error", "error": "uid fehlt"}
     return await _handle_rfid_uid(uid)
+
+
+# ---------------------------------------------------------------------------
+# Operator-Verwaltung: CRUD fuer rfid.operators + Scan-Hilfe fuer UI
+# ---------------------------------------------------------------------------
+_operator_scan_pending = {"active": False, "uid": None, "started_at": None}
+
+
+@app.get("/api/operators")
+async def operators_list():
+    """Alle konfigurierten Operator-Karten (uid, label, name, role)."""
+    cfg = load_backend_config()
+    ops = (cfg.get("rfid", {}) or {}).get("operators", []) or []
+    return {"operators": ops, "locked": state.locked, "current": state.current_operator}
+
+
+@app.post("/api/operators")
+async def operators_add(body: dict):
+    """Neuen Operator in rfid.operators anhaengen.
+    Body: {"uid": "AABBCC11", "label": "B1", "name": "OFw Hugendubel", "role": "arzt"}"""
+    uid = (body.get("uid") or "").strip().upper()
+    if not uid:
+        return {"error": "uid fehlt"}
+    label = (body.get("label") or "").strip() or uid[:4]
+    name = (body.get("name") or "").strip() or "Unbekannt"
+    role = (body.get("role") or "").strip() or "bat_soldat_1"
+
+    cfg = load_backend_config()
+    cfg.setdefault("rfid", {}).setdefault("operators", [])
+    # Duplikat pruefen
+    for op in cfg["rfid"]["operators"]:
+        if (op.get("uid") or "").upper() == uid:
+            return {"error": f"UID {uid} ist schon registriert"}
+    cfg["rfid"]["operators"].append({
+        "uid": uid, "label": label, "name": name, "role": role,
+    })
+    save_backend_config(cfg)
+    add_event("operator_added", f"Neue Operator-Karte registriert: {name} ({label})")
+    # Bei erster Operator-Karte: Lock aktivieren (ab jetzt mit Auth)
+    if len(cfg["rfid"]["operators"]) == 1 and not state.locked:
+        state.locked = True
+        await broadcast({"type": "system_locked", "reason": "first_operator_registered"})
+    return {"status": "ok", "operators": cfg["rfid"]["operators"]}
+
+
+@app.delete("/api/operators/{uid}")
+async def operators_delete(uid: str):
+    """Entfernt einen Operator aus rfid.operators."""
+    uid_norm = uid.strip().upper()
+    cfg = load_backend_config()
+    ops = cfg.setdefault("rfid", {}).setdefault("operators", [])
+    before = len(ops)
+    cfg["rfid"]["operators"] = [o for o in ops if (o.get("uid") or "").upper() != uid_norm]
+    removed = before - len(cfg["rfid"]["operators"])
+    if removed == 0:
+        return {"error": f"UID {uid_norm} nicht gefunden"}
+    save_backend_config(cfg)
+    add_event("operator_removed", f"Operator-Karte entfernt: {uid_norm}")
+    # Falls aktueller Operator geloescht wurde → sofort abmelden
+    if state.current_operator and (state.current_operator.get("uid") or "").upper() == uid_norm:
+        state.current_operator = None
+        await _lock_system(reason="operator_deleted")
+        await broadcast({"type": "operator_logout", "uid": uid_norm, "name": "removed"})
+    return {"status": "ok", "removed": removed, "operators": cfg["rfid"]["operators"]}
+
+
+@app.post("/api/operators/scan-start")
+async def operators_scan_start():
+    """Startet den Karten-Lern-Modus: die naechste am Omnikey gelesene UID
+    wird gemerkt (nicht Login-triggert) und kann per /api/operators/scan-status
+    abgefragt werden. Frontend baut darauf den Registrierungs-Dialog.
+    Timeout: 30 Sekunden."""
+    import time as _t
+    _operator_scan_pending["active"] = True
+    _operator_scan_pending["uid"] = None
+    _operator_scan_pending["started_at"] = _t.monotonic()
+    return {"status": "ok", "timeout_seconds": 30}
+
+
+@app.get("/api/operators/scan-status")
+async def operators_scan_status():
+    """Gibt die letzte gescannte UID zurueck (oder null wenn noch keine).
+    Frontend polled alle 500ms bis UID da ist oder Timeout eintritt."""
+    import time as _t
+    if not _operator_scan_pending["active"]:
+        return {"active": False, "uid": None}
+    elapsed = _t.monotonic() - (_operator_scan_pending["started_at"] or 0)
+    if elapsed > 30:
+        _operator_scan_pending["active"] = False
+        return {"active": False, "uid": None, "timeout": True}
+    return {
+        "active": True,
+        "uid": _operator_scan_pending["uid"],
+        "elapsed_seconds": round(elapsed, 1),
+    }
+
+
+@app.post("/api/operators/scan-cancel")
+async def operators_scan_cancel():
+    """Bricht den Lern-Modus ab."""
+    _operator_scan_pending["active"] = False
+    _operator_scan_pending["uid"] = None
+    return {"status": "ok"}
 
 
 @app.post("/api/rfid/clear-tag")
@@ -1407,6 +1637,20 @@ async def startup():
     asyncio.create_task(_heartbeat_loop())
     asyncio.create_task(_system_stats_loop())
     asyncio.create_task(_oled_loop())
+    # Security-Lock Idle-Watcher: sperrt System nach lock_idle_seconds Inaktivitaet
+    asyncio.create_task(_idle_watcher_loop())
+
+    # Start-Zustand: gesperrt. User muss Operator-Karte am Omnikey auflegen.
+    # Gilt nur wenn Operators ueberhaupt konfiguriert sind — sonst Open-Mode
+    # fuer Entwicklung/Demo ohne Operator-Pflicht.
+    _cfg = load_backend_config()
+    _ops = (_cfg.get("rfid", {}) or {}).get("operators", []) or []
+    if _ops:
+        state.locked = True
+        print(f"  Security-Lock aktiv ({len(_ops)} Operator-Karten konfiguriert)")
+    else:
+        state.locked = False
+        print(f"  Security-Lock deaktiviert (keine Operator-Karten in config.json)")
 
     # Omnikey RFID Reader: Background-Task polled PC/SC-Reader und feuert
     # _handle_rfid_uid() pro gelesener Karte. Bricht nicht wenn pyscard

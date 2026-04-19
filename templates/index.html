@@ -528,7 +528,18 @@
             padding: 8px;
             gap: 4px;
             flex: 1;
+            min-height: 0;
+            /* Scroll bei vielen Menu-Items — sonst waren die untersten Eintraege
+               (z.B. "Einstellungen") auf kleineren Bildschirmen abgeschnitten. */
+            overflow-y: auto;
+            /* Dezente Scrollbar in der Sidebar */
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
         }
+        .sidebar-nav::-webkit-scrollbar { width: 6px; }
+        .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .sidebar-nav::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
         /* Nav-Item — Phase 10: 16 px Label, 44 px Touch-Target-Hoehe */
         .nav-item {
@@ -2544,6 +2555,10 @@
                         <span class="settings-nav-icon">&#128273;</span>
                         Sicherheit
                     </div>
+                    <div class="settings-nav-item" onclick="showSettingsSection('operators')" data-settings="operators">
+                        <span class="settings-nav-icon">&#128179;</span>
+                        Operatoren
+                    </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('philosophy')" data-settings="philosophy">
                         <span class="settings-nav-icon">&#128161;</span>
                         Philosophie
@@ -2846,6 +2861,91 @@
 
                         <div style="margin-top:8px;font-size:var(--fs-body-sm);color:var(--text-dim);text-align:right">
                             Ausführliches Dokument: <code>docs/security-architecture.md</code>
+                        </div>
+                    </div>
+
+                    <!-- Operator-Karten-Verwaltung (RFID-Login-Dongles)
+                         Identisch auf Jetson und Surface. Frontend-JS ruft je
+                         nach Geraet den lokalen /api/operators-Endpoint auf. -->
+                    <div class="settings-section" id="settings-operators">
+                        <div class="settings-title">&#128179; Operator-Karten (RFID-Login)</div>
+                        <div class="settings-desc">
+                            Blaue RFID-Chips am Karten-Leser sperren und entsperren das System.
+                            Jede Karte identifiziert einen Sanit&auml;ter oder Arzt mit Rang und Rolle.
+                            Dieselbe Karte nochmal auflegen = abmelden + sperren.
+                        </div>
+
+                        <div class="settings-card" style="border-left:3px solid var(--mil-tan,#c8b878)">
+                            <div class="settings-card-title">Aktuelle Sitzung</div>
+                            <div id="operator-current-status" style="font-size:var(--fs-body);line-height:1.8">
+                                <em style="color:var(--text-dim)">Laden...</em>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="settings-card-title">Registrierte Karten</div>
+                            <div id="operators-table-wrap" style="overflow-x:auto">
+                                <table class="ops-table" style="width:100%;border-collapse:collapse;font-size:var(--fs-body-sm)">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:left;padding:7px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border)">Label</th>
+                                            <th style="text-align:left;padding:7px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border)">Name</th>
+                                            <th style="text-align:left;padding:7px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border)">Rolle</th>
+                                            <th style="text-align:left;padding:7px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border);font-family:monospace">UID</th>
+                                            <th style="text-align:right;padding:7px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border)">Aktion</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="operators-tbody">
+                                        <tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text-dim)">Laden...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="settings-card" style="border-left:3px solid var(--info,#5DADE2)">
+                            <div class="settings-card-title" style="color:var(--info,#5DADE2)">&#10133; Neue Karte registrieren</div>
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
+                                Leg den Karten-Lern-Modus an, halte dann den blauen Chip auf den Leser.
+                                Die UID wird automatisch ausgelesen. Danach Name, Rang und Rolle
+                                eintragen und speichern.
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn" style="background:var(--info,#5DADE2);color:#fff" onclick="operatorScanStart()">Karte auflegen &amp; lesen</button>
+                            </div>
+                            <div id="operator-scan-panel" style="display:none;margin-top:14px;padding:12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius)">
+                                <div id="operator-scan-waiting" style="text-align:center;padding:20px">
+                                    <div style="font-size:32px;margin-bottom:8px">&#128179;</div>
+                                    <div style="font-weight:700;color:var(--info,#5DADE2);font-size:var(--fs-body)">Warte auf Karte am Leser...</div>
+                                    <div id="operator-scan-timer" style="color:var(--text-dim);font-size:var(--fs-body-sm);margin-top:4px">30 s Timeout</div>
+                                    <button class="btn" style="margin-top:10px;padding:4px 12px;font-size:var(--fs-body-sm)" onclick="operatorScanCancel()">Abbrechen</button>
+                                </div>
+                                <div id="operator-scan-form" style="display:none">
+                                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:10px">
+                                        UID erfasst: <code id="operator-scan-uid" style="color:var(--mil-tan,#c8b878);font-weight:700">-</code>
+                                    </div>
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                                        <label style="font-size:var(--fs-body-sm)">
+                                            <span style="color:var(--text-dim);display:block;margin-bottom:3px">Label (z.B. OP1, B1)</span>
+                                            <input type="text" id="operator-new-label" placeholder="OP1" style="width:100%;padding:6px 10px;background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:3px">
+                                        </label>
+                                        <label style="font-size:var(--fs-body-sm)">
+                                            <span style="color:var(--text-dim);display:block;margin-bottom:3px">Rolle</span>
+                                            <select id="operator-new-role" style="width:100%;padding:6px 10px;background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:3px">
+                                                <option value="bat_soldat_1">bat_soldat_1 (Sanitäter)</option>
+                                                <option value="arzt">arzt (volle Rechte)</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <label style="font-size:var(--fs-body-sm);display:block;margin-bottom:10px">
+                                        <span style="color:var(--text-dim);display:block;margin-bottom:3px">Name + Rang (z.B. "OFw Müller")</span>
+                                        <input type="text" id="operator-new-name" placeholder="OFw Müller" style="width:100%;padding:6px 10px;background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:3px">
+                                    </label>
+                                    <div class="btn-group">
+                                        <button class="btn btn-cgi" onclick="operatorSave()">Speichern</button>
+                                        <button class="btn" onclick="operatorScanCancel()">Abbrechen</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -4009,6 +4109,173 @@
             _startTailscaleAutoRefresh();
         } else {
             _stopTailscaleAutoRefresh();
+        }
+
+        // Operatoren-Section: Liste frisch laden beim Betreten
+        if (sectionId === 'operators') {
+            loadOperators();
+        } else {
+            // Scan-Modus automatisch abbrechen wenn User Section verlaesst
+            if (_operatorScanPollTimer) {
+                clearInterval(_operatorScanPollTimer);
+                _operatorScanPollTimer = null;
+            }
+        }
+    }
+
+    // ==================== OPERATOR-KARTEN-VERWALTUNG ====================
+    // Laedt und rendert /api/operators, bietet Registrierungs-Workflow:
+    // Scan starten → UID wird am Reader erfasst → Form ausfuellen →
+    // speichern. Identisch auf Jetson und Surface (beide haben gleiche
+    // Endpoint-Struktur).
+    let _operatorScanPollTimer = null;
+
+    async function loadOperators() {
+        const currentEl = document.getElementById('operator-current-status');
+        const tbody = document.getElementById('operators-tbody');
+        try {
+            const res = await api('/api/operators');
+            const ops = res.operators || [];
+            // Aktueller Operator + Lock-Status
+            if (res.current) {
+                const c = res.current;
+                currentEl.innerHTML = `
+                    <div style="color:var(--mil-green,#5a9e3a);font-weight:700">&#9989; Angemeldet: ${escapeHtml(c.name || '?')}</div>
+                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim)">
+                        Label: <code>${escapeHtml(c.label || '')}</code> ·
+                        Rolle: <code>${escapeHtml(c.role || '')}</code> ·
+                        Seit: ${escapeHtml(c.since || '')}
+                    </div>
+                `;
+            } else if (res.locked) {
+                currentEl.innerHTML = `<div style="color:var(--cgi-red,#cc2222);font-weight:700">&#128274; System gesperrt — Operator-Karte auflegen</div>`;
+            } else {
+                currentEl.innerHTML = `<div style="color:var(--text-dim)">Keine aktive Sitzung · System nicht gesperrt (keine Operator-Karten konfiguriert)</div>`;
+            }
+            // Tabelle
+            if (ops.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text-dim)">Noch keine Operator-Karte registriert. Nutze "Karte auflegen &amp; lesen" unten.</td></tr>`;
+            } else {
+                tbody.innerHTML = ops.map(op => `
+                    <tr style="border-bottom:1px solid var(--border)">
+                        <td style="padding:8px 10px"><span style="display:inline-block;padding:2px 8px;background:var(--bg-elevated);border:1px solid var(--mil-tan,#c8b878);color:var(--mil-tan,#c8b878);border-radius:3px;font-family:monospace;font-weight:700">${escapeHtml(op.label || '?')}</span></td>
+                        <td style="padding:8px 10px">${escapeHtml(op.name || 'Unbekannt')}</td>
+                        <td style="padding:8px 10px"><code style="color:var(--info,#5DADE2)">${escapeHtml(op.role || '-')}</code></td>
+                        <td style="padding:8px 10px;font-family:monospace;font-size:var(--fs-body-sm);color:var(--text-dim)">${escapeHtml(op.uid || '-')}</td>
+                        <td style="padding:8px 10px;text-align:right">
+                            <button class="btn" style="padding:3px 10px;font-size:var(--fs-body-sm);color:var(--cgi-red,#cc2222);border-color:var(--cgi-red,#cc2222)" onclick="operatorDelete('${escapeHtml(op.uid || '')}', '${escapeHtml(op.name || '')}')">Löschen</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--cgi-red,#cc2222)">Fehler beim Laden: ${e}</td></tr>`;
+        }
+    }
+
+    function escapeHtml(s) {
+        return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function operatorScanStart() {
+        const panel = document.getElementById('operator-scan-panel');
+        const waiting = document.getElementById('operator-scan-waiting');
+        const form = document.getElementById('operator-scan-form');
+        panel.style.display = 'block';
+        waiting.style.display = 'block';
+        form.style.display = 'none';
+        try {
+            await api('/api/operators/scan-start', 'POST', {});
+        } catch (e) {
+            showToast('Scan-Start fehlgeschlagen: ' + e, '&#9888;');
+            return;
+        }
+        // Polling alle 500 ms bis UID erfasst oder Timeout
+        let pollCount = 0;
+        if (_operatorScanPollTimer) clearInterval(_operatorScanPollTimer);
+        _operatorScanPollTimer = setInterval(async () => {
+            pollCount++;
+            try {
+                const res = await api('/api/operators/scan-status');
+                if (res.uid) {
+                    // UID erfasst → Form zeigen
+                    clearInterval(_operatorScanPollTimer);
+                    _operatorScanPollTimer = null;
+                    document.getElementById('operator-scan-uid').textContent = res.uid;
+                    waiting.style.display = 'none';
+                    form.style.display = 'block';
+                    // Label-Vorschlag: nächste freie "OP<n>"
+                    const existing = document.querySelectorAll('#operators-tbody tr').length;
+                    document.getElementById('operator-new-label').value = 'OP' + (existing + 1);
+                    document.getElementById('operator-new-name').focus();
+                    return;
+                }
+                if (res.timeout || !res.active) {
+                    clearInterval(_operatorScanPollTimer);
+                    _operatorScanPollTimer = null;
+                    panel.style.display = 'none';
+                    showToast('Zeit abgelaufen — keine Karte erfasst', '&#9888;');
+                    return;
+                }
+                // Timer-Countdown updaten
+                const remaining = Math.max(0, 30 - (res.elapsed_seconds || 0));
+                document.getElementById('operator-scan-timer').textContent =
+                    remaining.toFixed(0) + ' s Restzeit';
+            } catch (e) {
+                clearInterval(_operatorScanPollTimer);
+                _operatorScanPollTimer = null;
+                panel.style.display = 'none';
+                showToast('Scan-Status-Fehler: ' + e, '&#9888;');
+            }
+        }, 500);
+    }
+
+    async function operatorScanCancel() {
+        if (_operatorScanPollTimer) {
+            clearInterval(_operatorScanPollTimer);
+            _operatorScanPollTimer = null;
+        }
+        try { await api('/api/operators/scan-cancel', 'POST', {}); } catch (e) {}
+        document.getElementById('operator-scan-panel').style.display = 'none';
+    }
+
+    async function operatorSave() {
+        const uid = document.getElementById('operator-scan-uid').textContent.trim();
+        const label = document.getElementById('operator-new-label').value.trim();
+        const name = document.getElementById('operator-new-name').value.trim();
+        const role = document.getElementById('operator-new-role').value;
+        if (!uid || !name) {
+            showToast('UID und Name sind erforderlich', '&#9888;');
+            return;
+        }
+        try {
+            const res = await api('/api/operators', 'POST', { uid, label, name, role });
+            if (res.error) {
+                showToast(res.error, '&#9888;');
+                return;
+            }
+            showToast('Operator "' + name + '" registriert', '&#9989;');
+            document.getElementById('operator-scan-panel').style.display = 'none';
+            document.getElementById('operator-new-label').value = '';
+            document.getElementById('operator-new-name').value = '';
+            loadOperators();
+        } catch (e) {
+            showToast('Speichern fehlgeschlagen: ' + e, '&#9888;');
+        }
+    }
+
+    async function operatorDelete(uid, name) {
+        if (!confirm('Operator "' + name + '" (' + uid + ') wirklich löschen?\n\nFalls dieser Operator aktuell angemeldet ist, wird das System sofort gesperrt.')) return;
+        try {
+            const res = await api('/api/operators/' + encodeURIComponent(uid), 'DELETE');
+            if (res.error) {
+                showToast(res.error, '&#9888;');
+                return;
+            }
+            showToast('Operator entfernt', '&#9989;');
+            loadOperators();
+        } catch (e) {
+            showToast('Löschen fehlgeschlagen: ' + e, '&#9888;');
         }
     }
 

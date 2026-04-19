@@ -270,12 +270,6 @@
     },
     "navigation": [
         {
-            "id": "home",
-            "label": "Start",
-            "icon": "&#9671;",
-            "default": true
-        },
-        {
             "id": "separator-1",
             "type": "separator",
             "label": "Rettungskette"
@@ -284,7 +278,8 @@
             "id": "recording",
             "label": "Phase 0",
             "icon": "&#9873;",
-            "subtitle": "Selbst-/Kameradenhilfe"
+            "subtitle": "Selbst-/Kameradenhilfe",
+            "default": true
         },
         {
             "id": "role1",

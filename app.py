@@ -461,7 +461,24 @@ def _handle_rfid_scan(uid: str):
     """
     state.last_rfid_uid = uid
 
-    # Chip-Registrierung hat Vorrang
+    # Web-UI Lern-Modus hat hoechste Prioritaet: UID wird gemerkt, kein
+    # Login-Trigger. User fuellt im Frontend Label/Name/Rolle aus und
+    # schickt dann POST /api/operators zum Speichern.
+    if _operator_scan_pending["active"]:
+        import time as _t
+        elapsed = _t.monotonic() - (_operator_scan_pending["started_at"] or 0)
+        if elapsed <= 30:
+            _operator_scan_pending["uid"] = uid.upper()
+            try:
+                oled_menu.show_status("CHIP ERFASST", uid[:10])
+                tts.speak("Karte erfasst")
+            except Exception:
+                pass
+            return
+        else:
+            _operator_scan_pending["active"] = False
+
+    # Chip-Registrierung via OLED-Taster hat ebenfalls Vorrang
     if state.chip_register_mode:
         if time.monotonic() <= state.chip_register_until:
             state.chip_register_mode = False
@@ -4559,6 +4576,91 @@ async def rfid_batch_cancel():
         return {"status": "error", "error": "Kein RFID-Schreiben aktiv"}
     state.rfid_write_cancel = True
     tts.speak("Karten-Schreiben wird abgebrochen")
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Operator-Verwaltung: CRUD fuer rfid.operators + Scan-Hilfe fuer UI
+# ---------------------------------------------------------------------------
+# Auch auf dem Jetson verfuegbar, damit User Operator-Karten ueber das
+# Frontend (Settings > Operator-Karten) registrieren / loeschen kann.
+# Gleiche API-Struktur wie backend/app.py fuer konsistentes Frontend-JS.
+_operator_scan_pending = {"active": False, "uid": None, "started_at": None}
+
+
+@app.get("/api/operators")
+async def operators_list():
+    cfg = load_config()
+    ops = (cfg.get("rfid", {}) or {}).get("operators", []) or []
+    return {"operators": ops, "locked": state.locked, "current": state.current_operator}
+
+
+@app.post("/api/operators")
+async def operators_add(body: dict):
+    uid = (body.get("uid") or "").strip().upper()
+    if not uid:
+        return {"error": "uid fehlt"}
+    label = (body.get("label") or "").strip() or uid[:4]
+    name = (body.get("name") or "").strip() or "Unbekannt"
+    role = (body.get("role") or "").strip() or "bat_soldat_1"
+    cfg = load_config()
+    cfg.setdefault("rfid", {}).setdefault("operators", [])
+    for op in cfg["rfid"]["operators"]:
+        if (op.get("uid") or "").upper() == uid:
+            return {"error": f"UID {uid} ist schon registriert"}
+    cfg["rfid"]["operators"].append({
+        "uid": uid, "label": label, "name": name, "role": role,
+    })
+    save_config(cfg)
+    return {"status": "ok", "operators": cfg["rfid"]["operators"]}
+
+
+@app.delete("/api/operators/{uid}")
+async def operators_delete(uid: str):
+    uid_norm = uid.strip().upper()
+    cfg = load_config()
+    ops = cfg.setdefault("rfid", {}).setdefault("operators", [])
+    before = len(ops)
+    cfg["rfid"]["operators"] = [o for o in ops if (o.get("uid") or "").upper() != uid_norm]
+    removed = before - len(cfg["rfid"]["operators"])
+    if removed == 0:
+        return {"error": f"UID {uid_norm} nicht gefunden"}
+    save_config(cfg)
+    if state.current_operator and (state.current_operator.get("uid") or "").upper() == uid_norm:
+        state.current_operator = None
+        await _lock_system(reason="operator_deleted")
+    return {"status": "ok", "removed": removed, "operators": cfg["rfid"]["operators"]}
+
+
+@app.post("/api/operators/scan-start")
+async def operators_scan_start():
+    import time as _t
+    _operator_scan_pending["active"] = True
+    _operator_scan_pending["uid"] = None
+    _operator_scan_pending["started_at"] = _t.monotonic()
+    return {"status": "ok", "timeout_seconds": 30}
+
+
+@app.get("/api/operators/scan-status")
+async def operators_scan_status():
+    import time as _t
+    if not _operator_scan_pending["active"]:
+        return {"active": False, "uid": None}
+    elapsed = _t.monotonic() - (_operator_scan_pending["started_at"] or 0)
+    if elapsed > 30:
+        _operator_scan_pending["active"] = False
+        return {"active": False, "uid": None, "timeout": True}
+    return {
+        "active": True,
+        "uid": _operator_scan_pending["uid"],
+        "elapsed_seconds": round(elapsed, 1),
+    }
+
+
+@app.post("/api/operators/scan-cancel")
+async def operators_scan_cancel():
+    _operator_scan_pending["active"] = False
+    _operator_scan_pending["uid"] = None
     return {"status": "ok"}
 
 
