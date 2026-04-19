@@ -1261,6 +1261,91 @@
             font-family: var(--font-mono);
             font-variant-numeric: tabular-nums;
         }
+        /* Inbound-Alerts: prominent Warn-Panel fuer aktive BAT-Anfahrten */
+        .r1-inbound-wrap {
+            flex-shrink: 0;
+            padding: 10px 12px;
+            background: linear-gradient(180deg, rgba(212,135,26,0.12) 0%, rgba(212,135,26,0.04) 100%);
+            border-bottom: 1px solid rgba(212,135,26,0.35);
+            border-top: 2px solid var(--mil-amber, #d4871a);
+            animation: r1-inbound-pulse 3s ease-in-out infinite;
+        }
+        @keyframes r1-inbound-pulse {
+            0%, 100% { box-shadow: inset 0 0 0 rgba(212,135,26,0); }
+            50% { box-shadow: inset 0 0 12px rgba(212,135,26,0.25); }
+        }
+        .r1-inbound-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--mil-amber, #d4871a);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .r1-inbound-title::before {
+            content: "●";
+            color: var(--mil-amber, #d4871a);
+            animation: r1-inbound-dot-blink 1.2s ease-in-out infinite;
+        }
+        @keyframes r1-inbound-dot-blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .r1-inbound-item {
+            display: grid;
+            grid-template-columns: 24px 1fr auto;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            margin-bottom: 4px;
+            background: var(--bg-elevated);
+            border: 1px solid rgba(212,135,26,0.2);
+            border-left: 3px solid var(--mil-amber, #d4871a);
+            border-radius: 3px;
+        }
+        .r1-inbound-item:last-child { margin-bottom: 0; }
+        .r1-inbound-icon { font-size: 18px; }
+        .r1-inbound-main {
+            display: flex; flex-direction: column; gap: 1px;
+            min-width: 0; overflow: hidden;
+        }
+        .r1-inbound-bat {
+            font-size: var(--fs-body);
+            font-weight: 700;
+            color: var(--text-primary);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .r1-inbound-meta {
+            font-size: var(--fs-body-sm);
+            color: var(--text-dim);
+        }
+        .r1-inbound-meta .r1-inbound-count {
+            color: var(--cgi-red, #cc2222);
+            font-weight: 700;
+        }
+        .r1-inbound-meta .r1-inbound-empty {
+            color: var(--text-dim);
+            font-style: italic;
+        }
+        .r1-inbound-stats {
+            display: flex; flex-direction: column;
+            align-items: flex-end; gap: 2px;
+            font-variant-numeric: tabular-nums;
+        }
+        .r1-inbound-dist {
+            font-size: var(--fs-body);
+            font-weight: 700;
+            color: var(--info, #5DADE2);
+        }
+        .r1-inbound-eta {
+            font-size: 10px;
+            color: var(--mil-amber, #d4871a);
+            font-weight: 600;
+        }
+
         .role1-transport-list { flex: 1; overflow-y: auto; padding: var(--space-3); }
         .role1-transport-card {
             background: var(--bg-surface2); border: 1px solid var(--border);
@@ -2231,6 +2316,12 @@
                     <!-- Triage-Leiste entfernt: Triage wird erst in Role 1
                          vom Arzt gesetzt, ist bei eingehenden BATs immer
                          leer und daher unnuetz als Counter ueber der Liste. -->
+
+                    <!-- Inbound-Alerts: zeigt prominent alle BATs die aktuell
+                         zur Rettungsstation unterwegs sind. Wird von
+                         role1UpdateInboundAlerts() befuellt, versteckt sich
+                         wenn keine Anfahrt aktiv ist. -->
+                    <div id="r1-inbound-alerts" class="r1-inbound-wrap" style="display:none"></div>
 
                     <!-- Transport-Liste -->
                     <div class="role1-transport-list" id="r1-transport-list">
@@ -4696,6 +4787,10 @@
                         const km = haversineKm(lat, lng, R1_POS.lat, R1_POS.lng);
                         updateDistEtaChips(card, km, pos.speed_kmh || 0);
                     }
+                    // Inbound-Alert-Panel live aktualisieren (Distanz/ETA
+                    // wandern, Leerfahrt-Badge koennte sich aendern wenn
+                    // ein Patient zwischendurch hinzukommt).
+                    role1UpdateInboundAlerts();
 
                     if (role1Map) {
                         const posKey = `${lat.toFixed(6)}_${lng.toFixed(6)}`;
@@ -4807,6 +4902,9 @@
                     role1ArrivedBats = role1ArrivedBats || {};
                     role1ArrivedBats[msg.unit_name] = true;
                     showToast('BAT ' + msg.unit_name + ' eingetroffen', '\u2705', 'info');
+                    // Inbound-Liste aktualisieren — der gerade angekommene
+                    // BAT verschwindet dort, da er nicht mehr "auf Anfahrt" ist.
+                    try { role1UpdateInboundAlerts(); } catch (e) {}
                 }
                 break;
             case 'init':
@@ -7205,8 +7303,100 @@
     let role1PrevBySource = {};  // Cache für inkrementelle Updates
     let role1LastBySource = {};  // Aktuellste Gruppierung für Marker-Updates
 
+    // Inbound-Alerts: liste alle BATs die aktuell zur Rettungsstation
+    // unterwegs sind. "Unterwegs" = speed_kmh > 0.5 (bewegt sich) UND
+    // nicht als arrived markiert. Gibt fuer jeden BAT Name, Patient-
+    // Zahl (oder "Leerfahrt"), verbleibende Distanz und geschaetzte
+    // Restzeit aus.
+    function role1UpdateInboundAlerts() {
+        const wrap = document.getElementById('r1-inbound-alerts');
+        if (!wrap) return;
+
+        const inbound = [];
+        Object.entries(role1Positions).forEach(([unitName, pos]) => {
+            if (!pos || pos.lat == null || pos.lon == null) return;
+            const speed = Number(pos.speed_kmh || 0);
+            if (speed <= 0.5) return;  // steht still
+            if (role1ArrivedBats && role1ArrivedBats[unitName]) return;  // schon da
+            const km = haversineKm(pos.lat, pos.lon, R1_POS.lat, R1_POS.lng);
+            // Patienten dieses BATs zaehlen (nur inbound/registered, nicht
+            // bereits "arrived" — die bleiben in der Transport-Liste)
+            const batPts = role1Patients.filter(p => {
+                const key = p.unit_name || p.created_by || p.device_id || 'Unbekannt';
+                if (key !== unitName) return false;
+                const status = (p.flow_status || '').toLowerCase();
+                return status !== 'arrived' && status !== 'in_treatment'
+                    && status !== 'transferred' && status !== 'outbound';
+            });
+            inbound.push({
+                unit: unitName,
+                patients: batPts.length,
+                km,
+                speedKmh: speed,
+                eta: formatEta(km, speed),
+                dist: formatDistance(km),
+            });
+        });
+
+        if (inbound.length === 0) {
+            wrap.style.display = 'none';
+            wrap.innerHTML = '';
+            return;
+        }
+
+        // Sortiert nach Distanz aufsteigend (naechster BAT zuerst)
+        inbound.sort((a, b) => a.km - b.km);
+
+        const items = inbound.map(i => {
+            const metaParts = [];
+            if (i.patients > 0) {
+                metaParts.push(
+                    `<span class="r1-inbound-count">${i.patients} Verwundete${i.patients === 1 ? 'r' : ''}</span>`
+                );
+            } else {
+                metaParts.push(`<span class="r1-inbound-empty">Leerfahrt</span>`);
+            }
+            metaParts.push(`${Math.round(i.speedKmh)} km/h`);
+            return `
+                <div class="r1-inbound-item" onclick="role1FocusBat('${escapeHtml(i.unit)}')" title="Auf Karte anzeigen">
+                    <div class="r1-inbound-icon">&#9873;</div>
+                    <div class="r1-inbound-main">
+                        <div class="r1-inbound-bat">${escapeHtml(i.unit)}</div>
+                        <div class="r1-inbound-meta">${metaParts.join(' &middot; ')}</div>
+                    </div>
+                    <div class="r1-inbound-stats">
+                        <div class="r1-inbound-dist">${escapeHtml(i.dist)}</div>
+                        ${i.eta ? `<div class="r1-inbound-eta">ETA ${escapeHtml(i.eta)}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const headerLabel = inbound.length === 1
+            ? `1 BAT auf Anfahrt`
+            : `${inbound.length} BATs auf Anfahrt`;
+
+        wrap.innerHTML = `
+            <div class="r1-inbound-title">${headerLabel}</div>
+            ${items}
+        `;
+        wrap.style.display = 'block';
+    }
+
+    // Klick auf Inbound-Eintrag: zoomt auf den BAT-Marker auf der Karte
+    function role1FocusBat(unitName) {
+        if (!role1Map || !role1Markers[unitName]) return;
+        try {
+            role1Map.setView(role1Markers[unitName].getLatLng(), 14);
+            role1Markers[unitName].openPopup();
+        } catch (e) {}
+    }
+
     function role1UpdateUI() {
         const patients = role1Patients;
+
+        // Inbound-Alert-Panel aktualisieren (anfahrende BATs + Leerfahrten)
+        role1UpdateInboundAlerts();
 
         // Triage-Counter-Update entfernt. Die Elemente r1-tc-tN wurden
         // mit der Triage-Leiste aus der UI entfernt — Triage wird erst
