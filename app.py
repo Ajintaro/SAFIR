@@ -3214,29 +3214,65 @@ def segment_transcript_to_patients(transcript: str) -> dict:
     # fuehren) kann diese Regel Boundaries WIEDER hinzufuegen die Gemma
     # uebersehen hat.
     #
-    # Konservativ: Nur sehr eindeutige Trigger-Phrasen. False-Positives
-    # wuerden hier echte Patienten fragmentieren. Daher keine losen
-    # Substrings wie "patient ist" (zu viele unbeabsichtigte Treffer).
-    STRONG_START_MARKERS = (
-        "ein weiterer patient ist",
-        "eine weitere patientin ist",
-        "ein weiterer verwundeter ist",
-        "eine weitere verwundete ist",
-        "wir haben eine weitere patient",      # patientin + variants
-        "wir haben einen weiteren patient",    # patienten + variants
-        "wir haben noch einen",
-        "wir haben noch eine",
-        "der nächste patient ist",
-        "die nächste patientin ist",
-        "der nächste verwundete ist",
-        "die nächste verwundete ist",
-        "als nächstes haben wir",
-        "als naechstes haben wir",
-        "zweiter patient",
-        "dritter patient",
-        "vierter patient",
-        "fünfter patient",
-    )
+    # Konservativ: Nur eindeutige Trigger-Phrasen. False-Positives wuerden
+    # hier echte Patienten fragmentieren. Die Liste ist systematisch
+    # aufgebaut — Kombination aus:
+    #   * Einleitungs-Struktur (ein weiterer, wir haben, der naechste, ...)
+    #   * Personen-Nomen (Patient, Patientin, Verwundete, Verwundeter,
+    #     Soldat, Soldatin, Kamerad, Kameradin, Sanitaeter)
+    # Jede Kombination + Umlaut-Varianten (naechste/naechster/naechstes),
+    # ss/ß-Varianten (naechstes/naechtes).
+    #
+    # "Als naechstes" alleine ist mehrdeutig (kann auch "Als naechstes
+    # Puls messen" sein). Daher nur in Verbindung mit "haben wir" oder
+    # einem Personen-Nomen unmittelbar danach.
+    _PERSONS = ("patient", "patientin", "patienten",
+                "verwundete", "verwundeter", "verwundete",
+                "soldat", "soldatin", "kamerad", "kameradin",
+                "sanitaeter", "sanitäter")
+
+    _start_phrases: list[str] = []
+    # "ein weiterer / eine weitere PERSON ist/kommt"
+    for p in _PERSONS:
+        _start_phrases.append(f"ein weiterer {p}")
+        _start_phrases.append(f"eine weitere {p}")
+        _start_phrases.append(f"wir haben einen weiteren {p}")
+        _start_phrases.append(f"wir haben eine weitere {p}")
+        _start_phrases.append(f"der naechste {p}")
+        _start_phrases.append(f"der nächste {p}")
+        _start_phrases.append(f"die naechste {p}")
+        _start_phrases.append(f"die nächste {p}")
+        _start_phrases.append(f"als naechstes ein {p}")
+        _start_phrases.append(f"als nächstes ein {p}")
+        _start_phrases.append(f"als naechstes eine {p}")
+        _start_phrases.append(f"als nächstes eine {p}")
+        _start_phrases.append(f"weiter mit dem {p}")
+        _start_phrases.append(f"weiter mit der {p}")
+        _start_phrases.append(f"weiter mit dem naechsten {p}")
+        _start_phrases.append(f"weiter mit dem nächsten {p}")
+        _start_phrases.append(f"weiter mit der naechsten {p}")
+        _start_phrases.append(f"weiter mit der nächsten {p}")
+        _start_phrases.append(f"jetzt zum naechsten {p}")
+        _start_phrases.append(f"jetzt zum nächsten {p}")
+        _start_phrases.append(f"jetzt zur naechsten {p}")
+        _start_phrases.append(f"jetzt zur nächsten {p}")
+        _start_phrases.append(f"nummer zwei ein {p}")       # "Nummer zwei, ein Patient ..."
+        _start_phrases.append(f"nummer drei ein {p}")
+    # Generische Einleitungen ohne Personen-Nomen (geschuetzt durch
+    # "haben wir noch" = eindeutig Mehrfach-Patienten-Kontext):
+    _start_phrases += [
+        "wir haben noch einen", "wir haben noch eine",
+        "als naechstes haben wir", "als nächstes haben wir",
+        "als naechstes kommt", "als nächstes kommt",
+        # Zaehlwoerter — wenn jemand "zweiter/dritter" sagt, ist das
+        # immer ein Patient-Wechsel (in diesem Kontext)
+        "zweiter patient", "zweite patientin", "zweiter verwundeter", "zweite verwundete",
+        "dritter patient", "dritte patientin", "dritter verwundeter", "dritte verwundete",
+        "vierter patient", "vierte patientin", "vierter verwundeter", "vierte verwundete",
+        "fuenfter patient", "fünfter patient",
+    ]
+    # Dedupe + auf Lowercase bringen
+    STRONG_START_MARKERS = tuple(sorted(set(m.lower() for m in _start_phrases)))
     import re as _re
     def _split_on_strong_markers(text: str) -> list[str]:
         """Splittet einen Text an Satzgrenzen, wo der naechste Satz mit
