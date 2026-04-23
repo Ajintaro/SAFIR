@@ -3206,7 +3206,81 @@ def segment_transcript_to_patients(transcript: str) -> dict:
     # Falls das letzte Segment ein Intro war und kein Patient danach kam:
     # Intro verwerfen (nichts Sinnvolles anlegen — `patients` wird
     # gegebenenfalls leer und die downstream-Logik faengt das ab).
-    patients = merged4
+
+    # Post-Merge 5 (Forced-Split): Gemma verpasst gelegentlich klare
+    # Patient-Start-Marker. Wenn ein Segment INNERHALB (nicht am Anfang)
+    # einen starken, eindeutigen Start-Marker enthaelt, splitten wir das
+    # Segment dort. Im Gegensatz zu den Post-Merges 1-4 (die nur zusammen-
+    # fuehren) kann diese Regel Boundaries WIEDER hinzufuegen die Gemma
+    # uebersehen hat.
+    #
+    # Konservativ: Nur sehr eindeutige Trigger-Phrasen. False-Positives
+    # wuerden hier echte Patienten fragmentieren. Daher keine losen
+    # Substrings wie "patient ist" (zu viele unbeabsichtigte Treffer).
+    STRONG_START_MARKERS = (
+        "ein weiterer patient ist",
+        "eine weitere patientin ist",
+        "ein weiterer verwundeter ist",
+        "eine weitere verwundete ist",
+        "wir haben eine weitere patient",      # patientin + variants
+        "wir haben einen weiteren patient",    # patienten + variants
+        "wir haben noch einen",
+        "wir haben noch eine",
+        "der nächste patient ist",
+        "die nächste patientin ist",
+        "der nächste verwundete ist",
+        "die nächste verwundete ist",
+        "als nächstes haben wir",
+        "als naechstes haben wir",
+        "zweiter patient",
+        "dritter patient",
+        "vierter patient",
+        "fünfter patient",
+    )
+    import re as _re
+    def _split_on_strong_markers(text: str) -> list[str]:
+        """Splittet einen Text an Satzgrenzen, wo der naechste Satz mit
+        einem starken Start-Marker beginnt. Gibt eine Liste von Stuecken
+        zurueck (>=1). Wenn kein Marker in inneren Saetzen gefunden wird,
+        gibt [text] zurueck."""
+        # An Satzenden splitten (behalten den Trenner), dann pruefen ob
+        # der folgende Satz einen starken Marker am Anfang hat.
+        sentences = _re.split(r"(?<=[.!?])\s+", text.strip())
+        if len(sentences) < 2:
+            return [text]
+        pieces: list[list[str]] = [[]]
+        for s in sentences:
+            s_low = s.lower().lstrip()
+            # Erste 60 Zeichen reichen fuer Marker-Check
+            head = s_low[:60]
+            is_start = any(m in head for m in STRONG_START_MARKERS)
+            if is_start and pieces[-1]:
+                # Neuer Split — dieser Satz startet ein neues Segment
+                pieces.append([s])
+            else:
+                pieces[-1].append(s)
+        return [" ".join(p).strip() for p in pieces if p]
+
+    merged5: list[dict] = []
+    for p in merged4:
+        sub_texts = _split_on_strong_markers(p["text"])
+        if len(sub_texts) == 1:
+            merged5.append({"patient_nr": len(merged5) + 1, "text": sub_texts[0], "summary": p.get("summary", "")})
+            continue
+        # Segment wird in mehrere Teile gesplittet — jeweils als eigener
+        # Patient anlegen. Die summary geht nur ans erste Stueck.
+        print(
+            f"[SEGMENT] Post-Merge 5: Forced-Split in {len(sub_texts)} Teile wegen starkem Marker",
+            flush=True,
+        )
+        for i, sub in enumerate(sub_texts):
+            merged5.append({
+                "patient_nr": len(merged5) + 1,
+                "text": sub,
+                "summary": p.get("summary", "") if i == 0 else "",
+            })
+
+    patients = merged5
 
     if not patients:
         patients = [{"patient_nr": 1, "text": transcript.strip(), "summary": ""}]

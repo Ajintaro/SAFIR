@@ -6943,7 +6943,6 @@
                         ${nineLinerHtml}
                         ${warnings.length ? `<div style="margin-top:8px;padding:6px 8px;background:rgba(212,135,26,0.1);border-left:3px solid var(--mil-amber,#d4871a);font-size:var(--fs-body-sm);color:var(--mil-amber,#d4871a)"><strong>&#9888; Plausibility-Warnungen (${warnings.length}):</strong><ul style="margin:4px 0 0 16px;padding:0">${warnings.map(w => `<li>${(w||'').replace(/</g,'&lt;')}</li>`).join('')}</ul></div>` : ''}
                         ${injuriesHtml}${vitalsHtml}
-                        ${Object.keys(cf).length ? `<div class="cf-legend"><span class="cf-legend-item"><span class="cf-dot cf-high"></span>hohe Konfidenz</span><span class="cf-legend-item"><span class="cf-dot cf-med"></span>mittlere — bitte pruefen</span><span class="cf-legend-item"><span class="cf-dot cf-low"></span>niedrige — bitte verifizieren</span></div>` : ''}
                         ${fzEditHtml}
                     </div>
                 </details>`;
