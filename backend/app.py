@@ -887,33 +887,98 @@ async def operators_scan_cancel():
 OLLAMA_SURFACE_URL = "http://127.0.0.1:11434"
 OLLAMA_SURFACE_MODEL = "gemma4:e4b"
 
-SESSION_REVIEW_PROMPT = """Du bist ein klinischer Qualitaetssicherungs-Assistent im Bundeswehr-Sanitaetsdienst.
-Deine EINZIGE Aufgabe: Pruefe ob im Transkript MEHR Patienten beschrieben werden als der Feld-Extraktor erkannt hat.
+SESSION_REVIEW_PROMPT = """Du bist klinischer Qualitaetssicherungs-Assistent im Bundeswehr-Sanitaetsdienst.
+Du pruefst die Arbeit eines Feld-KI-Extraktors gegen das Original-Transkript.
 
-Transkript des Sanitaeter-Diktats:
+TRANSKRIPT (Original-Diktat des Sanitaeters):
 ---
 {transcript}
 ---
 
-Vom Feld-Extraktor erkannte Patienten:
+EXTRAKTOR-OUTPUT (was die Feld-KI aus dem Transkript herausgeholt hat):
 {extracted_list}
 
-Deine Aufgabe:
-1. Lies das Transkript.
-2. Zaehle wie viele eindeutig unterschiedliche Patienten beschrieben werden (Personen mit Name, Rang oder eindeutiger Verletzungs-Beschreibung).
-3. Vergleiche mit der Extraktor-Liste.
+PRUEFE DREI DINGE:
+
+1) FEHLENDE PATIENTEN — gibt es Personen im Transkript die komplett fehlen?
+   (Intros wie "Hier spricht Oberfeldarzt X" zaehlen NICHT als Patient.
+    Fortsetzungen wie "Er hat auch..." zaehlen NICHT als neuer Patient.)
+
+2) FEHLENDE FELDER — nennt das Transkript einen KONKRETEN WERT
+   (Zahl mit Einheit, z.B. "Puls 140", "SpO2 90 Prozent", "RR 120/80",
+    "Atmung 18", "GCS 12"), der bei einem extrahierten Patient aber
+    leer ist?
+
+   MELDE NUR WENN:
+   - Eine konkrete Zahl im Transkript steht UND
+   - Das entsprechende Feld im Patient-Record leer/fehlt.
+
+   NICHT MELDEN WENN:
+   - Im Transkript steht nur eine allgemeine Beschreibung ("blutet stark",
+     "sieht schlecht aus") ohne Messwert.
+   - Das Transkript sagt gar nichts zu diesem Feld.
+   - Die Verletzungen/Name/Rang sind schon extrahiert.
+
+3) FALSCHE ZUORDNUNG — hat die Feld-KI Daten dem FALSCHEN Patient
+   zugeschrieben?
+
+   Beispiel: Transkript sagt "Marius hat Puls 140", aber Puls 140
+   steht bei Hubert im Patient-Record. Oder: Transkript sagt "Erika
+   hat Rippenfraktur", aber Rippenfraktur landete bei Marius.
 
 WICHTIGE REGELN:
-- Intros wie "Hier spricht Oberfeldarzt X" zaehlen NICHT als Patient.
-- Fortsetzungen ("Er hat auch...", "Bei ihm zeigt sich...") zaehlen NICHT als neuer Patient.
-- Ein Patient muss eine eigenstaendige Verletzung oder Name+Rang haben.
-- Wenn du unsicher bist, lieber NICHT als fehlend melden.
+- KONSERVATIV sein: im Zweifel NICHT melden.
+- Jeder Fund braucht ein KONKRETES Transkript-Zitat als evidence.
+- Das evidence-Zitat muss den WORTWOERTLICHEN Text aus dem Transkript
+  enthalten (keine Zusammenfassung). Wenn du den Text nicht aus dem
+  Transkript zitieren kannst, MELDE NICHT.
+- Keine Spekulation ueber "was haette noch gesagt werden koennen".
 
-Antworte AUSSCHLIESSLICH mit gueltigem JSON in diesem exakten Format:
-{{"expected_patients": <zahl>, "extracted_count": <zahl>, "status": "ok|missing", "missing": [{{"description": "kurze Beschreibung des fehlenden Patienten", "evidence": "Zitat aus Transkript"}}]}}
+BEISPIELE wie du (NICHT) melden sollst:
 
-Bei status="ok": missing=[].
-Antworte nur mit dem JSON, keine weitere Erklaerung.
+Beispiel A — NICHT melden:
+  Transkript: "Erika hat Nasenbluten."
+  Patient Erika hat: injuries=[Nasenbluten], vitals=leer
+  -> status=ok, keine Meldung. Transkript nennt keine Vitals-Zahl fuer
+     Erika, also keine Luecke.
+
+Beispiel B — MELDEN:
+  Transkript: "Marius hat drei Schusswunden. Puls 140, SpO2 90 Prozent."
+  Patient Marius hat: injuries=[Schusswunden], vitals=leer
+  -> status=issues, missing_fields enthaelt zwei Eintraege:
+     (patient=Marius, field=pulse, value_from_transcript=140,
+      evidence=Puls 140)
+     (patient=Marius, field=spo2, value_from_transcript=90,
+      evidence=SpO2 90 Prozent)
+
+Beispiel C — MELDEN (falsche Zuordnung):
+  Transkript: "Patient Marius hat Schusswunden. Puls 140. Naechster
+               Patient Hubert hat Gehirnerschuetterung."
+  Marius.vitals ist leer, Hubert.vitals.pulse=140
+  -> status=issues, wrong_assignment enthaelt:
+     (field=pulse, patient_should_be=Marius, patient_current=Hubert,
+      evidence=Puls 140 steht direkt nach dem Marius-Abschnitt)
+
+Antworte AUSSCHLIESSLICH mit gueltigem JSON im exakten Format:
+
+{{
+  "expected_patients": <zahl>,
+  "extracted_count": <zahl>,
+  "status": "ok" oder "issues",
+  "missing": [
+    {{"description": "Wer fehlt (Name/Rang/Verletzung)", "evidence": "Zitat"}}
+  ],
+  "missing_fields": [
+    {{"patient": "Patient-Name", "field": "pulse|injuries|...", "value_from_transcript": "der Wert aus dem Transkript", "evidence": "Zitat"}}
+  ],
+  "wrong_assignment": [
+    {{"patient_should_be": "Name", "patient_current": "Name", "field": "feld-name", "evidence": "Zitat"}}
+  ]
+}}
+
+Bei status="ok": alle drei Listen leer.
+Bei status="issues": mindestens EIN Eintrag in einer der Listen.
+Antworte NUR mit dem JSON, keine Erklaerung davor oder danach.
 """
 
 
@@ -980,13 +1045,21 @@ async def llm_review_session(body: dict):
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
                 "format": "json",
+                # Thinking bei Gemma 4 deaktivieren damit der Token-Output
+                # direkt ins JSON geht statt in interne Chain-of-Thought.
+                # "think": False ist ein neueres Ollama-Feature; wenn
+                # nicht unterstuetzt wird der Param ignoriert.
+                "think": False,
                 "options": {
                     "temperature": 0.1,
-                    "num_predict": 1024,
+                    # Reasoning-Model braucht deutlich mehr Output-Budget
+                    # als ein klassisches LLM. 2048 reicht fuer das
+                    # JSON-Schema auch bei 3-4 Findings.
+                    "num_predict": 2048,
                     "num_ctx": 4096,
                 },
             },
-            timeout=120,
+            timeout=180,
         )
     except Exception as e:
         return {"error": f"Ollama nicht erreichbar: {e}"}
@@ -1021,11 +1094,23 @@ async def llm_review_session(body: dict):
             "model": OLLAMA_SURFACE_MODEL,
         }
     else:
+        # Backward-compat: altes Schema hatte status="missing" — wir
+        # normalisieren auf "issues" wenn irgendetwas gefunden wurde.
+        missing = parsed.get("missing", []) or []
+        missing_fields = parsed.get("missing_fields", []) or []
+        wrong_assignment = parsed.get("wrong_assignment", []) or []
+        raw_status = (parsed.get("status") or "").lower()
+        if raw_status in ("missing", "issues") or missing or missing_fields or wrong_assignment:
+            norm_status = "issues"
+        else:
+            norm_status = "ok"
         review_result = {
-            "status": parsed.get("status", "ok"),
+            "status": norm_status,
             "expected_patients": parsed.get("expected_patients"),
             "extracted_count": parsed.get("extracted_count", len(session["patient_ids"])),
-            "missing": parsed.get("missing", []) or [],
+            "missing": missing,
+            "missing_fields": missing_fields,
+            "wrong_assignment": wrong_assignment,
             "elapsed_s": round(elapsed, 1),
             "model": OLLAMA_SURFACE_MODEL,
             "reviewed_at": datetime.now().isoformat(),

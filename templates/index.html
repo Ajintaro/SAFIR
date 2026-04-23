@@ -1390,6 +1390,38 @@
             color: var(--mil-amber, #d4871a);
             border-left: 3px solid var(--mil-amber, #d4871a);
         }
+        .r1-review-status.loading {
+            color: #9f68d5;
+            border-left: 3px solid #9f68d5;
+            background: rgba(159,104,213,0.08);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .r1-review-spinner {
+            width: 16px; height: 16px;
+            border: 2px solid rgba(159,104,213,0.25);
+            border-top-color: #9f68d5;
+            border-radius: 50%;
+            animation: r1-review-spin 0.9s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes r1-review-spin {
+            to { transform: rotate(360deg); }
+        }
+        .r1-review-progress {
+            height: 3px; margin-top: 6px;
+            background: rgba(159,104,213,0.15);
+            border-radius: 2px; overflow: hidden;
+            position: relative;
+        }
+        .r1-review-progress::after {
+            content: ""; position: absolute;
+            top: 0; left: -40%; height: 100%; width: 40%;
+            background: linear-gradient(90deg, transparent, #9f68d5, transparent);
+            animation: r1-review-progress-slide 1.8s ease-in-out infinite;
+        }
+        @keyframes r1-review-progress-slide {
+            to { left: 100%; }
+        }
         .r1-review-missing-item {
             padding: 5px 8px; margin-top: 4px;
             background: rgba(204,34,34,0.12);
@@ -7421,7 +7453,15 @@
         const rv = session.review;
         let statusBlock;
         if (role1ReviewRunning) {
-            statusBlock = `<div class="r1-review-status">KI analysiert Transkript mit Gemma 4 ... (bis zu 60 s)</div>`;
+            statusBlock = `
+                <div class="r1-review-status loading">
+                    <div class="r1-review-spinner"></div>
+                    <div style="flex:1">
+                        <strong>Gemma 4 analysiert...</strong><br>
+                        <span style="font-size:11px;color:var(--text-dim)">Transkript + extrahierte Felder werden gegengeprueft (bis zu 60 s)</span>
+                        <div class="r1-review-progress"></div>
+                    </div>
+                </div>`;
         } else if (!rv) {
             statusBlock = `<div class="r1-review-status">
                 ${session.patient_ids.length} Patient${session.patient_ids.length===1?'':'en'} gemeldet vom
@@ -7431,23 +7471,45 @@
         } else if (rv.status === 'ok') {
             statusBlock = `<div class="r1-review-status ok">
                 &#10003; Gemma 4 bestaetigt: ${rv.expected_patients ?? '?'} Patienten im Transkript,
-                ${rv.extracted_count ?? '?'} extrahiert — nichts uebersehen.
+                ${rv.extracted_count ?? '?'} extrahiert — Zuordnung und Felder konsistent.
                 <span style="color:var(--text-dim);font-size:10px">(${rv.elapsed_s}s)</span>
             </div>`;
-        } else if (rv.status === 'missing') {
+        } else if (rv.status === 'issues' || rv.status === 'missing') {
+            // Drei Kategorien von Problemen rendern
             const missingBlocks = (rv.missing || []).map(m => `
                 <div class="r1-review-missing-item">
-                    <strong>&#9888; Fehlt:</strong> ${escapeHtml(m.description || '')}
+                    <strong>&#9888; Fehlender Patient:</strong> ${escapeHtml(m.description || '')}
                     ${m.evidence ? `<span class="rev-evidence">"${escapeHtml(m.evidence)}"</span>` : ''}
                 </div>
             `).join('');
+            const fieldBlocks = (rv.missing_fields || []).map(f => `
+                <div class="r1-review-missing-item">
+                    <strong>&#9888; Fehlendes Feld:</strong>
+                    <code>${escapeHtml(f.field || '?')}</code> bei
+                    <strong>${escapeHtml(f.patient || '?')}</strong>
+                    ${f.value_from_transcript ? `= <em>${escapeHtml(f.value_from_transcript)}</em>` : ''}
+                    ${f.evidence ? `<span class="rev-evidence">"${escapeHtml(f.evidence)}"</span>` : ''}
+                </div>
+            `).join('');
+            const wrongBlocks = (rv.wrong_assignment || []).map(w => `
+                <div class="r1-review-missing-item">
+                    <strong>&#9888; Falsche Zuordnung:</strong>
+                    <code>${escapeHtml(w.field || '?')}</code> gehoert zu
+                    <strong>${escapeHtml(w.patient_should_be || '?')}</strong>,
+                    steht aber bei ${escapeHtml(w.patient_current || '?')}
+                    ${w.evidence ? `<span class="rev-evidence">"${escapeHtml(w.evidence)}"</span>` : ''}
+                </div>
+            `).join('');
+            const totalFindings = (rv.missing || []).length +
+                                  (rv.missing_fields || []).length +
+                                  (rv.wrong_assignment || []).length;
             statusBlock = `
                 <div class="r1-review-status missing">
-                    <strong>Gemma 4 meldet fehlende Patienten:</strong>
-                    Transkript beschreibt ${rv.expected_patients ?? '?'}, aber nur ${rv.extracted_count ?? '?'} wurden extrahiert.
+                    <strong>Gemma 4 meldet ${totalFindings} Auffaelligkeit${totalFindings === 1 ? '' : 'en'}:</strong>
+                    ${rv.expected_patients ?? '?'} Patienten erkannt, ${rv.extracted_count ?? '?'} extrahiert.
                     <span style="color:var(--text-dim);font-size:10px">(${rv.elapsed_s}s)</span>
                 </div>
-                ${missingBlocks}
+                ${missingBlocks}${fieldBlocks}${wrongBlocks}
             `;
         } else {
             statusBlock = `<div class="r1-review-status error">
@@ -7455,12 +7517,15 @@
             </div>`;
         }
 
+        const btnLabel = role1ReviewRunning
+            ? '⏳ Läuft...'
+            : (rv ? '🔁 Neu prüfen' : '🧠 KI-Prüfung starten');
         wrap.innerHTML = `
             <div class="r1-review-head">
                 <span class="r1-review-title">KI-Review (Zweite Instanz)</span>
                 <button class="r1-review-btn" onclick="role1RunSessionReview('${escapeHtml(session.session_id)}')"
                         ${role1ReviewRunning ? 'disabled' : ''}>
-                    ${rv ? '🔁 Neu prüfen' : '🧠 KI-Prüfung starten'}
+                    ${btnLabel}
                 </button>
             </div>
             ${statusBlock}
@@ -7478,9 +7543,11 @@
                 // Session-Objekt aktualisieren
                 const idx = role1Sessions.findIndex(s => s.session_id === sessionId);
                 if (idx >= 0) role1Sessions[idx].review = res.review;
-                if (res.review.status === 'missing') {
-                    showToast('KI-Review: Fehlende Patienten erkannt!', '&#9888;', 'voice');
-                } else if (res.review.status === 'ok') {
+                const rv = res.review;
+                if (rv.status === 'issues' || rv.status === 'missing') {
+                    const total = (rv.missing||[]).length + (rv.missing_fields||[]).length + (rv.wrong_assignment||[]).length;
+                    showToast(`KI-Review: ${total} Auffälligkeit${total===1?'':'en'} erkannt`, '&#9888;', 'voice');
+                } else if (rv.status === 'ok') {
                     showToast('KI-Review: Alles konsistent', '&#10003;');
                 }
             } else if (res.error) {
