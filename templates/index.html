@@ -5017,11 +5017,14 @@
                 if (msg.backend_reachable !== undefined) {
                     updateBackendBadge(msg.backend_reachable || null);
                 }
-                if (msg.events) {
-                    msg.events.forEach(ev => {
-                        role1AddEvent(ev.details, ev.unit, ev.type === 'patient_ingest');
-                    });
-                }
+                // Historische Events beim Init NICHT als Toast anzeigen —
+                // der User hat die Seite nur neu geladen, die Patienten
+                // wurden vor langer Zeit gemeldet. Fruehere Implementation
+                // hat bei jedem Reload die letzten 20 'patient_ingest'-
+                // Events getoastet, was nach Data-Reset zu Geister-
+                // Popups fuer nicht-existente Patienten fuehrte.
+                // Events werden nur noch fuer LIVE-Aktionen (WS-Events
+                // ausserhalb des init-Blocks) als Toast ausgegeben.
                 break;
         }
     }

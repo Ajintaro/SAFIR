@@ -1347,6 +1347,10 @@ async def data_reset(body: dict | None = None):
     state.transports.clear()
     state.positions.clear()
     state.events.clear()
+    # Session-Store (Jetson-Diktat-Transkripte + LLM-Reviews) auch
+    # bereinigen — sonst bleiben Review-Ergebnisse fuer nicht-existente
+    # Patienten haengen.
+    state.sessions.clear()
     peer_snapshot = list(state.peers.values())
     state.peers.clear()
 
