@@ -329,11 +329,6 @@ async def get_templates():
     return {"templates": []}
 
 
-@app.get("/api/sessions")
-async def get_sessions():
-    return {"sessions": []}
-
-
 @app.get("/api/models")
 async def get_models():
     return {"models": [], "current": None}
@@ -504,10 +499,7 @@ async def _do_ingest(body: dict) -> dict:
             session["transcript"] = full_transcript
         if pid not in session["patient_ids"]:
             session["patient_ids"].append(pid)
-        # Review zuruecksetzen — ggf. kam ein neuer Patient und der
-        # alte Review ist nicht mehr gueltig.
         session["review"] = None
-        # Session-Referenz auch am Patient
         state.patients[pid]["session_id"] = session_id
 
     save_patient(state.patients[pid])
