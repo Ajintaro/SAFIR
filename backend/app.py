@@ -1621,8 +1621,25 @@ async def export_docx_all():
         filepath = exports.generate_docx(
             list(state.patients.values()), device_id, unit_name, PROTOCOLS_DIR_EXPORT
         )
+    except ImportError as e:
+        # WICHTIG: HTTP 503 statt 200! Das Frontend speichert sonst
+        # den JSON-Error-Body als vermeintliches .docx und erzeugt
+        # eine ungueltige Datei.
+        return Response(
+            content=json.dumps({
+                "error": "python-docx nicht installiert",
+                "hint": "pip install python-docx im Surface-Python",
+                "detail": str(e),
+            }),
+            status_code=503,
+            media_type="application/json",
+        )
     except Exception as e:
-        return {"error": f"DOCX-Export fehlgeschlagen: {e}"}
+        return Response(
+            content=json.dumps({"error": f"DOCX-Export fehlgeschlagen: {e}"}),
+            status_code=500,
+            media_type="application/json",
+        )
     return FileResponse(
         str(filepath),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1638,13 +1655,21 @@ async def export_pdf_all():
             list(state.patients.values()), device_id, unit_name, PROTOCOLS_DIR_EXPORT
         )
     except ImportError as e:
-        return {
-            "error": "reportlab nicht installiert",
-            "hint": "pip install reportlab im Venv des Surface-Backends",
-            "detail": str(e),
-        }
+        return Response(
+            content=json.dumps({
+                "error": "reportlab nicht installiert",
+                "hint": "pip install reportlab im Surface-Python",
+                "detail": str(e),
+            }),
+            status_code=503,
+            media_type="application/json",
+        )
     except Exception as e:
-        return {"error": f"PDF-Export fehlgeschlagen: {e}"}
+        return Response(
+            content=json.dumps({"error": f"PDF-Export fehlgeschlagen: {e}"}),
+            status_code=500,
+            media_type="application/json",
+        )
     return FileResponse(
         str(filepath),
         media_type="application/pdf",
