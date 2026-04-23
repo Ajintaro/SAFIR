@@ -4986,6 +4986,19 @@ async def push_single_patient(patient: dict) -> bool:
     transfer["flow_status"] = patient.get("flow_status", "")
     transfer["rfid_tag_id"] = patient.get("rfid_tag_id", "")
 
+    # Session-Kontext fuer das Surface-LLM-Review mitsenden: session_id +
+    # das vollstaendige Original-Transkript der Session. Damit kann die
+    # Surface alle Patienten einer Session zusammen reviewen und
+    # fehlende Patienten im Transkript identifizieren.
+    session_id = patient.get("session_id", "")
+    if session_id:
+        transfer["session_id"] = session_id
+        # Transkript aus pending_transcripts aufsuchen
+        for _pt in state.pending_transcripts:
+            if _pt.get("id") == session_id:
+                transfer["full_transcript"] = _pt.get("full_text", "")
+                break
+
     try:
         # httpx-Post in Executor — sonst blockiert der Event-Loop während
         # des HTTP-Calls (das würde den Taster/OLED verzögern).
@@ -5033,6 +5046,14 @@ async def sync_all_patients() -> dict:
         transfer["patient"] = patient
         transfer["flow_status"] = patient["flow_status"]
         transfer["rfid_tag_id"] = patient["rfid_tag_id"]
+        # Session-Kontext fuer Surface-LLM-Review mitsenden
+        session_id = patient.get("session_id", "")
+        if session_id:
+            transfer["session_id"] = session_id
+            for _pt in state.pending_transcripts:
+                if _pt.get("id") == session_id:
+                    transfer["full_transcript"] = _pt.get("full_text", "")
+                    break
 
         try:
             response = httpx.post(f"{backend_url}/api/ingest", json=transfer, timeout=10)
@@ -6195,6 +6216,16 @@ async def _segment_and_create_patients(full_text: str, record_time: str, is_nine
     unit_name = cfg.get("unit_name", "")
     created_pids: list[str] = []
 
+    # Session-ID aus dem aktuellen pending_transcript ermitteln. Wird
+    # an jeden Patient-Record angehaengt, damit das Surface-LLM spaeter
+    # alle Patienten einer Session zusammen reviewen kann (gemeinsamer
+    # Transcript-Kontext).
+    current_session_id = None
+    for _pt in state.pending_transcripts:
+        if (_pt.get("full_text") or "") == full_text:
+            current_session_id = _pt.get("id")
+            break
+
     for i, seg in enumerate(patient_list):
         seg_text = (seg.get("text") or "").strip()
         if not seg_text:
@@ -6215,6 +6246,9 @@ async def _segment_and_create_patients(full_text: str, record_time: str, is_nine
             "speaker": "sanitaeter",
             "role_level": patient["current_role"],
         })
+        # Session-ID setzen damit Surface den Review-Kontext bauen kann
+        if current_session_id:
+            patient["session_id"] = current_session_id
         state.patients[pid] = patient
         state.rfid_map[patient["rfid_tag_id"]] = pid
         created_pids.append(pid)

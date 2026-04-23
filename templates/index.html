@@ -1346,6 +1346,63 @@
             font-weight: 600;
         }
 
+        /* KI-Review-Panel: Gemma-4-Pruefung der Session */
+        .r1-review-wrap {
+            flex-shrink: 0;
+            padding: 8px 12px 10px;
+            background: linear-gradient(180deg, rgba(159,104,213,0.10) 0%, rgba(159,104,213,0.03) 100%);
+            border-bottom: 1px solid rgba(159,104,213,0.3);
+            border-top: 2px solid #9f68d5;
+        }
+        .r1-review-head {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 8px; margin-bottom: 6px;
+        }
+        .r1-review-title {
+            font-size: 10px; font-weight: 700;
+            letter-spacing: 0.15em; text-transform: uppercase;
+            color: #9f68d5;
+        }
+        .r1-review-title::before { content: "🧠 "; }
+        .r1-review-btn {
+            padding: 4px 10px; font-size: var(--fs-body-sm); font-weight: 700;
+            background: #9f68d5; color: #fff;
+            border: 1px solid #9f68d5; border-radius: 3px;
+            cursor: pointer;
+        }
+        .r1-review-btn:hover { background: #8a4fc4; }
+        .r1-review-btn:disabled { background: #555; border-color: #555; cursor: wait; }
+        .r1-review-status {
+            font-size: var(--fs-body-sm); color: var(--text-dim);
+            padding: 6px 8px; background: var(--bg-elevated); border-radius: 3px;
+            line-height: 1.4;
+        }
+        .r1-review-status.ok {
+            color: var(--mil-green, #5a9e3a);
+            border-left: 3px solid var(--mil-green, #5a9e3a);
+        }
+        .r1-review-status.missing {
+            color: var(--cgi-red, #cc2222);
+            border-left: 3px solid var(--cgi-red, #cc2222);
+            background: rgba(204,34,34,0.08);
+        }
+        .r1-review-status.error {
+            color: var(--mil-amber, #d4871a);
+            border-left: 3px solid var(--mil-amber, #d4871a);
+        }
+        .r1-review-missing-item {
+            padding: 5px 8px; margin-top: 4px;
+            background: rgba(204,34,34,0.12);
+            border: 1px solid rgba(204,34,34,0.35);
+            border-radius: 3px;
+            font-size: var(--fs-body-sm); color: var(--text-primary);
+        }
+        .r1-review-missing-item .rev-evidence {
+            display: block; margin-top: 3px;
+            font-size: 11px; font-style: italic;
+            color: var(--text-dim);
+        }
+
         .role1-transport-list { flex: 1; overflow-y: auto; padding: var(--space-3); }
         .role1-transport-card {
             background: var(--bg-surface2); border: 1px solid var(--border);
@@ -2322,6 +2379,13 @@
                          role1UpdateInboundAlerts() befuellt, versteckt sich
                          wenn keine Anfahrt aktiv ist. -->
                     <div id="r1-inbound-alerts" class="r1-inbound-wrap" style="display:none"></div>
+
+                    <!-- KI-Review-Panel: Gemma 4 auf der Surface prueft die
+                         Jetson-Extraktionen der juengsten Session und
+                         meldet fehlende Patienten. Wird beim empfangen
+                         einer neuen Session automatisch sichtbar und
+                         aktualisiert sich nach dem Review. -->
+                    <div id="r1-review-wrap" class="r1-review-wrap" style="display:none"></div>
 
                     <!-- Transport-Liste -->
                     <div class="role1-transport-list" id="r1-transport-list">
@@ -4768,6 +4832,10 @@
                         true
                     );
                     showToast('Neuer Patient: ' + (msg.patient.name || msg.patient.patient_id), '&#9873;', 'voice');
+                    // Wenn Session-ID im Patient dran ist, Session-Liste nachziehen
+                    if (msg.patient.session_id) {
+                        role1LoadSessions();
+                    }
                 }
                 break;
             case 'position_update':
@@ -4893,6 +4961,16 @@
                             '\u26D1', 'info'
                         );
                     }
+                }
+                break;
+            case 'session_review_done':
+                // Surface-LLM hat die Review abgeschlossen — Panel updaten.
+                if (msg.session_id) {
+                    const idx = role1Sessions.findIndex(s => s.session_id === msg.session_id);
+                    if (idx >= 0) {
+                        role1Sessions[idx].review = msg.review;
+                    }
+                    role1RenderReviewPanel();
                 }
                 break;
             case 'bat_arrived':
@@ -7210,6 +7288,8 @@
         // Positionen periodisch holen (mit In-Flight Guard)
         role1FetchPositions();
         role1PosInterval = setInterval(role1FetchPositions, 3000);
+        // Sessions laden fuer Review-Panel (wird ausgeblendet wenn keine da)
+        role1LoadSessions();
     }
 
     let role1PosInterval = null;
@@ -7305,6 +7385,111 @@
 
     let role1PrevBySource = {};  // Cache für inkrementelle Updates
     let role1LastBySource = {};  // Aktuellste Gruppierung für Marker-Updates
+
+    // ============================================================
+    // Role 1: KI-Review-Panel (Gemma 4 Fehlender-Patient-Detection)
+    // ============================================================
+    // State: Liste aller Sessions inkl. Review-Status. Wird beim Init
+    // geladen und bei session_review_done / patient_new aktualisiert.
+    let role1Sessions = [];
+    let role1ReviewRunning = false;
+
+    async function role1LoadSessions() {
+        try {
+            const res = await api('/api/sessions');
+            role1Sessions = res.sessions || [];
+            role1RenderReviewPanel();
+        } catch (e) {
+            console.warn('[REVIEW] sessions laden fehlgeschlagen:', e);
+        }
+    }
+
+    function role1RenderReviewPanel() {
+        const wrap = document.getElementById('r1-review-wrap');
+        if (!wrap) return;
+        // Nur anzeigen wenn es mindestens eine Session mit Transkript gibt.
+        const session = (role1Sessions || []).find(s => s && s.transcript);
+        if (!session) {
+            wrap.style.display = 'none';
+            wrap.innerHTML = '';
+            return;
+        }
+
+        const rv = session.review;
+        let statusBlock;
+        if (role1ReviewRunning) {
+            statusBlock = `<div class="r1-review-status">KI analysiert Transkript mit Gemma 4 ... (bis zu 60 s)</div>`;
+        } else if (!rv) {
+            statusBlock = `<div class="r1-review-status">
+                ${session.patient_ids.length} Patient${session.patient_ids.length===1?'':'en'} gemeldet vom
+                ${escapeHtml(session.unit_name || 'Feldgeraet')}.
+                Klick "KI-Pruefung" um zu verifizieren dass niemand uebersehen wurde.
+            </div>`;
+        } else if (rv.status === 'ok') {
+            statusBlock = `<div class="r1-review-status ok">
+                &#10003; Gemma 4 bestaetigt: ${rv.expected_patients ?? '?'} Patienten im Transkript,
+                ${rv.extracted_count ?? '?'} extrahiert — nichts uebersehen.
+                <span style="color:var(--text-dim);font-size:10px">(${rv.elapsed_s}s)</span>
+            </div>`;
+        } else if (rv.status === 'missing') {
+            const missingBlocks = (rv.missing || []).map(m => `
+                <div class="r1-review-missing-item">
+                    <strong>&#9888; Fehlt:</strong> ${escapeHtml(m.description || '')}
+                    ${m.evidence ? `<span class="rev-evidence">"${escapeHtml(m.evidence)}"</span>` : ''}
+                </div>
+            `).join('');
+            statusBlock = `
+                <div class="r1-review-status missing">
+                    <strong>Gemma 4 meldet fehlende Patienten:</strong>
+                    Transkript beschreibt ${rv.expected_patients ?? '?'}, aber nur ${rv.extracted_count ?? '?'} wurden extrahiert.
+                    <span style="color:var(--text-dim);font-size:10px">(${rv.elapsed_s}s)</span>
+                </div>
+                ${missingBlocks}
+            `;
+        } else {
+            statusBlock = `<div class="r1-review-status error">
+                &#9888; Review-Fehler: ${escapeHtml(rv.error || 'unbekannt')}
+            </div>`;
+        }
+
+        wrap.innerHTML = `
+            <div class="r1-review-head">
+                <span class="r1-review-title">KI-Review (Zweite Instanz)</span>
+                <button class="r1-review-btn" onclick="role1RunSessionReview('${escapeHtml(session.session_id)}')"
+                        ${role1ReviewRunning ? 'disabled' : ''}>
+                    ${rv ? '🔁 Neu prüfen' : '🧠 KI-Prüfung starten'}
+                </button>
+            </div>
+            ${statusBlock}
+        `;
+        wrap.style.display = 'block';
+    }
+
+    async function role1RunSessionReview(sessionId) {
+        if (role1ReviewRunning) return;
+        role1ReviewRunning = true;
+        role1RenderReviewPanel();
+        try {
+            const res = await api('/api/llm/review-session', 'POST', { session_id: sessionId });
+            if (res.review) {
+                // Session-Objekt aktualisieren
+                const idx = role1Sessions.findIndex(s => s.session_id === sessionId);
+                if (idx >= 0) role1Sessions[idx].review = res.review;
+                if (res.review.status === 'missing') {
+                    showToast('KI-Review: Fehlende Patienten erkannt!', '&#9888;', 'voice');
+                } else if (res.review.status === 'ok') {
+                    showToast('KI-Review: Alles konsistent', '&#10003;');
+                }
+            } else if (res.error) {
+                showToast('Review-Fehler: ' + res.error, '&#9888;');
+            }
+        } catch (e) {
+            showToast('Review fehlgeschlagen: ' + e, '&#9888;');
+        } finally {
+            role1ReviewRunning = false;
+            role1RenderReviewPanel();
+        }
+    }
 
     // Inbound-Alerts: liste alle BATs die aktuell zur Rettungsstation
     // unterwegs sind. "Unterwegs" = speed_kmh > 0.5 (bewegt sich) UND

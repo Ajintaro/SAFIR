@@ -72,6 +72,18 @@ class AppState:
         self.current_operator: dict | None = None  # {uid, label, name, role, since}
         self.locked: bool = False
         self.last_activity: float = 0.0  # monotonic timestamp
+        # Session-Store fuer LLM-Review: wenn der Jetson ein Diktat analysiert
+        # hat und die Patienten meldet, landet hier das Original-Transkript
+        # + die Liste aller Patient-IDs aus dieser Session. Das Surface-LLM
+        # (Gemma 4) nutzt das spaeter fuer die Fehlender-Patient-Detection.
+        #   session_id -> {
+        #     "transcript":  "Hier spricht der Oberfeldarzt Meier...",
+        #     "patient_ids": ["PAT-ABC", "PAT-DEF"],
+        #     "received_at": ISO-timestamp,
+        #     "unit_name":   "BAT Alpha42",
+        #     "review":      None | {status, findings, ai_expected_count, ...}
+        #   }
+        self.sessions: dict = {}
 
 state = AppState()
 
@@ -473,6 +485,31 @@ async def _do_ingest(body: dict) -> dict:
     if unit_name and unit_name != "Unbekannt":
         state.patients[pid]["unit_name"] = unit_name
 
+    # Session-Kontext: wenn der Jetson session_id + full_transcript
+    # mitgeschickt hat, das Transkript + die Patienten-ID im Session-
+    # Store ablegen. Das ist die Datenbasis fuer das spaetere LLM-
+    # Review ("Fehlt ein Patient im Transkript?").
+    session_id = body.get("session_id", "") or patient.get("session_id", "")
+    full_transcript = body.get("full_transcript", "")
+    if session_id:
+        session = state.sessions.setdefault(session_id, {
+            "session_id": session_id,
+            "transcript": "",
+            "patient_ids": [],
+            "received_at": datetime.now().isoformat(),
+            "unit_name": unit_name,
+            "review": None,
+        })
+        if full_transcript and not session["transcript"]:
+            session["transcript"] = full_transcript
+        if pid not in session["patient_ids"]:
+            session["patient_ids"].append(pid)
+        # Review zuruecksetzen — ggf. kam ein neuer Patient und der
+        # alte Review ist nicht mehr gueltig.
+        session["review"] = None
+        # Session-Referenz auch am Patient
+        state.patients[pid]["session_id"] = session_id
+
     save_patient(state.patients[pid])
 
     # Transport-Cluster aktualisieren
@@ -836,6 +873,195 @@ async def operators_scan_cancel():
     _operator_scan_pending["active"] = False
     _operator_scan_pending["uid"] = None
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# LLM-Review: Fehlender-Patient-Detection via Gemma 4 auf der Surface
+# ---------------------------------------------------------------------------
+# Der Jetson koennte bei konversationellen Unterbrechungen oder neuen
+# Sprach-Mustern Patienten uebersehen. Die Surface hat ein staerkeres
+# LLM (Gemma 4 E4B) und nutzt es als Zweit-Check: Bekommt das Original-
+# Transkript plus die vom Jetson extrahierten Patient-Namen und prueft,
+# ob im Transkript noch weitere Personen beschrieben werden.
+#
+# Bewusst konservativ:
+#  - Keine Aenderung an Patient-Daten (nur "findings", die der Arzt
+#    sichtbar bekommt)
+#  - LLM-Antwort wird ins Session-Dict persistiert, damit kein doppelter
+#    Aufruf passiert
+#  - Prompt ist strikt formatiert mit JSON-Output, damit Halluzinationen
+#    downstream nicht durchrutschen
+
+OLLAMA_SURFACE_URL = "http://127.0.0.1:11434"
+OLLAMA_SURFACE_MODEL = "gemma4:e4b"
+
+SESSION_REVIEW_PROMPT = """Du bist ein klinischer Qualitaetssicherungs-Assistent im Bundeswehr-Sanitaetsdienst.
+Deine EINZIGE Aufgabe: Pruefe ob im Transkript MEHR Patienten beschrieben werden als der Feld-Extraktor erkannt hat.
+
+Transkript des Sanitaeter-Diktats:
+---
+{transcript}
+---
+
+Vom Feld-Extraktor erkannte Patienten:
+{extracted_list}
+
+Deine Aufgabe:
+1. Lies das Transkript.
+2. Zaehle wie viele eindeutig unterschiedliche Patienten beschrieben werden (Personen mit Name, Rang oder eindeutiger Verletzungs-Beschreibung).
+3. Vergleiche mit der Extraktor-Liste.
+
+WICHTIGE REGELN:
+- Intros wie "Hier spricht Oberfeldarzt X" zaehlen NICHT als Patient.
+- Fortsetzungen ("Er hat auch...", "Bei ihm zeigt sich...") zaehlen NICHT als neuer Patient.
+- Ein Patient muss eine eigenstaendige Verletzung oder Name+Rang haben.
+- Wenn du unsicher bist, lieber NICHT als fehlend melden.
+
+Antworte AUSSCHLIESSLICH mit gueltigem JSON in diesem exakten Format:
+{{"expected_patients": <zahl>, "extracted_count": <zahl>, "status": "ok|missing", "missing": [{{"description": "kurze Beschreibung des fehlenden Patienten", "evidence": "Zitat aus Transkript"}}]}}
+
+Bei status="ok": missing=[].
+Antworte nur mit dem JSON, keine weitere Erklaerung.
+"""
+
+
+@app.post("/api/llm/review-session")
+async def llm_review_session(body: dict):
+    """Loest eine Session-Review via Gemma 4 (oder konfiguriertem Modell)
+    auf der Surface aus. Body: {"session_id": "..."} oder implizit die
+    aktuellste Session wenn leer.
+
+    Ablauf:
+      1. Session + Transkript aus state.sessions holen
+      2. Liste der extrahierten Patienten formatieren
+      3. Gemma 4 aufrufen (Ollama-API)
+      4. JSON aus Response parsen (defensiv)
+      5. Ergebnis in session["review"] speichern + broadcasten
+    """
+    import httpx as _httpx
+    import json as _json
+    import re as _re
+    import time as _time
+
+    session_id = (body.get("session_id") or "").strip()
+    if not session_id:
+        # Ohne session_id: neueste Session nehmen
+        if not state.sessions:
+            return {"error": "Keine Sessions vorhanden"}
+        session_id = max(state.sessions.keys(),
+                         key=lambda k: state.sessions[k].get("received_at", ""))
+
+    session = state.sessions.get(session_id)
+    if not session:
+        return {"error": f"Session {session_id} nicht gefunden"}
+
+    transcript = (session.get("transcript") or "").strip()
+    if not transcript:
+        return {"error": "Kein Transkript in dieser Session"}
+
+    # Extrahierte Patienten des Jetsons formatieren
+    extracted_list_lines = []
+    for pid in session.get("patient_ids", []):
+        p = state.patients.get(pid)
+        if not p:
+            continue
+        name = (p.get("name") or "Unbekannt").strip()
+        rank = (p.get("rank") or "").strip()
+        injs = ", ".join(p.get("injuries") or [])
+        label = f"- {rank} {name}".strip() if rank else f"- {name}"
+        if injs:
+            label += f" ({injs})"
+        extracted_list_lines.append(label)
+    extracted_block = "\n".join(extracted_list_lines) if extracted_list_lines else "(keine)"
+
+    prompt = SESSION_REVIEW_PROMPT.format(
+        transcript=transcript,
+        extracted_list=extracted_block,
+    )
+
+    start = _time.monotonic()
+    try:
+        response = _httpx.post(
+            f"{OLLAMA_SURFACE_URL}/api/chat",
+            json={
+                "model": OLLAMA_SURFACE_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "format": "json",
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 1024,
+                    "num_ctx": 4096,
+                },
+            },
+            timeout=120,
+        )
+    except Exception as e:
+        return {"error": f"Ollama nicht erreichbar: {e}"}
+
+    elapsed = _time.monotonic() - start
+    if response.status_code != 200:
+        return {"error": f"Ollama HTTP {response.status_code}: {response.text[:200]}"}
+
+    raw = response.json()
+    raw_content = (raw.get("message") or {}).get("content", "").strip()
+    # JSON robust parsen — Gemma 4 kann auch Reasoning-Text anhaengen
+    parsed = None
+    try:
+        parsed = _json.loads(raw_content)
+    except _json.JSONDecodeError:
+        # Regex-Fallback: ersten {...}-Block suchen
+        match = _re.search(r"\{.*\}", raw_content, _re.DOTALL)
+        if match:
+            try:
+                parsed = _json.loads(match.group(0))
+            except _json.JSONDecodeError:
+                pass
+
+    if not isinstance(parsed, dict):
+        # LLM-Antwort nicht parsebar — als Warnung persistieren, damit
+        # das Frontend wenigstens etwas anzeigen kann.
+        review_result = {
+            "status": "error",
+            "error": "LLM-Antwort nicht als JSON parsebar",
+            "raw_response": raw_content[:500],
+            "elapsed_s": round(elapsed, 1),
+            "model": OLLAMA_SURFACE_MODEL,
+        }
+    else:
+        review_result = {
+            "status": parsed.get("status", "ok"),
+            "expected_patients": parsed.get("expected_patients"),
+            "extracted_count": parsed.get("extracted_count", len(session["patient_ids"])),
+            "missing": parsed.get("missing", []) or [],
+            "elapsed_s": round(elapsed, 1),
+            "model": OLLAMA_SURFACE_MODEL,
+            "reviewed_at": datetime.now().isoformat(),
+        }
+
+    session["review"] = review_result
+    add_event(
+        "llm_review",
+        f"Session-Review {session_id}: {review_result['status']} "
+        f"({review_result.get('expected_patients', '?')} erwartet, "
+        f"{review_result.get('extracted_count', '?')} extrahiert, "
+        f"{elapsed:.1f}s)",
+    )
+    await broadcast({
+        "type": "session_review_done",
+        "session_id": session_id,
+        "review": review_result,
+    })
+    return {"session_id": session_id, "review": review_result}
+
+
+@app.get("/api/sessions")
+async def list_sessions():
+    """Alle Jetson-Diktat-Sessions mit Transkript + Patient-IDs + Review-Status.
+    Sortiert mit neuster Session zuerst."""
+    sessions = list(state.sessions.values())
+    sessions.sort(key=lambda s: s.get("received_at", ""), reverse=True)
+    return {"sessions": sessions}
 
 
 @app.post("/api/bat/route-broadcast")
