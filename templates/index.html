@@ -2473,11 +2473,56 @@
              PAGE: Dokumente
              ====================================================== -->
         <div class="page" id="page-documents">
-            <div class="placeholder-page">
-                <div class="ph-icon">&#128196;</div>
-                <div class="ph-title">Dokumente</div>
-                <div class="ph-desc">Exportierte Protokolle, Patientenakten und Übergabeberichte. DOCX- und PDF-Export für die Aktenablage.</div>
-                <div class="ph-badge">Geplant für Phase 2</div>
+            <div style="padding:20px;max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+
+                <!-- Kopfzeile -->
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding-bottom:10px">
+                    <h1 style="margin:0;font-size:24px;color:var(--text-primary);font-weight:600">&#128196; Dokumente &amp; Export</h1>
+                    <span id="docs-patient-count" style="font-size:var(--fs-body-sm);color:var(--text-dim)">Lade...</span>
+                </div>
+
+                <!-- Alle-Patienten-Export -->
+                <div class="settings-card" style="border-left:3px solid var(--accent,#c8b878)">
+                    <div class="settings-card-title" style="color:var(--accent,#c8b878)">&#128202; Patientendatenbank exportieren</div>
+                    <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px;line-height:1.5">
+                        Alle Patienten auf diesem Gerät als strukturierte Datei.
+                        <strong>DOCX + PDF</strong> für Akte und Übergabe an andere Stellen (Role 2, BW-Krankenhaus).
+                        <strong>JSON + XML</strong> für Interoperabilität mit Drittsystemen (SitaWare, NVG, Lagebildsysteme).
+                    </div>
+                    <div class="btn-group" style="gap:8px;flex-wrap:wrap">
+                        <button class="btn" onclick="exportPatientsFormat('docx')" style="padding:8px 16px">&#128196; DOCX (Word)</button>
+                        <button class="btn" onclick="exportPatientsFormat('pdf')" style="padding:8px 16px">&#128196; PDF</button>
+                        <button class="btn" onclick="exportPatientsFormat('json')" style="padding:8px 16px;background:var(--bg-elevated);color:var(--text-primary)">&#123;&#125; JSON</button>
+                        <button class="btn" onclick="exportPatientsFormat('xml')" style="padding:8px 16px;background:var(--bg-elevated);color:var(--text-primary)">&lt;/&gt; XML</button>
+                    </div>
+                </div>
+
+                <!-- Einzelpatient-Export -->
+                <div class="settings-card" style="border-left:3px solid var(--info,#5DADE2)">
+                    <div class="settings-card-title" style="color:var(--info,#5DADE2)">&#128100; Einzelpatient exportieren</div>
+                    <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
+                        Pro Patient ein Dokument — ideal für individuelle Übergabe oder Arzt-Bericht.
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                        <select id="docs-patient-select" style="min-width:280px;padding:8px;background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:3px;font-size:var(--fs-body)">
+                            <option value="">— Patient wählen —</option>
+                        </select>
+                        <button class="btn" onclick="exportSinglePatient('docx')" style="padding:8px 16px">&#128196; DOCX</button>
+                        <button class="btn" onclick="exportSinglePatient('pdf')" style="padding:8px 16px">&#128196; PDF</button>
+                    </div>
+                </div>
+
+                <!-- Historie -->
+                <div class="settings-card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                        <div class="settings-card-title" style="margin:0">&#128193; Bereits erzeugte Dokumente</div>
+                        <button class="btn" onclick="loadExportList()" style="padding:4px 12px;font-size:var(--fs-body-sm)">&#8635; Aktualisieren</button>
+                    </div>
+                    <div id="docs-export-list-wrap" style="overflow-x:auto">
+                        <div style="padding:20px;text-align:center;color:var(--text-dim)">Laden...</div>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -3341,19 +3386,16 @@
                             </div>
                         </div>
 
-                        <div class="settings-card" style="border:1px solid var(--accent,#c8b878)">
+                        <!-- Export-Duplikat entfernt: Export-Funktionen sind
+                             jetzt auf der Dokumente-Seite gebuendelt. Link
+                             dorthin als Shortcut. -->
+                        <div class="settings-card" style="border-left:3px solid var(--accent,#c8b878)">
                             <div class="settings-card-title" style="color:var(--accent,#c8b878)">&#128196; Patientendatenbank exportieren</div>
                             <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
-                                Alle Patienten auf diesem Gerät als strukturierte Datei herunterladen. DOCX + PDF für Berichte an die Rettungsstation, JSON + XML für Interoperabilität mit Drittsystemen (SitaWare, NVG, Lagebildsysteme).
+                                Alle Export-Funktionen (DOCX, PDF, JSON, XML) und die Historie bereits erzeugter Dokumente findest du gebuendelt im Menue <strong>Dokumente</strong>.
                             </div>
-                            <div class="btn-group" style="gap:6px;flex-wrap:wrap">
-                                <button class="btn" onclick="exportPatientsFormat('docx')" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#128196; DOCX (Word)</button>
-                                <button class="btn" onclick="exportPatientsFormat('pdf')" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#128196; PDF</button>
-                                <button class="btn" onclick="exportPatientsFormat('json')" style="padding:6px 12px;font-size:var(--fs-body-sm);background:var(--bg-elevated);color:var(--text-primary)">&#123;&#125; JSON</button>
-                                <button class="btn" onclick="exportPatientsFormat('xml')" style="padding:6px 12px;font-size:var(--fs-body-sm);background:var(--bg-elevated);color:var(--text-primary)">&lt;/&gt; XML</button>
-                            </div>
-                            <div style="margin-top:8px;font-size:var(--fs-body-sm);color:var(--text-dim);font-style:italic">
-                                JSON + XML enthalten die kompletten Rohdaten (auch leere/unausgefüllte Felder). DOCX + PDF sind für Menschen formatiert, mit Übersichts-Tabelle und Detail-Sektion pro Patient inkl. 9-Liner, Vitals und Timeline.
+                            <div class="btn-group">
+                                <button class="btn" onclick="navigateTo('documents')">&#128196; Zur Dokumente-Seite</button>
                             </div>
                         </div>
                         <div class="settings-card" style="border:1px solid var(--warning)">
@@ -3684,6 +3726,11 @@
         // Verwaltung > Patienten: Tabelle bei jedem Besuch neu rendern
         if (pageId === 'patients') {
             try { renderAdminPatients(); } catch (e) { /* noop */ }
+        }
+
+        // Dokumente-Seite: Patient-Dropdown + Export-Historie laden
+        if (pageId === 'documents') {
+            try { loadDocumentsPage(); } catch (e) { /* noop */ }
         }
 
         // URL-Hash setzen
@@ -4022,6 +4069,141 @@
             showToast(`${fmt.toUpperCase()}-Export fertig`, '&#9989;');
         } catch(e) {
             showToast(`Fehler beim ${fmt.toUpperCase()}-Export: ${e.message}`, '&#9888;');
+        }
+        // Nach erfolgreichem Export die Historie auf der Dokumenten-
+        // Seite aktualisieren (falls die gerade offen ist).
+        try { loadExportList(); } catch (_) {}
+    }
+
+    // ============================================================
+    // Dokumente: Einzelpatient-Export + Historie
+    // ============================================================
+
+    async function loadDocumentsPage() {
+        // Patient-Count oben rechts + Dropdown befuellen
+        const cntEl = document.getElementById('docs-patient-count');
+        const sel = document.getElementById('docs-patient-select');
+        try {
+            const res = await api('/api/patients');
+            const list = (res.patients || []).filter(p => p.synced || (p.patient_id || '').startsWith('SIM-'));
+            if (cntEl) cntEl.textContent = `${list.length} Patient${list.length === 1 ? '' : 'en'} in Datenbank`;
+            if (sel) {
+                sel.innerHTML = '<option value="">— Patient wählen —</option>' +
+                    list.map(p => {
+                        const label = [
+                            p.rank || '',
+                            p.name || 'Unbekannt',
+                            p.triage ? `[${p.triage}]` : '',
+                        ].filter(Boolean).join(' ');
+                        return `<option value="${escapeHtml(p.patient_id)}">${escapeHtml(label)} · ${escapeHtml(p.patient_id)}</option>`;
+                    }).join('');
+            }
+        } catch (e) {
+            if (cntEl) cntEl.textContent = 'Fehler beim Laden';
+        }
+        loadExportList();
+    }
+
+    async function exportSinglePatient(fmt) {
+        const sel = document.getElementById('docs-patient-select');
+        const pid = sel ? sel.value : '';
+        if (!pid) {
+            showToast('Bitte Patient wählen', '&#9888;');
+            return;
+        }
+        showToast(`${fmt.toUpperCase()}-Export für ${pid} wird generiert...`, '&#8634;');
+        try {
+            const resp = await fetch(`/api/export/${fmt}/patient/${encodeURIComponent(pid)}`, { method: 'POST' });
+            if (!resp.ok) {
+                let errMsg = `HTTP ${resp.status}`;
+                try { const j = await resp.json(); if (j.error) errMsg = j.error; } catch (_) {}
+                showToast(`Fehler: ${errMsg}`, '&#9888;');
+                return;
+            }
+            let filename = `safir-${pid}.${fmt}`;
+            const cd = resp.headers.get('Content-Disposition') || '';
+            const m = cd.match(/filename="?([^"]+)"?/);
+            if (m) filename = m[1];
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            showToast(`${fmt.toUpperCase()} für ${pid} fertig`, '&#9989;');
+            loadExportList();
+        } catch (e) {
+            showToast(`Export-Fehler: ${e.message}`, '&#9888;');
+        }
+    }
+
+    async function loadExportList() {
+        const wrap = document.getElementById('docs-export-list-wrap');
+        if (!wrap) return;
+        try {
+            const res = await api('/api/export/list');
+            const files = res.files || [];
+            if (files.length === 0) {
+                wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-dim);font-style:italic">Noch keine Dokumente erzeugt. Nutze die Buttons oben um welche zu generieren.</div>`;
+                return;
+            }
+            // Badge-Farbe je nach Typ
+            const extColors = {
+                docx: '#2B579A', pdf: '#cc2222',
+                json: '#5DADE2', xml: '#9f68d5',
+            };
+            const fmtSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(2)} MB`;
+            const fmtDate = (iso) => {
+                try { return new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+                catch (_) { return iso.slice(0, 16).replace('T', ' '); }
+            };
+            wrap.innerHTML = `
+                <table style="width:100%;border-collapse:collapse;font-size:var(--fs-body-sm)">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;padding:8px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border)">Typ</th>
+                            <th style="text-align:left;padding:8px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border)">Datei</th>
+                            <th style="text-align:right;padding:8px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border)">Größe</th>
+                            <th style="text-align:left;padding:8px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border)">Erstellt</th>
+                            <th style="text-align:right;padding:8px 10px;background:var(--bg-elevated);color:var(--mil-tan,#c8b878);text-transform:uppercase;letter-spacing:0.08em;font-size:11px;border-bottom:1px solid var(--border)">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${files.map(f => {
+                            const color = extColors[f.extension] || '#888';
+                            return `
+                                <tr style="border-bottom:1px solid var(--border)">
+                                    <td style="padding:7px 10px"><span style="display:inline-block;padding:2px 8px;background:${color};color:#fff;border-radius:3px;font-family:monospace;font-weight:700;font-size:11px;text-transform:uppercase">${escapeHtml(f.extension)}</span></td>
+                                    <td style="padding:7px 10px;font-family:monospace;font-size:var(--fs-body-sm)">${escapeHtml(f.filename)}</td>
+                                    <td style="padding:7px 10px;text-align:right;font-family:monospace;color:var(--text-dim)">${fmtSize(f.size)}</td>
+                                    <td style="padding:7px 10px;color:var(--text-dim)">${fmtDate(f.mtime_iso)}</td>
+                                    <td style="padding:7px 10px;text-align:right">
+                                        <a href="/api/export/download/${encodeURIComponent(f.filename)}" download="${escapeHtml(f.filename)}" class="btn" style="padding:3px 10px;font-size:var(--fs-body-sm);text-decoration:none;display:inline-block">&#11015; Download</a>
+                                        <button class="btn" style="padding:3px 10px;font-size:var(--fs-body-sm);margin-left:4px;color:var(--cgi-red,#cc2222);border-color:var(--cgi-red,#cc2222)" onclick="deleteExportFile('${escapeHtml(f.filename)}')">&#128465;</button>
+                                    </td>
+                                </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        } catch (e) {
+            wrap.innerHTML = `<div style="padding:20px;color:var(--cgi-red,#cc2222)">Fehler beim Laden: ${e.message}</div>`;
+        }
+    }
+
+    async function deleteExportFile(filename) {
+        if (!confirm(`Datei "${filename}" wirklich löschen?`)) return;
+        try {
+            const resp = await fetch(`/api/export/delete/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+            if (resp.ok) {
+                showToast('Datei gelöscht', '&#9989;');
+                loadExportList();
+            } else {
+                const j = await resp.json().catch(() => ({}));
+                showToast(`Fehler: ${j.error || resp.status}`, '&#9888;');
+            }
+        } catch (e) {
+            showToast(`Löschen fehlgeschlagen: ${e.message}`, '&#9888;');
         }
     }
 

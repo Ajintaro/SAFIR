@@ -1677,6 +1677,139 @@ async def export_pdf_all():
     )
 
 
+@app.post("/api/export/docx/patient/{patient_id}")
+async def export_docx_single(patient_id: str):
+    """Einzelpatient als DOCX. Nutzt denselben Generator wie der
+    Alle-Patienten-Export, nur mit Patient-Liste der Laenge 1."""
+    device_id, unit_name = _export_cfg()
+    patient = state.patients.get(patient_id)
+    if not patient:
+        return Response(
+            content=json.dumps({"error": f"Patient {patient_id} nicht gefunden"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    try:
+        filepath = exports.generate_docx(
+            [patient], device_id, unit_name, PROTOCOLS_DIR_EXPORT
+        )
+    except ImportError as e:
+        return Response(
+            content=json.dumps({"error": "python-docx nicht installiert", "detail": str(e)}),
+            status_code=503, media_type="application/json",
+        )
+    except Exception as e:
+        return Response(
+            content=json.dumps({"error": f"DOCX-Export fehlgeschlagen: {e}"}),
+            status_code=500, media_type="application/json",
+        )
+    return FileResponse(
+        str(filepath),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=filepath.name,
+    )
+
+
+@app.post("/api/export/pdf/patient/{patient_id}")
+async def export_pdf_single(patient_id: str):
+    """Einzelpatient als PDF."""
+    device_id, unit_name = _export_cfg()
+    patient = state.patients.get(patient_id)
+    if not patient:
+        return Response(
+            content=json.dumps({"error": f"Patient {patient_id} nicht gefunden"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    try:
+        filepath = exports.generate_pdf(
+            [patient], device_id, unit_name, PROTOCOLS_DIR_EXPORT
+        )
+    except ImportError as e:
+        return Response(
+            content=json.dumps({"error": "reportlab nicht installiert", "detail": str(e)}),
+            status_code=503, media_type="application/json",
+        )
+    except Exception as e:
+        return Response(
+            content=json.dumps({"error": f"PDF-Export fehlgeschlagen: {e}"}),
+            status_code=500, media_type="application/json",
+        )
+    return FileResponse(
+        str(filepath),
+        media_type="application/pdf",
+        filename=filepath.name,
+    )
+
+
+@app.get("/api/export/list")
+async def export_list():
+    """Liste aller bereits erzeugten Export-Dateien (docx/pdf/json/xml).
+    Sortiert nach Modification-Time, neuste zuerst."""
+    items = []
+    if PROTOCOLS_DIR_EXPORT.exists():
+        for fp in PROTOCOLS_DIR_EXPORT.iterdir():
+            if not fp.is_file():
+                continue
+            stat = fp.stat()
+            items.append({
+                "filename": fp.name,
+                "size": stat.st_size,
+                "mtime": stat.st_mtime,
+                "mtime_iso": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "extension": fp.suffix.lstrip(".").lower(),
+            })
+    items.sort(key=lambda x: x["mtime"], reverse=True)
+    return {"files": items, "total": len(items)}
+
+
+@app.get("/api/export/download/{filename}")
+async def export_download(filename: str):
+    """Download einer bereits erzeugten Export-Datei. Schuetzt gegen
+    Path-Traversal (nur Dateien direkt im exports-Ordner, kein ..)."""
+    # Path-Traversal-Schutz: nur der Basename zaehlt
+    safe_name = Path(filename).name
+    fp = PROTOCOLS_DIR_EXPORT / safe_name
+    if not fp.exists() or not fp.is_file():
+        return Response(
+            content=json.dumps({"error": f"Datei {safe_name} nicht gefunden"}),
+            status_code=404, media_type="application/json",
+        )
+    # Media-Type je nach Endung
+    ext = fp.suffix.lstrip(".").lower()
+    media_types = {
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pdf": "application/pdf",
+        "json": "application/json",
+        "xml": "application/xml",
+    }
+    return FileResponse(
+        str(fp),
+        media_type=media_types.get(ext, "application/octet-stream"),
+        filename=fp.name,
+    )
+
+
+@app.delete("/api/export/delete/{filename}")
+async def export_delete(filename: str):
+    """Loescht eine Export-Datei. Path-Traversal-Schutz wie beim Download."""
+    safe_name = Path(filename).name
+    fp = PROTOCOLS_DIR_EXPORT / safe_name
+    if not fp.exists() or not fp.is_file():
+        return Response(
+            content=json.dumps({"error": f"Datei {safe_name} nicht gefunden"}),
+            status_code=404, media_type="application/json",
+        )
+    try:
+        fp.unlink()
+    except Exception as e:
+        return Response(
+            content=json.dumps({"error": f"Loeschen fehlgeschlagen: {e}"}),
+            status_code=500, media_type="application/json",
+        )
+    return {"status": "ok", "deleted": safe_name}
+
+
 # ---------------------------------------------------------------------------
 # LLM: Vorbereitungshinweise für eintreffende Patienten
 # ---------------------------------------------------------------------------

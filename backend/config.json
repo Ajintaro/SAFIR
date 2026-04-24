@@ -83,5 +83,15 @@
             "label": "Einstellungen",
             "icon": "&#9881;"
         }
-    ]
+    ],
+    "rfid": {
+        "operators": [
+            {
+                "uid": "6C472E06",
+                "label": "OP2",
+                "name": "Jaimy Reuter",
+                "role": "arzt"
+            }
+        ]
+    }
 }
