@@ -57,11 +57,11 @@ PAGE_SUBMENUS = {
         # gewaehlten Patient und fuehrt zurueck ins Patient-Menue wo
         # weitere Aktionen verfuegbar sind.
         ("patient_pick", "Patient waehlen"),
-        ("record_toggle", "Aufnahme"),
+        ("record_toggle", "Aufnahme an/aus"),
         ("analyze_pending", "Analysieren"),
         ("send_backend", "Melden"),
-        ("card_write", "RFID schreiben"),
-        ("patient_delete", "Aktiven loeschen"),
+        ("card_write", "RFID-Batch"),
+        ("patient_delete", "Patient loeschen"),
     ],
 }
 
@@ -636,13 +636,19 @@ class OledMenu:
 
     # ---- Seite: PATIENT (aktiver Patient) ----
     def _render_patient(self, draw: ImageDraw):
-        """Zeigt den AKTIVEN Patient + Position in der Liste (z.B. "3/5").
-        Layout:
-          Z1 (oben rechts): Position-Indikator "3/5" (FONT_SM)
-          Z2 (y=2): Name (FONT_LG, max 14 chars)
-          Z3 (y=22): Rang (FONT_SM)
-          Z4 (y=34): Triage-Box oder "-"
-          Z5 (y=50): Status (flow_status) FONT_SM
+        """Patient-Hauptseite: AKTIVER Patient gross + klarer Hinweis
+        wie der Sanitaeter Aktionen darauf ausloest.
+
+        Layout (radikal vereinfacht 2026-04-26 nach User-Feedback):
+          y=2-18 :  Name (FONT_LG)
+          y=22-38:  Position "PATIENT 2/4" (FONT_LG, gut lesbar)
+          y=42-54:  Triage-Badge falls gesetzt (sonst leer)
+          y=54-62:  Hinweis "A lang = Aktionen" (FONT_SM)
+
+        Frueher: 1/4-Indikator nur 9 px klein in der Ecke (unlesbar),
+        plus Triage-Box + 'registered'-Status nebeneinander → optisch
+        ueberladen, ohne dem Sanitaeter zu sagen wie er Aktionen
+        triggert. Aktionen liegen im Submenu (A lang).
         """
         p = self.active_patient_info
         total = len(self.patient_list)
@@ -651,41 +657,37 @@ class OledMenu:
             draw.text((2, 24), "PATIENT", font=FONT_XL, fill=1)
             if total > 0:
                 draw.text((2, 50), f"{total} im Speicher", font=FONT_SM, fill=1)
+            else:
+                draw.text((2, 52), "A lang = Menue", font=FONT_SM, fill=1)
             return
 
         name = (p.get("name") or "").strip() or "Unbekannt"
-        rank = (p.get("rank") or "").strip()
         triage = (p.get("triage") or "").strip()
-        flow = p.get("flow_status", "")
 
-        # Position in Liste: aktueller Patient ist der wievielte?
+        # Position in der Liste: aktueller Patient ist der wievielte?
         pos = 0
         for i, pp in enumerate(self.patient_list):
             if pp.get("patient_id") == p.get("patient_id"):
                 pos = i + 1
                 break
-        if total > 0 and pos > 0:
-            pos_text = f"{pos}/{total}"
-            # Rechts oben, kleiner Font
-            tw = draw.textlength(pos_text, font=FONT_SM)
-            draw.text((WIDTH - tw - 2, 2), pos_text, font=FONT_SM, fill=1)
 
-        # Z2: Name (gross)
+        # Z1: Name (gross — auf 14 chars limitiert damit FONT_LG passt)
         draw.text((2, 2), name[:14], font=FONT_LG, fill=1)
-        # Z3: Rang (klein)
-        if rank:
-            draw.text((2, 22), rank[:20], font=FONT_SM, fill=1)
-        # Z4: Triage (als Box + Label wenn gesetzt, sonst Bindestrich)
+
+        # Z2: Position als grosser, lesbarer Counter — kein 1/4 in 9 px Ecke mehr
+        if total > 0 and pos > 0:
+            draw.text((2, 22), f"PATIENT {pos}/{total}", font=FONT_LG, fill=1)
+
+        # Z3: Triage-Badge (kompakter Block + Label) — nur wenn gesetzt.
+        # In Phase 0 ist Triage nicht gesetzt, der Sanitaeter sieht hier
+        # also nichts und das ist OK so.
         if triage:
-            # Kleine gefuellte Box fuer die Triage-Farbe (S/W-OLED: nur Rand)
-            draw.rectangle([2, 34, 28, 48], outline=1, fill=0)
-            draw.text((8, 35), triage, font=FONT_MD, fill=1)
-            draw.text((34, 35), "TRIAGE", font=FONT_SM, fill=1)
-        else:
-            draw.text((2, 35), "Triage: --", font=FONT_SM, fill=1)
-        # Z5: Flow-Status unten
-        if flow:
-            draw.text((2, 52), flow[:20], font=FONT_SM, fill=1)
+            draw.rectangle([2, 42, 36, 54], outline=1, fill=0)
+            draw.text((8, 43), triage, font=FONT_MD, fill=1)
+            draw.text((42, 43), "TRIAGE", font=FONT_SM, fill=1)
+
+        # Z4: Hinweis wie man Aktionen erreicht — in jedem Zustand.
+        draw.text((2, 55), "A lang = Aktionen", font=FONT_SM, fill=1)
 
     def _render_patient_pick(self, draw: ImageDraw):
         """Patienten-Liste im Pick-Mode. 4 Zeilen sichtbar, zentriert
@@ -723,23 +725,50 @@ class OledMenu:
     # ---- Untermenü-Liste (2-Level-Menü) ----
     def _render_submenu(self, draw: ImageDraw, page: str):
         """Zeichnet die Action-Liste des aktuellen Screens. Selektiertes
-        Item ist invertiert (weißer Balken, schwarze Schrift). Nutzt FONT_MD
-        (11 px) mit 12-px-Zeilen — 5 Items passen in 64 px Höhe bei guter
-        Lesbarkeit."""
+        Item ist invertiert (weisser Balken, schwarze Schrift).
+
+        Window-basiertes Scrollen: max 5 Items gleichzeitig sichtbar
+        (y=2/14/26/38/50, 12 px Zeilenhoehe, FONT_MD). Bei mehr als 5
+        Items folgt das Fenster der Auswahl, sodass das gewaehlte
+        Item moeglichst zentriert dargestellt wird — nie unsichtbar
+        am Rand. Plus: kleiner Pfeil-Indikator rechts wenn unten/oben
+        weitere Items folgen.
+        """
         items = PAGE_SUBMENUS.get(page, [])
         if not items:
             draw.text((2, 20), "KEIN UNTERMENU", font=FONT_MD, fill=1)
             draw.text((2, 40), "A lang = zurueck", font=FONT_SM, fill=1)
             return
 
+        VISIBLE = 5
+        total = len(items)
+        idx = self.submenu_index
+        # Fenster zentriert um idx, geclamped auf [0, total-VISIBLE]
+        if total <= VISIBLE:
+            window_start = 0
+        else:
+            window_start = max(0, min(idx - 2, total - VISIBLE))
+        window_end = min(window_start + VISIBLE, total)
+
         y = 2
-        for i, (_, label) in enumerate(items):
-            if i == self.submenu_index:
+        for i in range(window_start, window_end):
+            label = items[i][1]
+            # Auf 18 Zeichen kuerzen damit die Zeile nicht in den
+            # Pfeil-Indikator rechts hineinlaeuft.
+            if len(label) > 18:
+                label = label[:17] + "."
+            if i == idx:
                 draw.rectangle([0, y - 1, WIDTH - 1, y + 11], fill=1)
                 draw.text((3, y), f"> {label}", font=FONT_MD, fill=0)
             else:
                 draw.text((3, y), f"  {label}", font=FONT_MD, fill=1)
             y += 12
+
+        # Pfeil-Indikatoren wenn ausserhalb des Fensters noch Items sind
+        if window_start > 0:
+            draw.polygon([(WIDTH - 6, 1), (WIDTH - 2, 1), (WIDTH - 4, 5)], fill=1)
+        if window_end < total:
+            draw.polygon([(WIDTH - 6, 62), (WIDTH - 2, 62), (WIDTH - 4, 58)], fill=1)
 
 
 # Singleton für globalen Zugriff

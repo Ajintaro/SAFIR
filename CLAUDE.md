@@ -2,20 +2,20 @@
 
 > ## 🟢 AKTUELLER STAND — IMMER ZUERST `docs/PROGRESS.md` LESEN
 >
-> **Messe-Hardening Phase A (A1–A5) ist komplett abgeschlossen** auf Commit
-> `0a9dc26`. System ist gegen Prompt-Injection, unplausible Vitals, Nicht-
-> Medical-Input, Rapid-Click und Length-Extreme abgesichert.
+> **System ist eingefroren für die Demo am Mittwoch 29.04.2026.** Alle
+> Hardening-Phasen (A1–A5, B, C, D), Demo-Szenarien-Refactor, RFID-Single-
+> Write, Recording-Guard, HTTPS-via-Tailscale-Serve und Doku-Updates sind
+> abgeschlossen. Stand auf GitHub als Stable-Snapshot.
 >
-> **🎯 Nächste Aufgabe (morgen, 19.04.2026): Phase B → B1 Confidence-Badges
-> pro Feld**. Details in `docs/messe-hardening-plan.md` Abschnitt "Phase B → B1".
-> Das ist der stärkste Baustein aus Phase B — Grün/Gelb/Rot Confidence-Indikator
-> pro extrahiertem Feld, damit Messe-Besucher explizit sehen "System weiß was
-> es weiß vs. was es geraten hat". Entkräftet direkt den klassischen
-> Halluzinations-Vorwurf. Geschätzter Aufwand: 2 h.
+> **Demo-URL fuer Messebesucher (Tailscale-Mesh-intern, gruenes Schloss):**
+> - Surface (Leitstelle): `https://ai-station.tail0fe60f.ts.net/`
+> - Jetson (Feldgerät): `https://jetson-orin.tail0fe60f.ts.net/`
+> - HTTP `localhost:8080` läuft parallel weiter für Diagnose
 >
-> Wenn der User sagt „weiter mit B1" oder „mach weiter wo wir gestern
-> aufgehört haben", lies SOFORT `docs/PROGRESS.md` (für den Gesamtstand) und
-> `docs/messe-hardening-plan.md` Abschnitt B1 (für die Implementation-Details).
+> Wenn der User nach der Messe Folge-Aenderungen wünscht, lies erst
+> `docs/PROGRESS.md` Abschnitt **„Session 26.04.2026"** für den aktuellen
+> Refactor-Stand (Voice-Recognition-Hardening, RFID-Workflow, Tactical &
+> Medical Standards, Demo-Szenarien, OLED-Refactor, BAT-Position-UX).
 >
 > **Urspruengliche Roadmap-Plan-Datei lokal:** `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md`
 > (lokal, nicht im Repo, aber durch `docs/PROGRESS.md` im Repo gespiegelt).
@@ -46,8 +46,28 @@ Auftraggeber: CGI Deutschland. Zielgruppe: Bundeswehr Sanitätsdienst.
 - FastAPI Backend mit `/api/ingest` (Jetson-Push), `/api/patients`, `/api/units`, WebSocket `/ws`
 - Taktische Lagekarte (Leaflet), Event-Feed, Triage-Counts, BAT-Transport-Marker
 - Peer-Discovery-Heartbeat (pullt alle aktiven Feldgeräte)
-- **Status: Lagekarte + Sync-Empfang funktioniert** — Jetson-Patienten kommen via POST und per WebSocket-Broadcast rein
-- Hardware-Specs/Modelle (Whisper, Ollama, pyannote): **TODO — beim nächsten Setup aktualisieren**
+- **Ollama Gemma 4 E4B** (`gemma4:e4b`, 9.6 GB Q4_K_M) für KI-Review (zweite Instanz prüft Jetson-Extraktion gegen Original-Transkript). On-demand geladen, nicht permanent im RAM.
+- **Surface-Start**: `start_backend.bat` / `stop_backend.bat` auf Desktop. Backend läuft via `Win32_Process.Create` detached (überlebt SSH-Disconnect).
+- **Status: alle Endpoints + Lagekarte + Sync-Empfang + KI-Review funktioniert** — Jetson-Patienten kommen via POST und per WebSocket-Broadcast rein. SitaWare-Exports (CoT/NVG/MEDEVAC/FHIR) auf beiden Backends gespiegelt.
+
+## Tailscale Serve — HTTPS-Zugang im Mesh
+
+Beide Geräte sind via `tailscale serve --bg --https=443` als HTTPS-
+Endpunkte im Tailnet erreichbar. Echte Let's-Encrypt-Zertifikate, grünes
+Schloss im Browser, **nur** für Mitglieder des Tailnets erreichbar (kein
+öffentliches Internet — `tailscale funnel` wäre dafür nötig).
+
+| Gerät | URL |
+|---|---|
+| Jetson (Feldgerät) | `https://jetson-orin.tail0fe60f.ts.net/` |
+| Surface (Leitstelle) | `https://ai-station.tail0fe60f.ts.net/` |
+
+HTTP `localhost:8080` bleibt parallel verfügbar (Diagnose, lokales Testen).
+Cert-Erneuerung erfolgt automatisch alle 60 Tage durch Tailscale.
+
+**Vor erstmaligem `tailscale serve`** musste HTTPS-Cert-Support im
+Admin-Panel (`https://login.tailscale.com/admin/dns`) aktiviert werden.
+Plus MagicDNS muss aktiv sein (`MagicDNSSuffix: tail0fe60f.ts.net`).
 
 ## Rettungskette der Bundeswehr (Goldene Stunde)
 
@@ -64,11 +84,14 @@ Kernprinzip: Verwundete müssen innerhalb von 60 Minuten medizinisch versorgt we
 ## Tech Stack
 - Python 3, FastAPI, WebSocket, Jinja2 Templates (kein React/Vue — reines HTML+JS)
 - Whisper: whisper.cpp auf Jetson (Feldgerät)
-- Vosk: Sprachbefehle auf Jetson (offline, leichtgewichtig)
-- Ollama: Qwen2.5-1.5B auf Jetson, permanent im VRAM (`keep_alive: -1`)
+- Vosk: Sprachbefehle auf Jetson (offline, leichtgewichtig). Mit `SetWords(True)` für Per-Wort-Confidence (Recording-Guard)
+- Ollama:
+  - Jetson: **Gemma 3 4B** (`gemma3:4b`, 4.3 GB Q4_K_M, permanent im VRAM via `keep_alive=-1`, `num_gpu=-1` Pflicht — sonst 40% auf CPU)
+  - Surface: **Gemma 4 E4B** (`gemma4:e4b`, 9.6 GB Q4_K_M, on-demand, KI-Review der Jetson-Extraktion)
 - Piper TTS auf Jetson (CPU, de_DE-thorsten-medium)
-- Surface (Leitstelle): Hardware-Specs/Modelle bei Bedarf einsetzen
-- python-docx: DOCX-Export für Protokolle
+- python-docx + reportlab: DOCX/PDF-Export für Protokolle
+- Tailscale Serve: HTTPS-Zugang im Mesh-Netz (LE-Zertifikate, grünes Schloss)
+- `shared/version.py`: Single Source of Truth für VERSION (lazy git-rev-Hash). Beide Backends exposen via `/api/status`
 
 ## UI Design — Military Tactical HUD
 - Farben: --mil-bg #0f1209, --mil-tan #c8b878, --mil-green #5a9e3a, --mil-amber #d4871a, --mil-red #cc2222
@@ -150,16 +173,17 @@ MacBook kann sich verbinden: `ssh jetson@jetson-orin` oder `ssh jetson@100.126.1
 | Phase | Inhalt | Status |
 |---|---|---|
 | **1** | Quick Wins (Theme, Reset, Triage Role 0 raus, Aufnahme-Bug) | ✓ |
-| **2** | Segmenter num_ctx + Post-Merge 3 (Defense in Depth). 3B nicht möglich neben Whisper. | ✓ |
+| **2** | Segmenter num_ctx + Post-Merge 3 (Defense in Depth) | ✓ |
 | **3** | Demo-Story (Sim raus, BAT-Standort + Rückfahrt, Testdaten-Generator) | ✓ |
-| **4.1** | RFID-Sektor-2-Bug behoben (Hardware-Reset zwischen Sektoren) | ✓ |
-| **4.2** | OLED NETZWERK-Seite mit großen Fonts | ✓ |
-| **4.3** | Audio Multi-Output + Hot-Plug-Watcher | ✓ (mit Caveat: neuer Insert braucht Service-Restart) |
-| **5** | 9-Liner Voice-Recognition (Template + Auto-Detect + UI) | ⏳ NEXT |
-| **6** | Export & Interoperabilität (DOCX/PDF/JSON/XML) | pending |
-| **7** | Encryption-Story + Use-Case-Vision-Page | pending |
-| **8** | Remote Audio MVP (Browser → WebSocket → Jetson) | pending |
-| **9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | pending |
+| **4.1–4.3** | RFID-Sektor-2-Fix, OLED NETZWERK, Audio Multi-Output | ✓ |
+| **5** | 9-Liner Voice-Recognition (Template + Auto-Detect + UI) | ✓ |
+| **6** | Export & Interoperabilität (DOCX/PDF/JSON/XML) | ✓ |
+| **7** | Encryption-Story + Use-Case-Vision-Page | ✓ |
+| **8** | Remote Audio MVP | 🟡 deferred (V2-Roadmap) |
+| **9** | Final Polish, E2E Demo-Run, RAM-Stress-Test | ✓ |
+| **A1–A5** | Messe-Hardening: Prompt-Injection, Vitals-Plausibility, Content-Guardrails, Rate-Limit, Length-Limits | ✓ |
+| **B1** | Confidence-Badges grün/gelb/rot pro Feld | ✓ |
+| **Polish 26.04** | HTTPS via Tailscale, RFID-Single-Write, Recording-Guard, Demo-Szenarien-Refactor, Tactical/Medical Standards (CoT/NVG/MEDEVAC/FHIR), Patient-Detail-OLED, Version-Display dynamisch | ✓ |
 
 ## Multi-Patient-Flow (BAT-Workflow)
 
@@ -168,11 +192,42 @@ MacBook kann sich verbinden: `ssh jetson@jetson-orin` oder `ssh jetson@100.126.1
 3. **Aufnahme stoppen** (Taster B lang / "Aufnahme beenden") — TTS sofort, Whisper transkribiert im Hintergrund in 25-s-Chunks
 4. Transkript landet als **neuer Eintrag** in `state.pending_transcripts` (Liste, nie überschrieben). Auf dem Dashboard erscheint eine aufklappbare Karte mit Status `UNANALYSIERT`
 5. Sanitäter **prüft das Transkript** visuell. Optional: neue Aufnahme anhängen (weitere Aufnahmen werden parallel gesammelt)
-6. **Analyse** (OLED-Menü "Analysieren" / Sprachbefehl / Button) — Qwen segmentiert an Satzgrenzen (`BOUNDARY_PROMPT`), Post-Merge für Übergangs- und Pronomen-Segmente, dann pro Segment `run_patient_enrichment` für 9-Liner-Felder (Name, Rank, Verletzungen, Vitals — **keine Auto-Triage**)
-7. **RFID-Batch schreiben** (OLED "RFID schreiben" / Sprachbefehl / Fahrzeug-GUI-Button) — iteriert durch alle Patienten ohne `rfid_written`-Timeline-Event, OLED/TTS führt Karte für Karte durch
+6. **Analyse** (OLED-Menü "Analysieren" / Sprachbefehl / Button) — Gemma 3 4B segmentiert an Satzgrenzen (`BOUNDARY_PROMPT`), Post-Merge für Übergangs- und Pronomen-Segmente, dann pro Segment `run_patient_enrichment` für 9-Liner-Felder (Name, Rank, Verletzungen, Vitals — **keine Auto-Triage**)
+7. **RFID-Schreiben** (zwei Pfade):
+   - **Batch** (OLED "RFID schreiben" / Sprachbefehl / Fahrzeug-Button "RFID-Batch") — iteriert durch alle Patienten ohne Karte
+   - **Per-Patient** (Fahrzeug-Modus: `📇 Karte`-Button pro Patient-Card, oder `POST /api/rfid/write-single` mit `{patient_id}`) — Use-Case: Sanitäter mit nur 3 Karten für 8 Patienten wählt gezielt aus
+   - 3-Stufen-Recovery (Direkt → Soft-Reauth → Hard-Recovery via RC522-Reset). Inter-Block-Delay 50 ms. Warm-up 100 ms vor erstem Sektor.
 8. **Melden** sendet alle `analyzed && !synced` Patienten via `POST /api/ingest` an das Surface-Backend. Surface broadcastet via WS zurück an alle BATs.
 
-Triage wird **erst in Role 1 (Rettungsstation)** manuell gesetzt — Triage-Buttons im Dashboard oder Sprachbefehl "Triage rot/gelb/grün/blau". In Phase 0 (BAT) sind Triage-Updates **deaktiviert** (`voice_set_triage` und `update_patient` ignorieren das Feld bei `current_role == "phase0"`, TTS-Hinweis: "Triage erfolgt erst in der Rettungsstation"). Qwen erfindet sonst Werte die nicht im Text stehen — deshalb auch keine Auto-Triage im LLM-Prompt.
+**Wichtig: RFID-Write meldet Patient NICHT automatisch** (User-Wunsch).
+Differenziertes Verhalten:
+- Patient `synced=False` (lokal, nie gemeldet): RFID-Write nur lokal, kein Surface-Push. Sanitäter muss explizit „Patienten melden" sagen.
+- Patient `synced=True` (schon gemeldet): UID-Update wird sofort an Surface geschickt — sonst kennt das Surface die Karten-UID nicht beim Omnikey-Scan an der Rettungsstation.
+
+Triage wird **erst in Role 1 (Rettungsstation)** manuell gesetzt — Triage-Buttons im Dashboard oder Sprachbefehl "Triage rot/gelb/grün/blau". In Phase 0 (BAT) sind Triage-Updates **deaktiviert** (`voice_set_triage` und `update_patient` ignorieren das Feld bei `current_role == "phase0"`, TTS-Hinweis: "Triage erfolgt erst in der Rettungsstation"). Gemma erfindet sonst Werte die nicht im Text stehen — deshalb auch keine Auto-Triage im LLM-Prompt.
+
+## Voice-Recognition-Hardening (Recording-Guard)
+
+Während aktiver Aufnahme (`state.recording == True`) blockt der Recording-
+Guard in `persistent_audio_callback` versehentliche Trigger-Auslösungen:
+
+1. **Action-Whitelist**: nur `record_stop`, `patient_ready`, `new_patient`
+   werden überhaupt ausgewertet. Triage / Export / RFID / 9-Liner-Modus
+   etc. sind während Aufnahme stumm.
+2. **Trigger-am-Ende-Check**: max. 1 Filler-Wort nach dem Trigger. Erlaubt
+   "...stabilisieren. Aufnahme beenden", blockt "die Blutung **stoppen**
+   und stabilisieren" (Trigger als Substring mitten in Diktatsatz).
+3. **Confidence-Gate**: Vosk muss avg-Confidence ≥ 0.6 melden — filtert
+   offensichtliche Hintergrund-Halluzinationen.
+
+Plus: Single-Wort-Trigger sind aus `config.json` entfernt (`dringend`,
+`abbrechen`, `aufschiebbar`, `abwartend`, `sofort behandlung`) — die
+kamen zu oft im normalen Sprachfluss vor und feuerten Triage/Cancel-
+Aktionen auf.
+
+Logging: jedes Vosk-Final wird mit `[VOSK] text=... words=N conf=0.XX
+match=ACTION rec=BOOL` geloggt, inkl. Guard-Entscheidungen
+(`[VOSK-GUARD] ACTION blockiert: ...`).
 
 ## Demo-Story: BAT-Standort + Rückfahrt zur Rettungsstation (Phase 3)
 

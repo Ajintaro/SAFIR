@@ -46,7 +46,6 @@
                 "triage rot",
                 "triage eins",
                 "patient rot",
-                "sofort behandlung",
                 "triasch rot"
             ]
         },
@@ -55,8 +54,7 @@
             "triggers": [
                 "triage gelb",
                 "triage zwei",
-                "patient gelb",
-                "dringend"
+                "patient gelb"
             ]
         },
         "triage_green": {
@@ -64,8 +62,7 @@
             "triggers": [
                 "triage gruen",
                 "triage drei",
-                "patient gruen",
-                "aufschiebbar"
+                "patient gruen"
             ]
         },
         "triage_blue": {
@@ -73,8 +70,7 @@
             "triggers": [
                 "triage blau",
                 "triage vier",
-                "patient blau",
-                "abwartend"
+                "patient blau"
             ]
         },
         "delete_last": {
@@ -136,7 +132,6 @@
         "rfid_write_cancel": {
             "label": "Karten-Schreiben abbrechen",
             "triggers": [
-                "abbrechen",
                 "schreiben abbrechen",
                 "schreiben stoppen",
                 "karten stopp",
@@ -278,7 +273,7 @@
             "id": "recording",
             "label": "Phase 0",
             "icon": "&#9873;",
-            "subtitle": "Selbst-/Kameradenhilfe",
+            "subtitle": "Feldgerät",
             "default": true
         },
         {

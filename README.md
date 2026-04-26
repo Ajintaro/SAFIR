@@ -1,107 +1,125 @@
-# SAFIR — Sanitäts-Assistenz für Feld-Informations-Reporting
+# SAFIR — Sprachgestützte Assistenz für Informationserfassung in der Rettungskette
 
 KI-gestütztes Dokumentationssystem entlang der Rettungskette der Bundeswehr.
+Auftraggeber: **CGI Deutschland**. Zielgruppe: **Bundeswehr Sanitätsdienst**.
+
+> **Demo-Termin:** AFCEA Bonn — Mittwoch 29.04.2026
+> **Stand:** Stable, eingefroren (`docs/PROGRESS.md` Session 26.04.2026)
 
 ## Hardware & Rollenverteilung
 
 ```
-Jetson (Feld)          Surface (Role 1)        Alienware (Role 2/3)     MacBook (Leitstelle)
-━━━━━━━━━━━━━         ━━━━━━━━━━━━━━━         ━━━━━━━━━━━━━━━━━━       ━━━━━━━━━━━━━━━━━━
-Spracheingabe    ───>  Taktische Karte    ───>  KI-Analyse          ───> Gesamtübersicht
-9-Liner               Triage-Empfang           Whisper large-v3         Statistik
-Whisper small          Qwen2.5-7B (opt.)       pyannote Diarization    Alle Rollen im Blick
-Vosk Sprachbefehle    Eingehende Meldungen     Qwen2.5-32B
-                                                Übergabeberichte
+Jetson (BAT / Phase 0)              Surface (Leitstelle / Role 1)
+━━━━━━━━━━━━━━━━━━━━━━━            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Spracheingabe + Whisper.cpp ───>    Taktische Lagekarte (Leaflet)
+9-Liner MEDEVAC                      Patientendatenbank + Triage
+Vosk-Sprachbefehle                   KI-Review (Gemma 4)
+Gemma 3 4B Segmenter                 4 Tactical/Medical Exporte
+Piper TTS · OLED · RFID
 ```
 
-| Gerät | GPU / VRAM | Rolle | Aufgabe |
+| Gerät | Hardware | Rolle | KI-Modelle |
 |---|---|---|---|
-| **Jetson Orin Nano** | 7.4 GB shared | **Phase 0** — Feldgerät | Spracheingabe, Whisper small, Vosk, 9-Liner Extraktion (Qwen2.5-1.5B) |
-| **MS Surface** | RTX 4060, 8 GB | **Role 1** — Rettungsstation | Taktische Karte, eintreffende Meldungen, Triage-Empfang, optional Qwen2.5-7B |
-| **Alienware** | RTX 5090, 24 GB | **Role 2/3** — Rettungszentrum | Whisper large-v3 (~3 GB) + pyannote Diarization (~2 GB) + Qwen2.5-32B (~18 GB), Übergabeberichte, OP-Vorbereitung |
-| **MacBook** | kein GPU | **Leitstelle / Role 4** | Reines Dashboard, Gesamtübersicht aller Rollen, Statistik |
-
-### Warum diese Verteilung?
-
-- **Alienware (Role 2/3)** braucht die meiste Compute-Power: Whisper large + pyannote + Qwen2.5-32B = ~23 GB VRAM → passt nur auf die RTX 5090
-- **Surface (Role 1)** empfängt und sichtet — primär Dashboard + leichte Triage-Unterstützung, optional kleines LLM
-- **MacBook** zeigt nur Dashboards an, keine KI lokal nötig
+| **Jetson Orin Nano** | 7.4 GB Unified Memory, CUDA 12.6 | **Phase 0 — Feldgerät** | Whisper small (GPU) · Gemma 3 4B (`gemma3:4b`, permanent VRAM) · Vosk (CPU) · Piper TTS (CPU) |
+| **MS Surface** | RTX 4060 / 8 GB VRAM | **Role 1 — Leitstelle** | Gemma 4 E4B (`gemma4:e4b`, on-demand für KI-Review) |
 
 ### Netzwerk (Tailscale)
 
-Alle Geräte sind über Tailscale verbunden. Jedes Gerät hat eine feste Tailscale-IP.
+| Gerät | Tailscale-Hostname | Tailscale-IP | HTTPS-URL (Mesh) |
+|---|---|---|---|
+| Jetson Orin | `jetson-orin` | 100.126.179.27 | https://jetson-orin.tail0fe60f.ts.net/ |
+| MS Surface | `ai-station` | 100.101.80.64 | https://ai-station.tail0fe60f.ts.net/ |
 
-| Gerät | Tailscale-Hostname | Rolle |
-|---|---|---|
-| Jetson Orin | `jetson-orin` | Phase 0 |
-| MS Surface | *einzurichten* | Role 1 |
-| Alienware | *einzurichten* | Role 2/3 |
-| MacBook | `de-d656g021f2` | Leitstelle |
+HTTPS via `tailscale serve` mit echtem Let's-Encrypt-Cert (grünes Schloss, mesh-intern).
+HTTP `localhost:8080` läuft parallel weiter für lokale Diagnose.
 
 ## Rettungskette der Bundeswehr
 
-| Stufe | Bezeichnung | KI-Unterstützung |
-|-------|------------|------------------|
-| **Phase 0** | Selbst-/Kameradenhilfe | Sprachgesteuerte Dokumentation (Jetson) |
-| **Role 1** | Rettungsstation | Taktische Karte, Triage-Empfang, Eingehende Meldungen |
-| **Role 2** | Rettungszentrum | Automatische Übergabeberichte, Triage-Unterstützung, Speaker Diarization |
-| **Role 3** | Einsatzlazarett | Patientenakte, Diagnose-Zusammenfassung, OP-Vorbereitung |
-| **Role 4** | BW-Krankenhaus | Auswertung, Statistik, Rehabilitation-Tracking |
+| Stufe | Bezeichnung | Status in SAFIR |
+|---|---|---|
+| **Phase 0** | Feldgerät (BAT) | ✅ Sprachgestützte Dokumentation, 9-Liner, RFID, Multi-Patient-Diktat |
+| **Role 1** | Rettungsstation | ✅ Lagekarte, Triage, KI-Review, Patientendatenbank, Export |
+| Role 2 | Rettungszentrum | V2-Roadmap |
+| Role 3 | Einsatzlazarett | V2-Roadmap |
+| Role 4 | BW-Krankenhaus | V2-Roadmap |
+
+## Tech Stack
+
+- Python 3.10+ · FastAPI · WebSocket · Jinja2 (kein Build-System, alles inline)
+- Whisper.cpp (Jetson, GPU) · Vosk (Jetson, CPU mit `SetWords(True)`) · Piper TTS (Jetson, CPU)
+- Ollama: `gemma3:4b` (Jetson) + `gemma4:e4b` (Surface)
+- Tailscale Mesh-VPN (WireGuard, ChaCha20-Poly1305) mit HTTPS-Serve (LE-Cert)
+- python-docx + reportlab für DOCX/PDF · `shared/sitaware.py` für CoT/NVG/MEDEVAC-9-Liner/HL7-FHIR-Exports
 
 ## Projektstruktur
 
 ```
-safir/
-├── app.py                # Jetson Haupt-App (Spracheingabe, 9-Liner)
-├── san_transcribe.py     # Standalone Transkriptions-Tool
-├── config.json           # Voice Commands, Whisper/Ollama Config
-├── jetson/               # Feldgerät (NVIDIA Jetson Orin Nano)
-│   ├── app.py            # FastAPI Backend
-│   ├── templates/        # Web-Dashboard
-│   └── requirements.txt
-├── backend/              # Leitstelle / Role 1+ (Surface, Alienware, MacBook)
-│   ├── app.py            # FastAPI Backend
-│   ├── templates/        # Web-Dashboard (taktische Karte)
-│   └── requirements.txt
-├── shared/               # Gemeinsame Datenmodelle
-│   ├── models.py         # Patient, Transfer, Triage Schemas
-│   ├── tts.py            # Piper TTS (deutsche Sprachausgabe)
-│   └── rfid.py           # RFID-Simulation + Patienten-ID
-└── templates/            # Jetson Dashboard Template
+SAFIR/
+├── app.py                    # Jetson-Hauptcode (FastAPI + Whisper + Vosk + Ollama + Hardware)
+├── backend/                  # Surface-Backend
+│   ├── app.py                # Leitstelle (Lagekarte, KI-Review, Export)
+│   ├── start_backend.bat     # User-Selbstbedienung Start (auf Desktop)
+│   ├── stop_backend.bat      # User-Selbstbedienung Stop
+│   └── config.json
+├── shared/                   # Geteilte Module
+│   ├── models.py             # PATIENT_SCHEMA, TRANSFER_SCHEMA
+│   ├── tts.py                # Piper TTS Multi-Output
+│   ├── rfid.py               # RC522 Bit-Bang + MIFARE Read/Write (3-Stufen-Recovery)
+│   ├── exports.py            # DOCX/PDF/JSON/XML
+│   ├── sitaware.py           # CoT/NVG/MEDEVAC-9-Liner/HL7-FHIR (echte Standards)
+│   └── version.py            # Single Source of Truth für Version + Build-Hash
+├── jetson/
+│   ├── oled.py               # SSD1306 OLED-Menü (4 Pages, Submenu-Scroll)
+│   └── hardware.py           # GPIO-Taster, RfidService, LEDs
+├── templates/
+│   ├── index.html            # Gemeinsames Dashboard (5000+ Zeilen)
+│   └── handbook.html         # Handbuch (12 Sektionen)
+├── docs/
+│   ├── PROGRESS.md           # Session-Continuity, immer zuerst lesen
+│   ├── messe-hardening-plan.md
+│   ├── demo-disaster-recovery.md
+│   ├── security-architecture.md
+│   ├── nine-liner-template.md
+│   └── vision-mocks/         # 6 Use-Case-HTMLs (Polizei, Feuerwehr, …)
+├── CLAUDE.md                 # Projekt-Kontext für Claude Code
+├── SESSION-HANDOVER.md       # Account-Wechsel-Notizen
+└── config.json               # Jetson-Config: voice_commands, ollama, BAT-Presets
 ```
 
 ## Schnellstart
 
-### Jetson (Feldgerät)
+### Jetson (Feldgerät — autostart)
+
+Boot ist headless, `safir.service` läuft automatisch. Manueller Restart:
 ```bash
-cd jetson
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-# Whisper.cpp und Vosk-Modell separat installieren
-python3 -m uvicorn app:app --host 0.0.0.0 --port 8080
+sudo systemctl restart safir.service
+```
+Logs:
+```bash
+sudo journalctl -u safir.service -f
 ```
 
-### Surface / Backend (Role 1)
-```bash
-cd backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python3 -m uvicorn app:app --host 0.0.0.0 --port 8080
-```
+### Surface (Leitstelle — Doppelklick)
 
-### Alienware (Role 2/3)
-```bash
-cd backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-# Ollama mit Qwen2.5-32B installieren
-ollama pull qwen2.5:32b
-python3 -m uvicorn app:app --host 0.0.0.0 --port 8080
-```
+Doppelklick auf `start_backend.bat` (Desktop). Backend läuft in eigenem cmd-Fenster, Dashboard auf https://ai-station.tail0fe60f.ts.net/.
 
-## Demo
+Zum Stoppen: `stop_backend.bat` (Doppelklick).
 
-Für die AFCEA Bonn / Bundeswehr-Delegation — **19.03.2026**
+## Demo-Szenarien
+
+In Settings → System → Demo-Szenarien stehen 4 Presets bereit:
+
+- **Standard-Mix** — 2 analysierte Patienten (warten auf Melden) + 2 schon gemeldete (auf Surface) + 1 langes Multi-Patient-Diktat (4 Verwundete am Stück) zum Live-Analysieren
+- **Massenanfall** — 10 Patienten in Role 1, Triage offen
+- **9-Liner MEDEVAC** — 1 Patient mit vollständig ausgefülltem NATO-9-Liner
+- **Role-1-Übergabe** — 2 schon gemeldete Patienten in Role 1
+
+## Doku-Quellen für Entwickler
+
+- `docs/PROGRESS.md` — Session-Continuity + alle Phase-Status
+- `CLAUDE.md` — High-Level-Kontext für AI-Agenten
+- `docs/security-architecture.md` — Verschlüsselung & Talking Points
+- `docs/demo-disaster-recovery.md` — 7 Notfall-Rezepte für Demo-Tag
 
 ---
 *CGI Deutschland — SAFIR Projekt*

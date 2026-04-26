@@ -45,6 +45,7 @@ from shared.models import PATIENT_SCHEMA, TRANSFER_SCHEMA, PatientFlowStatus, FL
 from shared import tts
 from shared import sitaware
 from shared import exports
+from shared.version import VERSION, get_build_hash, get_full_version
 from jetson.oled import oled_menu
 from jetson.hardware import HardwareService, SystemState
 
@@ -1382,6 +1383,11 @@ def init_vosk():
         SetLogLevel(-1)
         state.vosk_model = Model(str(VOSK_MODEL_PATH))
         state.vosk_recognizer = KaldiRecognizer(state.vosk_model, SAMPLE_RATE)
+        # Per-word-Confidence aktivieren — wird im Recording-Guard
+        # ausgewertet, um Vosk-Halluzinationen mitten im Diktat zu
+        # blocken (z.B. wenn Vosk "aufnahme beenden" hallucinated, waehrend
+        # der Sanitaeter eigentlich "Blutung stoppen" sagt).
+        state.vosk_recognizer.SetWords(True)
         state.vosk_enabled = True
         print(f"Vosk Sprachsteuerung aktiviert (Modell: {VOSK_MODEL_PATH.name})")
         return True
@@ -1450,13 +1456,76 @@ def persistent_audio_callback(indata, frames, time_info, status):
                 result = json.loads(state.vosk_recognizer.Result())
                 text = result.get("text", "").strip()
                 if text:
+                    # Per-Wort-Confidence aus Vosk-Result extrahieren.
+                    # Mit SetWords(True) liefert Vosk eine "result"-Liste
+                    # pro Wort mit "conf"-Score 0..1. Avg darueber ist ein
+                    # robuster Indikator gegen Halluzinationen.
+                    word_results = result.get("result") or []
+                    avg_conf = (sum(w.get("conf", 1.0) for w in word_results) / len(word_results)) if word_results else 1.0
+                    word_count = len(text.split())
+
                     action = match_voice_command(text)
+                    # Logging IMMER — auch ohne Match — um Fehl-Triggers
+                    # rueckverfolgen zu koennen ("was hat Vosk gehoert?").
+                    print(f"[VOSK] text='{text}' words={word_count} conf={avg_conf:.2f} match={action} rec={state.recording}", flush=True)
+
                     if action:
-                        # Während Aufnahme: Stop, Patient fertig, Neuer Patient, Triage erlauben
-                        allowed_during_recording = {"record_stop", "patient_ready", "new_patient",
-                            "triage_red", "triage_yellow", "triage_green", "triage_blue"}
-                        if state.recording and action not in allowed_during_recording:
-                            return
+                        # ============== Recording-Guard (mehrschichtig) ==============
+                        # Waehrend einer aktiven Aufnahme darf NICHTS den Sanitaeter
+                        # mitten im Diktat unterbrechen. Drei Sicherheitsstufen:
+                        #
+                        #   1. Action-Whitelist: nur Stop / Patient-fertig / Neuer
+                        #      Patient — KEINE Triage, kein Export, keine RFID-
+                        #      Aktion. Der Mediziner spricht im Feld auch Worte wie
+                        #      "rot", "gruen", "abbrechen", "sofort behandeln" —
+                        #      diese duerfen waehrend der Aufnahme nichts feuern.
+                        #   2. Trigger-am-Ende-Check: Vosk emittiert Final-Results
+                        #      typischerweise erst nach einer Sprechpause. Wenn der
+                        #      Sanitaeter "...stabilisieren. Aufnahme beenden" sagt,
+                        #      liefert Vosk EINEN Final-String mit dem Trigger ganz
+                        #      hinten. Wir akzeptieren das — aber NICHT wenn der
+                        #      Trigger irgendwo in der Mitte steht und der User
+                        #      danach noch weitergeredet hat ("die blutung stoppen
+                        #      und behandeln") — in dem Fall war's kein Stop-Wunsch.
+                        #      Frueher hatten wir hier einen 4-Wort-Limit der
+                        #      legitime End-of-Sentence-Stops geblockt — gefixt
+                        #      2026-04-26 nach User-Beschwerde "muss alles 2x sagen".
+                        #   3. Confidence-Gate: niedrige Schwelle (0.6) als Filter
+                        #      gegen offensichtliches Background-Rauschen. Echte
+                        #      Halluzinationen sind selten + dann hat Vosk meist
+                        #      noch genuegend Confidence. Lieber gelegentlich
+                        #      false-positive als nervige doppelt-sprechen-Erlebnisse.
+                        STRICT_RECORDING_ACTIONS = {"record_stop", "patient_ready", "new_patient"}
+                        RECORDING_CONF_THRESHOLD = 0.6
+                        if state.recording:
+                            if action not in STRICT_RECORDING_ACTIONS:
+                                print(f"[VOSK-GUARD] {action!r} blockiert (nicht in Whitelist waehrend Aufnahme)", flush=True)
+                                return
+                            # Welche Trigger-Phrase hat gematched? Wir muessen das
+                            # wissen um zu pruefen ob sie am Ende des Vosk-Texts
+                            # steht. match_voice_command gibt nur die Action-ID
+                            # zurueck — also matchen wir hier nochmal explizit.
+                            matched_phrase = None
+                            for phrase, act in VOICE_COMMANDS.items():
+                                if act == action and phrase in text:
+                                    matched_phrase = phrase
+                                    break
+                            if matched_phrase:
+                                # Trigger muss im LETZTEN DRITTEL des Texts liegen.
+                                # Es darf max. 1 Wort danach kommen (Filler wie
+                                # "bitte" oder "jetzt" sind ok). Wenn nach dem
+                                # Trigger noch mehrere Woerter kommen, hat der
+                                # User offensichtlich weitergeredet.
+                                idx = text.rfind(matched_phrase)
+                                after = text[idx + len(matched_phrase):].strip()
+                                after_words = len(after.split()) if after else 0
+                                if after_words > 1:
+                                    print(f"[VOSK-GUARD] {action!r} blockiert: Trigger nicht am Ende ({after_words} Worte danach: {after!r})", flush=True)
+                                    return
+                            if avg_conf < RECORDING_CONF_THRESHOLD:
+                                print(f"[VOSK-GUARD] {action!r} blockiert: Confidence {avg_conf:.2f} < {RECORDING_CONF_THRESHOLD}", flush=True)
+                                return
+                            print(f"[VOSK-GUARD] {action!r} AKZEPTIERT (conf {avg_conf:.2f}, trigger am Ende)", flush=True)
                         # Wenn nicht aufnimmt, kein Stop-Befehl
                         if not state.recording and action == "record_stop":
                             return
@@ -1816,11 +1885,13 @@ def _patient_has_written_rfid(patient: dict) -> bool:
     return bool((patient.get("rfid_tag_id") or "").strip())
 
 
-async def voice_write_card():
-    """Batch-RFID: Schreibt alle Patienten in Anlegungsreihenfolge auf
-    leere MIFARE-Karten. Iteriert durch state.patients.values() (stabile
-    Reihenfolge in Python 3.7+) und überspringt solche die bereits eine
-    RFID-Karte haben. Shared Handler für OLED-Menü, Sprachbefehl und GUI.
+async def voice_write_card(only_pid: str | None = None):
+    """RFID schreiben: entweder Batch (alle nicht-geschriebenen Patienten)
+    oder gezielt einen einzigen Patient (``only_pid``).
+
+    Shared Handler für OLED-Menü, Sprachbefehl, GUI-Batch-Button UND den
+    neuen Per-Patient-Button im Fahrzeug-Modus. ``only_pid=None`` ist der
+    Batch-Default, ``only_pid="PAT-XYZ"`` schreibt nur diese eine Karte.
 
     Ablauf pro Patient:
       1. OLED "KARTE N/M <Name>" + TTS-Ansage
@@ -1848,12 +1919,38 @@ async def voice_write_card():
             return True
         return False
 
-    all_candidates = [p for p in state.patients.values() if not _patient_has_written_rfid(p)]
-    todo = [p for p in all_candidates if _patient_has_useful_content(p)]
-    skipped_empty = len(all_candidates) - len(todo)
-    if skipped_empty > 0:
-        print(f"[RFID-BATCH] {skipped_empty} leere Patient-Records "
-              f"uebersprungen (kein Name/Injury/Vital)", flush=True)
+    # Per-Patient-Modus: nur die EINE angeforderte ID. Wir validieren hier
+    # damit die Fehlermeldung praezise ist (Patient nicht gefunden / hat
+    # schon Karte / leerer Datensatz). Im Batch-Modus filtern wir wie bisher.
+    if only_pid:
+        patient = state.patients.get(only_pid)
+        if not patient:
+            tts.speak("Patient nicht gefunden")
+            oled_menu.show_status("KEIN PAT", only_pid[:14])
+            await asyncio.sleep(2.0)
+            oled_menu.clear_status()
+            return
+        if _patient_has_written_rfid(patient):
+            tts.speak("Patient hat schon eine Karte")
+            oled_menu.show_status("SCHON OK", "Karte vorhanden")
+            await asyncio.sleep(2.0)
+            oled_menu.clear_status()
+            return
+        if not _patient_has_useful_content(patient):
+            tts.speak("Patient hat keine nutzbaren Daten")
+            oled_menu.show_status("LEER", "kein Inhalt")
+            await asyncio.sleep(2.0)
+            oled_menu.clear_status()
+            return
+        todo = [patient]
+        skipped_empty = 0
+    else:
+        all_candidates = [p for p in state.patients.values() if not _patient_has_written_rfid(p)]
+        todo = [p for p in all_candidates if _patient_has_useful_content(p)]
+        skipped_empty = len(all_candidates) - len(todo)
+        if skipped_empty > 0:
+            print(f"[RFID-BATCH] {skipped_empty} leere Patient-Records "
+                  f"uebersprungen (kein Name/Injury/Vital)", flush=True)
 
     if not todo:
         if skipped_empty > 0:
@@ -1962,16 +2059,26 @@ async def voice_write_card():
                     "uid": result,
                 })
                 # Den gesamten Patient-Record neu broadcasten, damit Frontend
-                # die RFID-Spalte in der Datenbank-Tabelle aktualisiert und das
-                # Surface die UID ebenfalls mitbekommt.
+                # die RFID-Spalte in der Datenbank-Tabelle aktualisiert.
                 await broadcast({"type": "patient_update", "patient": patient})
-                # Direkt ans Surface pushen (auch wenn schon synced) — sonst
-                # kennt das Surface die neue UID nicht und kann sie beim
-                # Omnikey-Scan nicht zuordnen.
-                try:
-                    await push_single_patient(patient)
-                except Exception as e:
-                    print(f"[RFID] push_single_patient nach Write fehlgeschlagen: {e}", flush=True)
+                # UID-Update an Surface schicken — aber NUR wenn der Patient
+                # dort schon bekannt ist (synced=True). Hintergrund:
+                #   2026-04-26 (V1): push_single_patient nach jedem RFID-
+                #     Write — Patient wurde dadurch implizit "gemeldet" auch
+                #     wenn der User nur Karten schreiben wollte. User-
+                #     Beschwerde "automatische Meldung ist komisch".
+                #   2026-04-26 (V2): push komplett raus. Resultat: bei bereits
+                #     gemeldeten Patienten kannte das Surface die neue UID
+                #     nicht — Karten-Scan an der Rettungsstation lieferte
+                #     "Karte unbekannt" obwohl der Patient da war.
+                #   2026-04-26 (V3, jetzt): differenziert. Synced-Patienten
+                #     bekommen das UID-Update sofort (nur Datenpflege, kein
+                #     neues Synct), nicht-synced Patienten bleiben rein lokal.
+                if patient.get("synced"):
+                    try:
+                        await push_single_patient(patient)
+                    except Exception as e:
+                        print(f"[RFID] UID-Update an Surface fehlgeschlagen: {e}", flush=True)
                 await hardware_service.flash_success(0.7)
                 # KEINE "Karte N fertig"-Ansage — der User sieht LED + OLED-Status
                 # und bekommt sofort die naechste "Karte N+1. Rang Name"-Ansage.
@@ -1991,12 +2098,20 @@ async def voice_write_card():
 
         # Abschluss-Ansage: knapp halten damit der Worker sie wirklich
         # abspielt bevor der naechste Voice-Command kommt.
+        # Hinweis "noch melden" nur ergaenzen wenn mindestens ein Patient
+        # geschrieben wurde, der noch nicht synced ist. Sonst nervt es
+        # nach jedem Erase-und-neu-Schreiben.
+        any_unsynced = any(
+            not p.get("synced") for p in state.patients.values()
+            if p.get("rfid_tag_id")
+        )
+        meld_hint = " Nicht vergessen Patienten zu melden" if any_unsynced else ""
         if written == total:
             oled_menu.show_status("FERTIG", f"{written}/{total} OK")
-            tts.speak("Alle Karten fertig" if written > 1 else "Karte fertig")
+            tts.speak(("Alle Karten fertig." if written > 1 else "Karte fertig.") + meld_hint)
         elif written > 0:
             oled_menu.show_status("TEIL OK", f"{written}/{total}")
-            tts.speak(f"{written} von {total} fertig")
+            tts.speak(f"{written} von {total} fertig.{meld_hint}")
         else:
             oled_menu.show_status("KEINE OK", "0 Karten")
             tts.speak("Keine Karte geschrieben")
@@ -2131,21 +2246,26 @@ async def voice_erase_card():
                 })
                 patient["timestamp_updated"] = datetime.now().isoformat()
                 await broadcast({"type": "patient_update", "patient": patient})
-                # Surface muss wissen dass die UID nicht mehr mit dem Patient
-                # assoziiert ist — sonst oeffnet ein kuenftiger Scan derselben
-                # (bereits geloeschten) Karte weiterhin die alte Patientenakte.
-                try:
-                    await push_single_patient(patient)
-                except Exception as e:
-                    print(f"[RFID-ERASE] push_single_patient fehlgeschlagen: {e}", flush=True)
+                # UID-Loeschung an Surface schicken — aber nur wenn der
+                # Patient dort schon bekannt ist (synced=True). Sonst war
+                # er nie auf der Leitstelle und braucht keine Synchronisierung.
+                # Bei nicht-synced Patienten reicht es, das Mapping lokal
+                # zu loeschen — der naechste explizite "Patienten melden"
+                # bringt den Patient ohne UID rueber.
+                if patient.get("synced"):
+                    try:
+                        await push_single_patient(patient)
+                    except Exception as e:
+                        print(f"[RFID-ERASE] UID-Update an Surface fehlgeschlagen: {e}", flush=True)
             if state.last_rfid_uid == uid:
                 state.last_rfid_uid = None
             # Explizit den Surface-Endpoint /api/rfid/clear-tag aufrufen.
-            # Das ist redundant zum push_single_patient oben, aber robuster:
-            # der Endpoint loest die UID-Zuordnung auch dann sauber auf, wenn
-            # /api/ingest aus irgendeinem Grund die Patient-Update-Merge nicht
-            # durchlaesst (z.B. wenn der Patient nie ans Surface gemeldet war,
-            # aber der Jetson die UID gesetzt hatte). Unabhaengig vom
+            # Wichtig: das ist KEIN Patient-Push (markiert nichts als synced),
+            # sondern loest gezielt die UID-Zuordnung im Surface-Backend.
+            # Wenn der Patient nie an die Leitstelle gemeldet war ist das
+            # ein No-Op am Surface; wenn doch, wird die alte UID-Mapping
+            # bereinigt damit ein erneuter Karten-Scan die Karte nicht
+            # mehr dem geloeschten Patient zuordnet. Unabhaengig vom
             # affected_pid — wir loeschen IMMER fuer die UID, damit stale
             # Mappings auf dem Surface verschwinden.
             try:
@@ -4007,7 +4127,23 @@ async def index(request: Request):
 
 @app.get("/api/status")
 async def get_status():
+    cfg = load_config()
     return {
+        # Geraete-Identitaet fuer das einheitliche Frontend (Settings,
+        # Sidebar-Footer, Hardware-Monitor). Surface vs. Jetson wird
+        # ueber 'device' unterschieden, der Anzeige-Name kommt aus
+        # 'system_name' (config-overridable, default Jetson Orin Nano).
+        "device": "jetson",
+        "system_name": cfg.get("system_name", "NVIDIA Jetson Orin Nano"),
+        # Versionsinfo aus shared/version.py — eine zentrale Quelle.
+        # get_build_hash() ist lazy-cached und re-tryt bei "dev"-
+        # Fallback automatisch beim naechsten Aufruf.
+        "version": VERSION,
+        "build": get_build_hash(),
+        "full_version": get_full_version(),
+        # Aktiv konfigurierter LLM-Tag und Ollama-URL — fuer UI.
+        "llm_model": OLLAMA_MODEL,
+        "llm_url": cfg.get("ollama", {}).get("url", ""),
         "system": get_system_stats(),
         "model": state.current_model,
         "model_loaded": state.model_loaded,
@@ -4558,7 +4694,11 @@ async def register_patient(body: dict):
 
     pid = patient["patient_id"]
     state.patients[pid] = patient
-    state.rfid_map[patient["rfid_tag_id"]] = pid
+    # rfid_map nur fuellen wenn ein Tag wirklich vorhanden ist —
+    # nach dem Bug-Fix in create_patient_record() ist rfid_tag_id
+    # leer bis eine echte Karte geschrieben wurde.
+    if patient.get("rfid_tag_id"):
+        state.rfid_map[patient["rfid_tag_id"]] = pid
     state.active_patient = pid
 
     await broadcast({
@@ -4666,6 +4806,34 @@ async def update_patient_status(patient_id: str, body: dict):
     return {"status": "ok", "patient": patient}
 
 
+@app.post("/api/rfid/clear-synthetic")
+async def rfid_clear_synthetic():
+    """Einmaliges Cleanup: leert ``rfid_tag_id`` bei allen Patienten,
+    die noch nie auf eine echte Karte geschrieben wurden.
+
+    Vor dem Bug-Fix in ``create_patient_record`` (2026-04-26) bekam
+    jeder neu angelegte Patient sofort einen synthetischen Tag —
+    der RFID-Batch hielt sie deshalb faelschlich fuer "Karte schon
+    geschrieben". Heuristik fuer "noch nie real geschrieben":
+    Patient hat KEIN ``rfid_written``-Timeline-Event.
+    """
+    cleared = 0
+    for p in state.patients.values():
+        timeline = p.get("timeline") or []
+        ever_written = any(ev.get("event") == "rfid_written" for ev in timeline)
+        if not ever_written and (p.get("rfid_tag_id") or "").strip():
+            old_tag = p["rfid_tag_id"]
+            p["rfid_tag_id"] = ""
+            # rfid_map saeubern damit alte Tag-IDs nicht zu Geister-Patient zeigen
+            if old_tag in state.rfid_map:
+                del state.rfid_map[old_tag]
+            cleared += 1
+    if cleared:
+        await broadcast({"type": "patients_refresh"})
+    return {"status": "ok", "cleared": cleared,
+            "total": len(state.patients)}
+
+
 @app.post("/api/rfid/batch")
 async def rfid_batch_write():
     """GUI-Trigger: Schreibt alle Patienten ohne RFID-Karte nacheinander
@@ -4673,6 +4841,28 @@ async def rfid_batch_write():
     identisch zu OLED-Menü 'RFID schreiben' und Sprachbefehl."""
     asyncio.create_task(voice_write_card())
     return {"status": "started"}
+
+
+@app.post("/api/rfid/write-single")
+async def rfid_write_single(body: dict):
+    """Schreibt RFID gezielt fuer EINEN einzelnen Patient. Use-Case:
+    Sanitaeter im Fahrzeug auf Rueckfahrt mit begrenztem Kartenvorrat
+    waehlt einzelne Patienten aus (z.B. nur die kritischen) statt den
+    Voll-Batch zu fahren. Body: ``{"patient_id": "PAT-XXX"}``.
+    Identische Hardware-Sequenz wie der Batch — TTS-Ansage,
+    LED-Blink, Wait-for-Card, Write — nur eben fuer einen einzigen.
+    """
+    pid = (body or {}).get("patient_id", "").strip()
+    if not pid:
+        return {"error": "patient_id fehlt"}
+    if pid not in state.patients:
+        return {"error": f"Patient {pid} nicht gefunden"}
+    # rfid_write_active wird lazy in voice_write_card gesetzt — getattr
+    # mit Default damit der Check beim ersten Aufruf nicht crasht.
+    if getattr(state, "rfid_write_active", False):
+        return {"error": "RFID-Schreiben laeuft bereits"}
+    asyncio.create_task(voice_write_card(only_pid=pid))
+    return {"status": "started", "patient_id": pid}
 
 
 @app.post("/api/rfid/cancel")
@@ -4974,6 +5164,13 @@ async def push_single_patient(patient: dict) -> bool:
     ``synced`` ist — das Surface-Merge akzeptiert Updates."""
     cfg = load_config()
     backend_url = cfg.get("backend", {}).get("url", "")
+    # Caller-Tracing analog zu sync_all_patients — diese Funktion ist
+    # die haeufigste "vermutete Auto-Meldung" weil sie nach RFID-Write/
+    # Erase ohne extra User-Aktion feuert.
+    import traceback as _tb
+    _stack = _tb.extract_stack(limit=4)[:-1]
+    _caller_chain = " -> ".join(f"{f.name}@{f.lineno}" for f in _stack)
+    print(f"[SYNC] push_single_patient pid={patient.get('patient_id','?')} caller={_caller_chain}", flush=True)
     if not backend_url:
         return False
 
@@ -5020,6 +5217,17 @@ async def sync_all_patients() -> dict:
     cfg = load_config()
     backend_url = cfg.get("backend", {}).get("url", "")
     device_id = cfg.get("device_id", "jetson-01")
+
+    # Caller-Tracing: wenn der User behauptet "ich habe nichts gemeldet"
+    # aber Patienten taucht trotzdem auf der Leitstelle auf, finden wir hier
+    # den Aufruf-Stack heraus. Stack-Tiefe begrenzt damit das Log nicht
+    # explodiert (3 Frames reichen typisch fuer Voice/API/RFID-Pfade).
+    import traceback as _tb
+    _stack = _tb.extract_stack(limit=4)[:-1]
+    _caller_chain = " -> ".join(f"{f.name}@{f.lineno}" for f in _stack)
+    _to_send = sum(1 for p in state.patients.values()
+                   if p.get("analyzed") and not p.get("synced"))
+    print(f"[SYNC] sync_all_patients aufgerufen ({_to_send} sendable) caller={_caller_chain}", flush=True)
 
     if not backend_url:
         return {"sent": 0, "skipped": 0, "failed": 0, "error": "Kein Backend konfiguriert"}
@@ -5406,30 +5614,23 @@ async def data_test_generate(body: dict | None = None):
         ]
         pending_texts = []
 
-    else:  # "standard" — Default: urspruengliche 6er-Demo + 2 Pending
+    else:  # "standard" — Default: realistischer Workflow-Mix
+        # Refactor 2026-04-26 nach User-Feedback:
+        #   - Markus + Andrea waren vorher "registered, not analyzed"-
+        #     Patienten mit Transcript-Text — das ist KEIN echter
+        #     Workflow-Zustand. Bevor die KI analysiert hat, gibt es nur
+        #     einen pending_transcript-Block, KEINEN Patient-Record. Diese
+        #     beiden landen jetzt als pendings.
+        #   - Tobias + Julia waren mit synced=True markiert, aber nie
+        #     wirklich ans Surface gepusht — Demo zeigte "gemeldet"-Badge,
+        #     auf der Leitstelle waren sie aber unsichtbar. Gefixt: nach
+        #     dem Erzeugen pushen wir sie tatsaechlich (siehe Code unten).
+        #   - Stefan + Lea: bleiben analyzed=True, synced=False (= warten
+        #     auf "Patienten melden"-Befehl).
+        # Resultat: realistischer Workflow-Mix den der Sanitaeter durch-
+        # spielen kann — pending analysieren, dann melden, dann sind alle
+        # Patienten konsistent zwischen Jetson und Surface.
         test_patients = [
-            _mk_patient(
-                "Markus Hoffmann", "Hauptgefreiter", [], {},
-                flow_status="registered", analyzed=False, synced=False,
-                transcript_text=(
-                    "Patient ist Hauptgefreiter Markus Hoffmann, 26 Jahre alt. "
-                    "Beim Absitzen vom Transporter ist er ungluecklich auf das "
-                    "rechte Knie gefallen. Schwellung deutlich sichtbar, "
-                    "Schmerzen beim Beugen aber belastbar. Ansprechbar, orientiert. "
-                    "Keine sonstigen Verletzungen erkennbar."
-                ),
-            ),
-            _mk_patient(
-                "Andrea Wenzel", "Soldatin", [], {},
-                flow_status="registered", analyzed=False, synced=False,
-                transcript_text=(
-                    "Soldatin Andrea Wenzel, 23 Jahre, hat sich beim Hantieren mit dem "
-                    "Spaten eine oberflaechliche Schnittwunde am linken Unterarm "
-                    "zugezogen. Circa acht Zentimeter lang, leicht blutend, aber "
-                    "kein pulsierender Blutaustritt. Druckverband angelegt, "
-                    "Kreislauf stabil."
-                ),
-            ),
             _mk_patient(
                 "Stefan Becker", "Stabsunteroffizier",
                 ["Splitterverletzung re. Oberschenkel", "moderate Blutung"],
@@ -5486,36 +5687,60 @@ async def data_test_generate(body: dict | None = None):
             ),
         ]
         pending_texts = [
+            # Ein einziger zusammenhaengender Multi-Patient-Diktat-Block —
+            # so wuerde es ein Sanitaeter im Feld realistisch einsprechen:
+            # Intro mit Eigenname, dann 4 Patienten nacheinander mit
+            # natuerlichen Uebergangsphrasen ("der naechste Patient", "weiter
+            # mit"), am Ende "Patienten fertig". Aus diesem Block extrahiert
+            # die KI bei der Analyse die 4 einzelnen Patienten — Demo zeigt
+            # damit Multi-Patient-Segmentierung 1:1 wie in der Realitaet.
             (
-                "Erster Patient ist Oberstabsgefreiter Benjamin Richter, maennlich, "
-                "27 Jahre. Schussverletzung am rechten Oberarm mit Durchschuss, "
-                "starke Blutung. Druckverband angelegt, Blutung unter Kontrolle. "
-                "Puls 118 tachykard, Sauerstoff 93 Prozent, Blutdruck 100 zu 60. "
-                "Patient ansprechbar aber blass. "
-                "Als naechstes haben wir Stabsunteroffizierin Maria Lange, "
-                "weiblich, 32 Jahre. Verbrennung zweiten Grades an der linken "
-                "Handflaeche, etwa 3 Prozent der Koerperoberflaeche. "
-                "Schmerzen stark, Vitalwerte stabil, Puls 96, Sauerstoff 97 Prozent, "
-                "Blutdruck 130 zu 85. Kuehlung mit steriler Kompresse angelegt."
-            ),
-            (
-                "Erster Patient: Obergefreiter Kevin Weigel, 22 Jahre. Nach Sturz "
-                "von der Ladeflaeche Verdacht auf Platzwunde am Hinterkopf, "
-                "blutet staerker. Druckverband am Kopf angelegt. Patient wirkt "
-                "benommen, GCS 13. Puls 92, Sauerstoff 96 Prozent, Blutdruck "
-                "115 zu 75. Vorsichtige Lagerung bis zum Transport. "
-                "Nachdem wir Weigel versorgt haben, zweiter Patient: Leutnant "
-                "Katharina Vogel, 28 Jahre. Distorsion des rechten Sprunggelenks "
-                "mit deutlicher Schwellung. Keine offene Verletzung, Durchblutung "
-                "und Sensibilitaet am Fuss intakt. Vitalwerte unauffaellig, "
-                "Puls 78, Sauerstoff 98 Prozent. Schiene angelegt, Schmerzen "
-                "moderat."
+                "Hier spricht Oberfeldarzt Doktor Reuter, BAT Alpha vier zwei, "
+                "ich melde vier Verwundete vom Zwischenfall am Kontrollpunkt. "
+                "Erster Patient ist Hauptgefreiter Markus Hoffmann, sechsundzwanzig "
+                "Jahre alt. Beim Absitzen vom Transporter ist er ungluecklich auf "
+                "das rechte Knie gefallen. Schwellung deutlich sichtbar, Schmerzen "
+                "beim Beugen aber belastbar. Ansprechbar, orientiert, Vitalwerte "
+                "stabil, keine sonstigen Verletzungen erkennbar. "
+                "Der naechste Patient ist Soldatin Andrea Wenzel, dreiundzwanzig "
+                "Jahre. Sie hat sich beim Hantieren mit dem Spaten eine "
+                "oberflaechliche Schnittwunde am linken Unterarm zugezogen. "
+                "Circa acht Zentimeter lang, leicht blutend, aber kein "
+                "pulsierender Blutaustritt. Druckverband angelegt, Kreislauf "
+                "stabil. "
+                "Weiter mit dem dritten Patienten, Oberstabsgefreiter Benjamin "
+                "Richter, maennlich, siebenundzwanzig Jahre. Schussverletzung am "
+                "rechten Oberarm mit Durchschuss, starke Blutung. Druckverband "
+                "angelegt, Blutung unter Kontrolle. Puls einhundertachtzehn "
+                "tachykard, Sauerstoff dreiundneunzig Prozent, Blutdruck einhundert "
+                "zu sechzig. Patient ansprechbar aber blass. "
+                "Vierte Patientin ist Stabsunteroffizierin Maria Lange, weiblich, "
+                "zweiunddreissig Jahre. Verbrennung zweiten Grades an der linken "
+                "Handflaeche, etwa drei Prozent der Koerperoberflaeche. Schmerzen "
+                "stark, Vitalwerte stabil, Puls sechsundneunzig, Sauerstoff "
+                "siebenundneunzig Prozent, Blutdruck einhundertdreissig zu "
+                "fuenfundachtzig. Kuehlung mit steriler Kompresse angelegt. "
+                "Patienten fertig."
             ),
         ]
 
     # Gemeinsamer Code: Patienten in state ablegen, pending anlegen
     for p in test_patients:
         state.patients[p["patient_id"]] = p
+
+    # Demo-Szenarien-Fix 2026-04-26: Patienten die als synced=True markiert
+    # sind muessen tatsaechlich an die Leitstelle gepusht werden — sonst
+    # zeigt das Jetson "gemeldet" aber das Surface kennt sie gar nicht.
+    # Lief frueher nur als kosmetisches Flag, jetzt mit echtem POST /api/ingest.
+    pushed_to_surface = 0
+    for p in test_patients:
+        if p.get("synced"):
+            try:
+                ok = await push_single_patient(p)
+                if ok:
+                    pushed_to_surface += 1
+            except Exception as e:
+                print(f"[DEMO-SYNC] {p.get('patient_id')} push fehlgeschlagen: {e}", flush=True)
 
     import uuid as _uuid_p
     created_pending = []
@@ -5543,11 +5768,13 @@ async def data_test_generate(body: dict | None = None):
         await broadcast({"type": "transcription_result",
                          "pending_analysis": True, "pending_entry": entry})
     print(f"Test-Daten generiert: {len(test_patients)} Patient(en) + "
-          f"{len(created_pending)} pending Transkript(e)")
+          f"{len(created_pending)} pending Transkript(e), "
+          f"{pushed_to_surface} an Surface gepusht")
     return {"status": "ok", "created": len(test_patients),
             "patient_ids": [p["patient_id"] for p in test_patients],
             "pending_created": len(created_pending),
-            "pending_ids": created_pending}
+            "pending_ids": created_pending,
+            "pushed_to_surface": pushed_to_surface}
 
 
 # ---------------------------------------------------------------------------
@@ -5866,17 +6093,31 @@ async def sitaware_status():
     return sitaware.get_sitaware_status()
 
 
+# Helper: Standardparameter fuer alle SitaWare-Exporte. Liest aus
+# config.json (Geraete-Position, Einheiten-Name, Funkfrequenz).
+def _sitaware_export_params() -> dict:
+    cfg = load_config()
+    pos = cfg.get("device_position") or cfg.get("position") or {}
+    return {
+        "unit_name": cfg.get("unit_name", ""),
+        "device_id": cfg.get("device_id", ""),
+        "lat": float(pos.get("lat", 50.7374)),
+        "lon": float(pos.get("lon", 7.0982)),
+        "radio_freq": cfg.get("radio_frequency", "0.0"),
+        "radio_callsign": cfg.get("radio_callsign", cfg.get("unit_name", "")),
+    }
+
+
 @app.get("/api/sitaware/cot")
 async def sitaware_cot_export():
-    """Exportiert alle Patienten als Cursor-on-Target XML Events."""
+    """Exportiert alle Patienten als TAK-MEDEVAC-CoT-Events."""
     if not state.patients:
         return {"error": "Keine Patienten vorhanden"}
-    cfg = load_config()
-    patients_list = list(state.patients.values())
+    p = _sitaware_export_params()
     xml = sitaware.generate_cot_batch(
-        patients_list,
-        unit_name=cfg.get("unit_name", ""),
-        device_id=cfg.get("device_id", ""),
+        list(state.patients.values()),
+        unit_name=p["unit_name"], device_id=p["device_id"],
+        lat=p["lat"], lon=p["lon"],
     )
     from fastapi.responses import Response
     return Response(content=xml, media_type="application/xml",
@@ -5885,18 +6126,49 @@ async def sitaware_cot_export():
 
 @app.get("/api/sitaware/nvg")
 async def sitaware_nvg_export():
-    """Exportiert Patienten als NATO Vector Graphics Overlay."""
+    """Exportiert Patienten als NATO Vector Graphics Overlay (APP-6D)."""
     if not state.patients:
         return {"error": "Keine Patienten vorhanden"}
-    cfg = load_config()
-    patients_list = list(state.patients.values())
+    p = _sitaware_export_params()
     xml = sitaware.generate_nvg_overlay(
-        patients_list,
-        unit_name=cfg.get("unit_name", ""),
+        list(state.patients.values()),
+        unit_name=p["unit_name"], lat=p["lat"], lon=p["lon"],
     )
     from fastapi.responses import Response
     return Response(content=xml, media_type="application/xml",
                     headers={"Content-Disposition": "attachment; filename=safir_overlay.nvg"})
+
+
+@app.get("/api/sitaware/medevac")
+async def sitaware_medevac_9line():
+    """Exportiert alle Patienten als MEDEVAC-9-Liner-XML (ATP-3.7.2)."""
+    if not state.patients:
+        return {"error": "Keine Patienten vorhanden"}
+    p = _sitaware_export_params()
+    xml = sitaware.generate_medevac_9line(
+        list(state.patients.values()),
+        unit_name=p["unit_name"], device_id=p["device_id"],
+        lat=p["lat"], lon=p["lon"],
+        radio_freq=p["radio_freq"], radio_callsign=p["radio_callsign"],
+    )
+    from fastapi.responses import Response
+    return Response(content=xml, media_type="application/xml",
+                    headers={"Content-Disposition": "attachment; filename=safir_medevac_9line.xml"})
+
+
+@app.get("/api/sitaware/fhir")
+async def sitaware_fhir_bundle():
+    """Exportiert alle Patienten als HL7 FHIR R4 Collection-Bundle."""
+    if not state.patients:
+        return {"error": "Keine Patienten vorhanden"}
+    p = _sitaware_export_params()
+    body = sitaware.generate_fhir_bundle(
+        list(state.patients.values()),
+        unit_name=p["unit_name"], device_id=p["device_id"],
+    )
+    from fastapi.responses import Response
+    return Response(content=body, media_type="application/fhir+json",
+                    headers={"Content-Disposition": "attachment; filename=safir_fhir_bundle.json"})
 
 
 # Multi-Patient-Flow: Der BAT-Sanitäter kann mehrere Verwundete am Stück

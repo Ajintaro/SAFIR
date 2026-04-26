@@ -570,32 +570,96 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
         }
 
         def _write_and_verify(sector, auth_block, blk, data) -> tuple[bool, str]:
-            """Ein Block-Write mit Re-Auth-Retry. Wenn der Write-Cycle oder
-            der Verify-Read scheitert, einmal re-authentifizieren und
-            nochmal versuchen — MIFARE verliert manchmal den Crypto1-State
-            wenn ein Befehl zum falschen Zeitpunkt kommt."""
-            for attempt in (1, 2):
+            """Block-Write mit gestaffelter Recovery. MIFARE-Karten verlieren
+            den Crypto1-State haeufig wenn ein Block-Write fehlschlaegt
+            ("Phase2 wrong bit count 0") — vor allem wenn die Karte
+            waehrend des Multi-Block-Writes minimal bewegt wurde.
+
+            Drei Versuche, jeder mit aggressiverer Recovery:
+              Versuch 1: Direkter Write
+              Versuch 2: Soft-Recovery — stop_crypto + Re-Auth
+              Versuch 3: Hard-Recovery — RC522-Reset + REQA + Anticoll +
+                         Select + Re-Auth (das gleiche "Magic Recipe"
+                         das schon zwischen Sektoren benutzt wird)
+
+            Damit fangen wir auch die seltenen Faelle ab in denen der
+            Karten-State so verworren ist dass selbst Re-Auth scheitert.
+            """
+            import time as _t2
+            for attempt in (1, 2, 3):
                 ok, detail = _rc522_write_block(blk, data)
                 if ok:
                     verify = _rc522_read_block(blk)
                     if verify == data:
+                        if attempt > 1:
+                            log.info(
+                                f"RFID-Write: Block {blk} im Versuch {attempt} doch noch geklappt"
+                            )
                         return (True, "")
                     detail = f"Verify mismatch (got {verify.hex() if verify else 'None'})"
                 log.warning(
                     f"RFID-Write: Block {blk} Versuch {attempt} fehlgeschlagen: {detail}"
                 )
                 if attempt == 1:
-                    # Re-Auth für den Sektor — nach einem Fehler kann der
-                    # Crypto1-State inkonsistent sein
+                    # Soft-Recovery: Crypto-State zuruecksetzen und neu auth.
                     _rc522_stop_crypto()
-                    import time as _t2
-                    _t2.sleep(0.02)
+                    _t2.sleep(0.05)
                     if not _rc522_auth(auth_block, uid_bytes):
-                        return (False, f"Re-Auth Sektor {sector} fehlgeschlagen")
-            return (False, f"Block {blk}: {detail}")
+                        log.warning(
+                            f"RFID-Write: Soft-Reauth Sektor {sector} fehlgeschlagen "
+                            f"— Versuch 2 wird trotzdem laufen, Versuch 3 macht Hard-Recovery"
+                        )
+                elif attempt == 2:
+                    # Hard-Recovery: kompletter RC522-Hardware-Reset +
+                    # Karte neu finden + Re-Auth. Das ist die gleiche
+                    # Sequenz die zwischen Sektoren benutzt wird und
+                    # rettet auch verworrene Karten-States.
+                    log.info(
+                        f"RFID-Write: Hard-Recovery vor Versuch 3 fuer Block {blk}"
+                    )
+                    _rc522_stop_crypto()
+                    _rc522_halt()
+                    _t2.sleep(0.05)
+                    rc522_init()
+                    _t2.sleep(0.05)
+                    found = False
+                    for _ in range(20):
+                        ok_req, _ = _rc522_request(_PICC_REQIDL)
+                        if not ok_req:
+                            _t2.sleep(0.05)
+                            continue
+                        uid_re = _rc522_anticoll()
+                        if uid_re is None:
+                            _t2.sleep(0.05)
+                            continue
+                        if _rc522_select(uid_re) is None:
+                            _t2.sleep(0.05)
+                            continue
+                        found = True
+                        break
+                    if not found:
+                        return (
+                            False,
+                            f"Karte nach Hard-Recovery nicht wiedergefunden (Block {blk})",
+                        )
+                    if not _rc522_auth(auth_block, uid_bytes):
+                        return (
+                            False,
+                            f"Hard-Recovery: Re-Auth Sektor {sector} fehlgeschlagen",
+                        )
+            return (False, f"Block {blk} nach 3 Versuchen: {detail}")
 
         try:
             import time as _t3
+            # Warm-up vor dem ersten Sektor-Write. Hintergrund:
+            # Der RC522-Bit-Bang hat einen "kalten Start"-Effekt — die
+            # ersten paar Block-Writes nach Auth schlagen oefter fehl
+            # ("Phase2 wrong bit count 0"). Beim Voice-Batch-Command
+            # "karte schreiben" hat der zweite Patient automatisch eine
+            # warme Hardware (vom ersten Write). Beim Single-Write ist
+            # die Hardware "kalt" — wir simulieren den Aufwaerm-Effekt
+            # mit einer kurzen Pause vor Sektor 1.
+            _t3.sleep(0.1)
             for sector_idx, (sector, blocks) in enumerate(sector_blocks.items()):
                 auth_block = blocks[0]  # Auth auf ersten Block des Sektors
                 # KRITISCH: Vor jedem NEUEN Sektor-Auth zuerst einen
@@ -647,10 +711,20 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
                     log.warning(f"RFID-Write: Auth fehlgeschlagen auf Sektor {sector}")
                     return (False, f"Auth fehlgeschlagen auf Sektor {sector}")
                 log.info(f"RFID-Write: Sektor {sector} authentifiziert (Block {auth_block})")
-                for blk in blocks:
+                for blk_idx, blk in enumerate(blocks):
                     data = payload.get(blk)
                     if data is None:
                         continue
+                    # Inter-Block-Delay zwischen Writes innerhalb eines
+                    # Sektors. MIFARE-Karten brauchen nach einem Write-
+                    # Cycle ~10ms damit der EEPROM-Brennvorgang abschliesst
+                    # und der Crypto-State stabil ist. Ohne diesen Sleep
+                    # kommt manchmal "Phase2 wrong bit count 0" auf dem
+                    # naechsten Block (User-Beschwerde 2026-04-26 mit
+                    # Block 5/6 Failures auf dem AAE7D3C3-Card).
+                    if blk_idx > 0:
+                        import time as _t4
+                        _t4.sleep(0.05)
                     ok, err = _write_and_verify(sector, auth_block, blk, data)
                     if not ok:
                         log.warning(f"RFID-Write: Fehlgeschlagen auf Block {blk}: {err}")
@@ -879,7 +953,19 @@ def create_patient_record(
     device_id: str = "jetson-01",
     created_by: str = "",
 ) -> dict:
-    """Erstellt einen neuen Patientendatensatz mit Grunddaten."""
+    """Erstellt einen neuen Patientendatensatz mit Grunddaten.
+
+    BUG-FIX 2026-04-26: ``rfid_tag_id`` wird NICHT mehr automatisch
+    generiert wenn leer uebergeben. Frueher: ``rfid_tag_id or
+    generate_rfid_tag()`` — das hat fuer jeden via Diktat-Analyse
+    erzeugten Patienten einen synthetischen RFID-Tag erfunden, was
+    den RFID-Batch-Write-Check (``_patient_has_written_rfid``)
+    sofort True zurueckgeben liess. Resultat: Sanitaeter konnte
+    keine Karten schreiben weil "alle Patienten haben schon eine
+    Karte" — obwohl noch gar keine Karte aufgelegt wurde. Jetzt
+    bleibt ``rfid_tag_id`` leer bis tatsaechlich auf eine MIFARE-
+    Karte geschrieben wurde.
+    """
     from shared.models import PATIENT_SCHEMA
     import copy
 
@@ -888,7 +974,7 @@ def create_patient_record(
     patient["timestamp_created"] = datetime.now().isoformat()
     patient["name"] = name
     patient["triage"] = triage
-    patient["rfid_tag_id"] = rfid_tag_id or generate_rfid_tag()
+    patient["rfid_tag_id"] = rfid_tag_id  # leer bis Karte geschrieben
     patient["device_id"] = device_id
     patient["created_by"] = created_by
     patient["flow_status"] = "registered"

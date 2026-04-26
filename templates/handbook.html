@@ -248,6 +248,38 @@
                     <div class="hb-note-title">Offline-Fähig</div>
                     Beide Geräte arbeiten auch ohne Internet. Tailscale läuft über lokales WLAN oder Direkt-Ethernet. Kein Cloud-Service ist zwingend erforderlich. KI-Inferenz ist 100 % lokal.
                 </div>
+
+                <h2>HTTPS-Zugang im Tailnet (für Demo &amp; Besucher)</h2>
+                <p>
+                    Beide Geräte sind mit gültigem Let's-Encrypt-Zertifikat im Tailscale-Mesh
+                    erreichbar — grünes Schloss im Browser, kein „Nicht-sicher"-Warnhinweis.
+                    Aktiviert via <code>tailscale serve --bg --https=443 http://localhost:8080</code>.
+                </p>
+                <table class="hb-vc-table">
+                    <thead><tr><th>Gerät</th><th>HTTPS-URL (Mesh-intern)</th><th>HTTP-Fallback (lokal)</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td>Jetson (Feldgerät)</td>
+                            <td><code>https://jetson-orin.tail0fe60f.ts.net/</code></td>
+                            <td><code>http://localhost:8080</code></td>
+                        </tr>
+                        <tr>
+                            <td>Surface (Leitstelle)</td>
+                            <td><code>https://ai-station.tail0fe60f.ts.net/</code></td>
+                            <td><code>http://localhost:8080</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="hb-note info">
+                    <div class="hb-note-title">Wichtig zur Reichweite</div>
+                    Die HTTPS-URLs sind <strong>nur innerhalb des Tailnets</strong> erreichbar.
+                    Ein Messebesucher mit Tablet braucht entweder die Tailscale-App
+                    installiert (einmalige Anmeldung am Tailnet, dann grünes Schloss) — oder
+                    er bekommt die HTTP-Variante über das gleiche WLAN gezeigt. Echte
+                    Internet-Erreichbarkeit wäre <code>tailscale funnel</code> (Sicherheits-
+                    Caveats: jeder mit der URL kommt rein, deshalb für Demo-Zwecke nicht
+                    aktiviert).
+                </div>
             </section>
 
             <!-- ========== 3. Erste Schritte ========== -->
@@ -339,10 +371,14 @@
                 </div>
             </section>
 
-            <!-- ========== 4. Diktat-Workflow ========== -->
+            <!-- ========== 4. Komplett-Workflow ========== -->
             <section id="hb-workflow">
-                <h1><span class="hb-num">4</span> Diktat-Workflow</h1>
-                <p class="hb-section-lead">Vom gesprochenen Befund zum strukturierten Patient-Record in 3 Schritten.</p>
+                <h1><span class="hb-num">4</span> Diktat-Workflow — Komplett-Ablauf</h1>
+                <p class="hb-section-lead">
+                    End-to-End-Anleitung: Vom Einschalten ueber das Diktat (Freitext oder
+                    9-Liner) bis zur uebermittelten Patientenakte in der Rettungsstation.
+                    Schritt-fuer-Schritt mit Beispieldiktaten und Sprachbefehlen.
+                </p>
 
                 <div class="hb-mock">
                     <svg viewBox="0 0 700 170" xmlns="http://www.w3.org/2000/svg">
@@ -351,133 +387,521 @@
                                 <path d="M0,0 L10,5 L0,10 z" fill="#c8b878"/>
                             </marker>
                         </defs>
-                        <!-- Box 1: Mikrofon -->
                         <rect x="20" y="40" width="130" height="80" fill="#1a2012" stroke="#5a9e3a" stroke-width="2" rx="4"/>
                         <text x="85" y="65" text-anchor="middle" fill="#5a9e3a" font-size="11" font-weight="700">1. MIKROFON</text>
                         <text x="85" y="85" text-anchor="middle" fill="#c8b878" font-size="10">Sanitaeter</text>
                         <text x="85" y="100" text-anchor="middle" fill="#c8b878" font-size="10">diktiert frei</text>
                         <text x="85" y="115" text-anchor="middle" fill="#9aa09a" font-size="9">Max. 10 min</text>
-                        <!-- Box 2: Whisper -->
                         <rect x="180" y="40" width="130" height="80" fill="#1a2012" stroke="#5DADE2" stroke-width="2" rx="4"/>
                         <text x="245" y="65" text-anchor="middle" fill="#5DADE2" font-size="11" font-weight="700">2. WHISPER</text>
                         <text x="245" y="85" text-anchor="middle" fill="#c8b878" font-size="10">ASR (GPU)</text>
-                        <text x="245" y="100" text-anchor="middle" fill="#c8b878" font-size="10">large-v3-turbo</text>
+                        <text x="245" y="100" text-anchor="middle" fill="#c8b878" font-size="10">whisper.cpp</text>
                         <text x="245" y="115" text-anchor="middle" fill="#9aa09a" font-size="9">Deutsch</text>
-                        <!-- Box 3: Gemma -->
                         <rect x="340" y="40" width="130" height="80" fill="#1a2012" stroke="#9f68d5" stroke-width="2" rx="4"/>
                         <text x="405" y="65" text-anchor="middle" fill="#9f68d5" font-size="11" font-weight="700">3. GEMMA 3</text>
                         <text x="405" y="85" text-anchor="middle" fill="#c8b878" font-size="10">LLM Segment.</text>
                         <text x="405" y="100" text-anchor="middle" fill="#c8b878" font-size="10">+ Extraktion</text>
                         <text x="405" y="115" text-anchor="middle" fill="#9aa09a" font-size="9">4B Parameter</text>
-                        <!-- Box 4: Patient -->
                         <rect x="500" y="40" width="170" height="80" fill="#1a2012" stroke="#c8b878" stroke-width="2" rx="4"/>
                         <text x="585" y="65" text-anchor="middle" fill="#c8b878" font-size="11" font-weight="700">4. PATIENT</text>
                         <text x="585" y="85" text-anchor="middle" fill="#c8b878" font-size="10">strukturiert</text>
                         <text x="585" y="100" text-anchor="middle" fill="#c8b878" font-size="10">Name / Verletzung</text>
                         <text x="585" y="115" text-anchor="middle" fill="#9aa09a" font-size="9">Vitals / 9-Liner</text>
-                        <!-- Pfeile -->
                         <line x1="150" y1="80" x2="180" y2="80" stroke="#c8b878" stroke-width="1.5" marker-end="url(#arrow-wf)"/>
                         <line x1="310" y1="80" x2="340" y2="80" stroke="#c8b878" stroke-width="1.5" marker-end="url(#arrow-wf)"/>
                         <line x1="470" y1="80" x2="500" y2="80" stroke="#c8b878" stroke-width="1.5" marker-end="url(#arrow-wf)"/>
-                        <!-- Footer -->
                         <text x="350" y="150" text-anchor="middle" fill="#7a8478" font-size="10" font-style="italic">Multi-Patient: Ein Diktat, mehrere Patienten — SAFIR segmentiert anhand sprachlicher Marker automatisch</text>
                     </svg>
                     <div class="hb-mock-caption">Abb. 4 — Pipeline vom Sprachbefund zum strukturierten Patient</div>
                 </div>
 
-                <h2>Aufnahme starten</h2>
-                <p>Drei gleichwertige Wege:</p>
-                <ol>
-                    <li><strong>Voice:</strong> „Aufnahme starten"</li>
-                    <li><strong>Taster:</strong> <kbd>B</kbd> (grün) lang drücken (≥ 500 ms)</li>
-                    <li><strong>GUI:</strong> Button „+ Neuer Patient" oder „Neue Aufnahme" im Dashboard</li>
-                </ol>
-                <p>Nach dem Start: TTS bestätigt mit „Aufnahme", die grüne LED blinkt dauerhaft. Whisper schreibt im Hintergrund live in 25-s-Chunks mit.</p>
-
-                <h2>Diktieren</h2>
-                <p>Der Sanitäter spricht <strong>frei und ohne Vorlage</strong>. Mehrere Patienten nacheinander sind möglich — einfach mit einem Einleitungssatz wechseln:</p>
+                <h2>4.1 Pre-Flight — Bevor du startest</h2>
+                <p>Drei Sekunden Check, bevor der erste Patient kommt:</p>
                 <ul>
-                    <li>„<em>Der nächste Patient ist ...</em>"</li>
-                    <li>„<em>Weiter mit der Feldwebel Schmidt ...</em>"</li>
-                    <li>„<em>Zweiter Patient ein Stabsgefreiter ...</em>"</li>
+                    <li><strong>Operator-Login:</strong> Persönliche RFID-Karte auf den Reader. TTS sagt „Willkommen, [Rang] [Name]". Ohne Login sind Schreib-/Analyse-Aktionen gesperrt.</li>
+                    <li><strong>OLED-Seite MODELLE:</strong> Whisper + LLM müssen grün sein. Wenn rot/gelb: „Mikrofon-Test" sprechen — TTS bestätigt mit Loopback.</li>
+                    <li><strong>Backend-Verbindung:</strong> OLED-Seite NETZWERK zeigt „Backend: verbunden". Wenn getrennt → Diktat geht trotzdem (lokal gespeichert), Übergabe erfolgt nachträglich.</li>
                 </ul>
+
+                <h2>4.2 Aufnahme starten — drei gleichwertige Wege</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:25%">Methode</th><th>Aktion</th><th>Wann sinnvoll</th></tr></thead>
+                    <tbody>
+                        <tr><td><strong>Voice</strong></td><td><code>"Neuer Patient"</code> oder <code>"Aufnahme starten"</code></td><td>Hände frei (Verband, Spritze, etc.)</td></tr>
+                        <tr><td><strong>Taster B</strong> (grün, Pin 26)</td><td>Lang drücken (≥ 500 ms)</td><td>Laut/Funk im Hintergrund — Voice unzuverlässig</td></tr>
+                        <tr><td><strong>GUI</strong></td><td>Button „+ Neuer Patient" oder „Aufnahme starten"</td><td>Im Fahrzeug-Modus mit Touchscreen</td></tr>
+                    </tbody>
+                </table>
+                <p>Nach dem Start:</p>
+                <ul>
+                    <li>TTS bestätigt mit <em>„Aufnahme"</em></li>
+                    <li>Grüne LED blinkt dauerhaft</li>
+                    <li>Whisper transkribiert live in 25-s-Chunks parallel zur Aufnahme — du bekommst keine Wartezeit am Ende</li>
+                    <li>Max. Aufnahmezeit: <strong>10 Minuten</strong>. 30 s vor Ablauf kommt OLED-Warnung.</li>
+                </ul>
+
+                <h2>4.3 Freitext-Diktat — der Standardfall</h2>
+                <p>
+                    SAFIR verarbeitet <strong>natürliche Sprache ohne Vorlage</strong>. Der
+                    Sanitäter spricht so, wie er auch handschriftlich notieren würde.
+                    Reihenfolge der Felder ist egal — die KI extrahiert was vorkommt.
+                </p>
+
+                <h3>Was sage ich? Empfohlene Reihenfolge</h3>
+                <ol>
+                    <li><strong>Identität:</strong> Name, Rang, Einheit, ggf. Geburtsdatum</li>
+                    <li><strong>Mechanismus:</strong> Was ist passiert? (Schuss, IED, Sturz, Verbrennung, etc.)</li>
+                    <li><strong>Verletzungen:</strong> Wo, was, wie schwer (anatomisch beschreiben)</li>
+                    <li><strong>Vitalwerte:</strong> Puls, Blutdruck, Atemfrequenz, SpO2, GCS, Schmerz</li>
+                    <li><strong>Maßnahmen:</strong> Tourniquet, Verband, Zugang, Medikamente, Position</li>
+                    <li><strong>Allergien / Blutgruppe / Vorgeschichte</strong> — falls bekannt</li>
+                    <li><strong>Abschluss:</strong> „Patient fertig" oder „Aufnahme stoppen"</li>
+                </ol>
+
+                <h3>Beispiel-Diktat (vollständiger Patient)</h3>
+                <div class="hb-note" style="background:#0f1a14;border-left:3px solid var(--mil-green,#5a9e3a);font-style:italic;line-height:1.7">
+                    „Hier Oberfeldarzt Reuter, BAT Alpha 42.<br>
+                    Ich nehme jetzt einen Verwundeten auf.<br>
+                    Hauptfeldwebel Müller, Vorname Hubert, Einheit 3. Kompanie Panzergrenadiere.
+                    Schussverletzung am rechten Oberschenkel durch Kleinwaffenfeuer vor etwa 8 Minuten.
+                    Tourniquet ist gesetzt um 0945, hält. Eintritts- und Austrittswunde sichtbar.<br>
+                    Patient ist ansprechbar, GCS 14. Puls 130, Blutdruck 95 zu 60, Atmung 22, SpO2 88 Prozent.
+                    Schmerz bei 7. Hat 500 Milliliter Ringer bekommen, IV-Zugang am linken Arm.<br>
+                    Blutgruppe A positiv, allergisch auf Penicillin.<br>
+                    Patient fertig."
+                </div>
+                <p style="color:var(--text-dim);font-size:0.95em;margin-top:8px">
+                    Daraus extrahiert die KI: Name, Rang, Einheit, Mechanismus, Verletzung,
+                    Vitalwerte (Puls/RR/AF/SpO2/GCS/Schmerz), Tourniquet + Zeit, Infusion,
+                    Blutgruppe, Allergie. Triage bleibt leer — die kommt in Role 1.
+                </p>
+
+                <h3>Multi-Patient — mehrere Verwundete in einem Diktat</h3>
+                <p>
+                    Im MANV-Fall (Massenanfall) ist es schneller, alle Patienten am Stück
+                    zu diktieren. SAFIR segmentiert das Transkript automatisch an
+                    sprachlichen Markern. Wechsle einfach mit:
+                </p>
+                <ul>
+                    <li>„<em>Der nächste Patient ist…</em>"</li>
+                    <li>„<em>Weiter mit Feldwebel Schmidt…</em>"</li>
+                    <li>„<em>Zweiter Patient: ein Stabsgefreiter…</em>"</li>
+                    <li>„<em>Jetzt der dritte Verwundete…</em>"</li>
+                </ul>
+
                 <div class="hb-note info">
-                    <div class="hb-note-title">Einleitungen und Small-Talk sind erlaubt</div>
-                    Sätze wie „Hier spricht Oberfeldarzt Müller" oder „Ich bin auf dem Platz der Verwundeten" werden automatisch als <strong>Intro</strong> erkannt und nicht als Patient angelegt. Auch medizinisch irrelevante Kommentare („Morgen möchte ich Motorrad fahren") werden gefiltert.
+                    <div class="hb-note-title">Filter, die im Hintergrund laufen</div>
+                    <ul style="margin:6px 0 0 18px">
+                        <li><strong>Intro-Erkennung:</strong> „Hier spricht Oberfeldarzt…", „Ich bin auf dem Platz der Verwundeten" werden NICHT als Patient angelegt.</li>
+                        <li><strong>Off-Topic-Filter:</strong> Medizinisch irrelevante Sätze („Morgen möchte ich Motorrad fahren") werden gefiltert.</li>
+                        <li><strong>Prompt-Injection-Schutz:</strong> „Ignoriere alle vorherigen Anweisungen" o.ä. wird ignoriert — die KI hält sich strikt an das Extraktions-Schema.</li>
+                        <li><strong>Vitalwert-Plausibilität:</strong> „Puls 5000" wird verworfen, statt das Feld mit Müll zu füllen.</li>
+                    </ul>
                 </div>
 
-                <h2>Aufnahme stoppen</h2>
-                <p>Drei gleichwertige Wege — spiegelsymmetrisch zum Start:</p>
-                <ol>
-                    <li><strong>Voice:</strong> „Aufnahme beenden" oder „Aufnahme stoppen"</li>
-                    <li><strong>Taster:</strong> <kbd>B</kbd> lang drücken</li>
-                    <li><strong>GUI:</strong> roter „Stopp"-Button im Aufnahme-Panel</li>
-                </ol>
-                <p>Das Transkript landet als aufklappbare Karte auf dem Dashboard mit Status <strong>UNANALYSIERT</strong>. Der Sanitäter kann es visuell prüfen und ggf. eine weitere Aufnahme anhängen.</p>
+                <h2>4.4 9-Liner-MEDEVAC-Modus — geführter Funkspruch</h2>
+                <p>
+                    Statt Freitext kann der Sanitäter den NATO-9-Liner als <em>strukturierten
+                    Funkspruch</em> diktieren. Die KI parst dann genau die 9 Linien (statt
+                    Freitext-Felder) und füllt das MEDEVAC-Template aus. Das Ergebnis ist 1:1
+                    der Funkspruch, den die Rettungsstation für ATP-3.7.2-Anforderung braucht.
+                </p>
 
-                <h2>Analyse auslösen</h2>
-                <p>Die Analyse trennt das Transkript in einzelne Patienten und füllt Stammdaten-Felder:</p>
+                <h3>Wann benutzen?</h3>
                 <ul>
-                    <li><strong>Voice:</strong> „Analysieren" oder „Alle Patienten analysieren"</li>
-                    <li><strong>OLED-Menü:</strong> Taster A lang → „Analysieren"</li>
-                    <li><strong>GUI:</strong> „🧠 Analyse"-Button auf der Pending-Karte</li>
+                    <li>Wenn ein <strong>MEDEVAC angefordert</strong> wird (Hubschrauber/Sani-Fahrzeug)</li>
+                    <li>Wenn die Funkbrücke standardisierten Wortlaut erwartet</li>
+                    <li>Für Demo-/Übungs-Zwecke wenn man den NATO-Standard zeigen will</li>
                 </ul>
-                <p>Dauer: <strong>10–40 Sekunden pro Patient</strong>, abhängig von Transkript-Länge. Während der Analyse läuft ein Progress-Spinner; das System ist danach wieder frei.</p>
+                <p style="color:var(--text-dim);font-size:0.95em">
+                    Im Normalfall (Doku am Patienten) ist Freitext besser — du sparst dir
+                    die starre Reihenfolge.
+                </p>
+
+                <h3>Aktivieren — drei Wege</h3>
+                <ol>
+                    <li><strong>Voice:</strong> <code>"Neun Liner"</code> oder <code>"Neunliner"</code> oder <code>"9 Liner"</code></li>
+                    <li><strong>Demo-Szenario:</strong> Einstellungen → Demo-Szenarien → „9-Liner MEDEVAC"</li>
+                    <li><strong>Direkt-Diktat:</strong> Aufnahme starten und mit „Neuner-Liner" einleiten — die KI erkennt das Format am Inhalt</li>
+                </ol>
+                <p>
+                    TTS bestätigt mit <em>„Neun Liner Modus aktiv. Aufnahme starten."</em> —
+                    die nächste Aufnahme wird als 9-Liner geparst statt als Multi-Patient-
+                    Diktat.
+                </p>
+
+                <h3>Was sage ich? Die 9 Linien (NATO ATP-3.7.2)</h3>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:8%">Line</th><th style="width:32%">Inhalt</th><th>Beispiel-Wortlaut</th></tr></thead>
+                    <tbody>
+                        <tr><td><strong>1</strong></td><td>Koordinaten Landezone</td><td>„MGRS 32 U MC 1234 5678" oder „GPS 50.7374 Nord, 7.0982 Ost"</td></tr>
+                        <tr><td><strong>2</strong></td><td>Funkfrequenz / Rufzeichen</td><td>„30 komma 075 Megahertz, Rufzeichen Bravo Alpha Tango Alpha 42"</td></tr>
+                        <tr><td><strong>3</strong></td><td>Patienten nach Dringlichkeit</td><td>„1 mal Alpha urgent, 2 mal Charlie priority"</td></tr>
+                        <tr><td><strong>4</strong></td><td>Sonderausstattung</td><td>„A keine" oder „B Winde" / „C Bergungsgerät" / „D Beatmung"</td></tr>
+                        <tr><td><strong>5</strong></td><td>Liegend / Gehfähig</td><td>„2 liegend, 1 gehfähig"</td></tr>
+                        <tr><td><strong>6</strong></td><td>Sicherheitslage</td><td>„November kein Feind" / „Papa möglicher Feind" / „Echo Feind im Gebiet" / „X-Ray bewaffnete Eskorte"</td></tr>
+                        <tr><td><strong>7</strong></td><td>Markierung Landeplatz</td><td>„A Panels" / „B Pyrotechnik" / „C Rauch" / „D keine" / „E sonstige"</td></tr>
+                        <tr><td><strong>8</strong></td><td>Nationalität / Status</td><td>„3 Bundeswehr-Soldaten, 0 Zivilisten, 0 Kriegsgefangene"</td></tr>
+                        <tr><td><strong>9</strong></td><td>Kontamination / Gelände</td><td>„Keine Kontamination, Gelände flach offen"</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Beispiel-Diktat (vollständiger 9-Liner)</h3>
+                <div class="hb-note" style="background:#0f1a14;border-left:3px solid var(--info,#5DADE2);font-style:italic;line-height:1.7">
+                    „Neuner Liner.<br>
+                    Linie 1: MGRS 32 U MC 1234 5678.<br>
+                    Linie 2: 30 komma 075 Megahertz, Rufzeichen Bravo Alpha Tango Alpha 42.<br>
+                    Linie 3: 1 mal Alpha urgent, 2 mal Charlie priority.<br>
+                    Linie 4: A keine.<br>
+                    Linie 5: 2 liegend, 1 gehfähig.<br>
+                    Linie 6: November, kein Feind im Gebiet.<br>
+                    Linie 7: C Rauch grün.<br>
+                    Linie 8: 3 Bundeswehr-Soldaten.<br>
+                    Linie 9: Keine Kontamination, Gelände flach offen.<br>
+                    Patient fertig."
+                </div>
+
+                <h2>4.5 Aufnahme stoppen</h2>
+                <p>Spiegelsymmetrisch zum Start — drei gleichwertige Wege:</p>
+                <ul>
+                    <li><strong>Voice:</strong> <code>"Patient fertig"</code> oder <code>"Aufnahme stoppen"</code></li>
+                    <li><strong>Taster B</strong> lang drücken</li>
+                    <li><strong>GUI:</strong> roter „Stopp"-Button im Aufnahme-Panel</li>
+                </ul>
+                <p>
+                    TTS bestätigt sofort mit <em>„Aufnahme beendet"</em>. Whisper
+                    transkribiert die letzten Sekunden im Hintergrund — typisch sind das
+                    1–3 s Restlatenz. Sobald fertig, erscheint die Karte als <strong>UNANALYSIERT</strong>
+                    auf dem Dashboard.
+                </p>
+
+                <h2>4.6 Transkript-Review — bevor die KI ranschickt</h2>
+                <p>
+                    Die UNANALYSIERT-Karte zeigt das rohe Whisper-Transkript. Aufgabe des
+                    Sanitäters:
+                </p>
+                <ol>
+                    <li><strong>Transkript überfliegen</strong> — sind alle Patienten/Felder erwähnt?</li>
+                    <li><strong>Lücken nachträglich aufnehmen:</strong> Button „+ Anhängen" oder einfach erneut „Aufnahme starten" → das neue Diktat wird an die Karte angehängt.</li>
+                    <li><strong>Falsche Aufnahme verwerfen:</strong> Sprachbefehl <code>"Letzten Eintrag löschen"</code> oder Karten-Menü → Löschen.</li>
+                </ol>
+                <p style="color:var(--text-dim);font-size:0.95em">
+                    Mehrere UNANALYSIERT-Karten parallel sind ok — die Analyse verarbeitet
+                    sie alle in einem Rutsch.
+                </p>
+
+                <h2>4.7 KI-Analyse triggern</h2>
+                <p>Die Analyse macht zwei Dinge gleichzeitig:</p>
+                <ol>
+                    <li><strong>Segmentierung:</strong> Trennt Multi-Patient-Diktate an Satzgrenzen + Trigger-Phrasen in einzelne Patienten</li>
+                    <li><strong>Feldextraktion:</strong> Pro Patient zieht das LLM Stammdaten + Vitalwerte + Verletzungen ins strukturierte Schema</li>
+                </ol>
+                <p>Drei Wege:</p>
+                <ul>
+                    <li><strong>Voice:</strong> <code>"Alle analysieren"</code> oder <code>"Patienten analysieren"</code></li>
+                    <li><strong>OLED-Menü:</strong> Taster A lang → „Analysieren"</li>
+                    <li><strong>GUI:</strong> 🧠 Analyse-Button auf der Pending-Karte</li>
+                </ul>
+                <p>
+                    Dauer: <strong>~15 s pro Patient</strong> (Gemma 3 4B auf Jetson, Q4_K_M).
+                    Während der Analyse läuft ein Progress-Spinner; bei mehreren Patienten
+                    siehst du sie nacheinander aufploppen. System ist danach wieder frei.
+                </p>
+
+                <h2>4.8 Patientenkarten verifizieren</h2>
+                <p>
+                    Jeder analysierte Patient bekommt eine eigene Karte mit Status
+                    <strong>ANALYSIERT</strong>. Empfohlene Sicht-Prüfung pro Patient:
+                </p>
+                <ul>
+                    <li><strong>Confidence-Badges:</strong> Grün/Gelb/Rot pro Feld zeigen, wie sicher die KI bei der Extraktion war. Rote Felder kurz gegen-prüfen.</li>
+                    <li><strong>Fehlerhafte Werte korrigieren:</strong> Klick aufs Feld → Editor-Modus → ändern + speichern.</li>
+                    <li><strong>Ergänzen:</strong> Felder die im Diktat nicht vorkamen, kannst du jetzt manuell nachtragen.</li>
+                </ul>
+                <p style="color:var(--text-dim);font-size:0.95em">
+                    Confidence funktioniert nach dem Prinzip: <em>„Eher leer als geraten."</em>
+                    Die KI lässt ein Feld lieber leer/rot als zu raten — das verhindert
+                    Halluzinationen.
+                </p>
+
+                <h2>4.9 RFID-Karte schreiben (optional, vor dem Transport)</h2>
+                <p>
+                    Jeder Patient bekommt eine MIFARE-Classic-Karte mit seiner Patient-ID
+                    und den Kerndaten. Die Karte begleitet den Patienten entlang der
+                    Rettungskette und wird in jeder Stufe (Role 1, 2, 3) neu eingelesen.
+                </p>
+                <p>Zwei Wege:</p>
+                <ul>
+                    <li><strong>Batch (alle Patienten ohne Karte):</strong> Voice
+                        <code>"Karte schreiben"</code> oder Button „📇 RFID-Batch" im
+                        Fahrzeug-Modus. OLED zeigt Counter („Karte 1/3"), TTS führt durch.</li>
+                    <li><strong>Per-Patient (gezielt eine Karte):</strong> Im Fahrzeug-Modus
+                        gibt es pro Patient-Card einen <strong>📇 Karte</strong>-Button (mil-tan,
+                        rechts neben dem Lösch-Icon). Klick → nur dieser eine Patient wird
+                        geschrieben. Nützlich wenn der Sanitäter im BAT z.B. nur 3 Karten
+                        dabei hat aber 8 Patienten — er wählt gezielt die kritischen aus.</li>
+                </ul>
+                <p>
+                    Karte flach auf den RC522-Reader auflegen (nicht antippen) bis grüne LED
+                    blinkt, ~2 Sekunden Schreib-Cycle. Bei Fehlschlag versucht der Code
+                    automatisch 3 Stufen Recovery (Soft-Reauth → Hard-Reset → erneuter
+                    Schreibversuch) — selbst flackerige Karten kommen meist durch.
+                </p>
+                <p>
+                    <strong>RFID-Write meldet Patient nicht automatisch ans Surface</strong>
+                    (User-Wunsch: getrennte Aktionen). Ausnahme: wenn der Patient bereits
+                    gemeldet (synced) ist, wird die neue UID-Mapping sofort an Surface
+                    geschickt — sonst kennt das Surface die Karte beim Omnikey-Scan nicht.
+                </p>
+                <p>Volle Details siehe <a href="#hb-rfid">Sektion 6 — RFID-Karten</a>.</p>
+
+                <h2>4.10 An Leitstelle melden — Übergabe</h2>
+                <p>
+                    Sobald alle Patienten analysiert (und ggf. auf Karten geschrieben) sind,
+                    werden sie in einem Rutsch an die Rettungsstation übermittelt.
+                </p>
+                <ul>
+                    <li><strong>Voice:</strong> <code>"Patienten melden"</code> oder <code>"An Leitstelle melden"</code></li>
+                    <li><strong>GUI:</strong> ⚡ „Alle melden"-Button</li>
+                </ul>
+                <p>
+                    Die Übertragung läuft via <strong>HTTPS über Tailscale</strong> (WireGuard
+                    end-to-end-verschlüsselt). 1 Patient ≈ 1–5 KB; Batch von 10 Patienten
+                    ≈ 50 KB — bei 2400 bps VHF-Funk ca. 40 s, via SVFuA/IP quasi instantan.
+                </p>
+                <p>
+                    Erfolgreich gemeldete Patienten bekommen das Status-Badge
+                    <strong>GEMELDET</strong> und das Symbol ✓. Bei Fehler (Backend down,
+                    Netz weg) bleibt der Patient im State <em>ANALYSIERT (offen)</em> und
+                    wird beim nächsten „Patienten melden" automatisch nachgeliefert —
+                    keine Doppelübertragung dank Idempotenz-Check über Patient-ID.
+                </p>
+
+                <h2>4.11 Was sieht die Rettungsstation?</h2>
+                <p>
+                    Auf dem Surface in der Leitstelle erscheint sofort (WebSocket-Push):
+                </p>
+                <ul>
+                    <li><strong>Lagekarte:</strong> BAT-Marker mit Anzahl Patienten als Badge</li>
+                    <li><strong>Patientenliste rechts:</strong> Alle gemeldeten Verwundeten, Triage-sortiert</li>
+                    <li><strong>Triage-Counts:</strong> T1/T2/T3/T4 als große Zähler oben</li>
+                    <li><strong>Event-Feed:</strong> „2 neue Patienten von BAT Alpha 42 gemeldet" als Toast + im Live-Ticker</li>
+                </ul>
+                <p>
+                    Der Arzt in Role 1 setzt jetzt die Triage (Sprachbefehl <code>"Triage rot"</code>
+                    etc. oder Klick im Patient-Detail), ergänzt Befunde und kann den
+                    Patienten an Role 2/3 weiter-übergeben — derselbe Patient-ID-Datensatz
+                    wird durch die Rettungskette weitergereicht.
+                </p>
+
+                <div class="hb-note info">
+                    <div class="hb-note-title">Zusammenfassung — der „Happy Path"</div>
+                    <ol style="margin:6px 0 0 18px">
+                        <li>Operator-Login (RFID)</li>
+                        <li><code>"Neuer Patient"</code> → diktieren → <code>"Patient fertig"</code> (für jeden Verwundeten)</li>
+                        <li><code>"Alle analysieren"</code> (einmal für alle)</li>
+                        <li>Confidence-Badges sichten, ggf. korrigieren</li>
+                        <li><code>"Karte schreiben"</code> (RFID-Batch, optional)</li>
+                        <li><code>"Patienten melden"</code> → Surface-Dashboard zeigt sofort</li>
+                    </ol>
+                    Bei 3 Patienten mit Standard-Diktat: ca. <strong>2–3 Minuten</strong>
+                    von Aufnahme-Start bis Übergabe an die Leitstelle.
+                </div>
             </section>
 
             <!-- ========== 5. Voice-Commands ========== -->
             <section id="hb-voice">
                 <h1><span class="hb-num">5</span> Voice-Commands</h1>
-                <p class="hb-section-lead">Alle offline-verfügbaren Sprachbefehle. Erkennung durch Vosk (~15 ms Latenz).</p>
+                <p class="hb-section-lead">
+                    SAFIR erkennt Sprachbefehle <strong>komplett offline</strong> über Vosk
+                    (kleines deutsches Modell, CPU). Latenz vom Wort-Ende zur Aktion: ca.
+                    <strong>15 ms</strong>. Parallel zum Wake-Word-losen Befehlsmodus läuft
+                    Whisper für die Diktat-Transkription — die beiden ASR-Stacks
+                    behindern sich nicht.
+                </p>
 
-                <h2>Aufnahme &amp; Analyse</h2>
+                <h2>5.1 Wie funktioniert die Erkennung?</h2>
+                <p>
+                    Das Mikrofon läuft permanent. Vosk vergleicht jedes erkannte Wort gegen
+                    die Trigger-Liste pro Aktion. Trifft ein Trigger zu, wird die zugehörige
+                    Aktion ausgelöst — auch wenn gerade ein Diktat läuft (z.B. <code>"Aufnahme
+                    beenden"</code> stoppt sofort). Das Diktat-Audio selbst geht parallel an
+                    Whisper für die Transkription.
+                </p>
+                <ul>
+                    <li><strong>Robust gegen Umgebungsgeräusche:</strong> Vosk ist deutlich
+                        rauscharmer als Cloud-ASR — Funkverkehr im Hintergrund stört nicht.</li>
+                    <li><strong>Mehrere Trigger pro Aktion:</strong> Sanitäter spricht oft
+                        unterschiedlich („Aufnahme beenden", „stopp Aufnahme", „Patient
+                        fertig") — alle Varianten lösen dieselbe Aktion aus.</li>
+                    <li><strong>Editierbar ohne Code:</strong> Eigene Alternativen direkt
+                        in <em>Einstellungen → Sprachbefehle</em> ergänzen.</li>
+                </ul>
+
+                <h2>5.2 Standard-Workflow (Multi-Patient-Diktat)</h2>
+                <ol>
+                    <li><code>"Neuer Patient"</code> → Akte anlegen, Whisper-Aufnahme startet
+                        automatisch (max. 10 Min).</li>
+                    <li>Befund frei diktieren (Verletzungen, Vitalwerte, Maßnahmen, ggf.
+                        mehrere Verwundete: <em>„Der nächste Patient ist…"</em>).</li>
+                    <li><code>"Patient fertig"</code> → Aufnahme stoppt, Transkript erscheint
+                        als „UNANALYSIERT"-Karte.</li>
+                    <li><code>"Alle analysieren"</code> → KI segmentiert Multi-Patient-Diktat,
+                        extrahiert 9-Liner-Felder pro Patient.</li>
+                    <li><em>(Optional)</em> <code>"Karte schreiben"</code> → RFID-Batch:
+                        Karten-für-Karte auflegen, OLED + TTS führen durch.</li>
+                    <li><code>"Patienten melden"</code> → Übertragung an die Leitstelle.</li>
+                </ol>
+                <p style="color:var(--text-dim);font-size:0.95em">
+                    Triage wird im Feld <strong>nicht</strong> gesetzt — das macht der Arzt
+                    in der Rettungsstation (Role 1). Auf dem BAT (Phase 0) sind die Triage-
+                    Befehle deshalb absichtlich deaktiviert.
+                </p>
+
+                <h2>5.3 Aufnahme &amp; Multi-Patient-Flow</h2>
                 <table class="hb-vc-table">
-                    <thead><tr><th style="width:30%">Aktion</th><th>Sprachbefehle</th></tr></thead>
+                    <thead><tr><th style="width:32%">Aktion</th><th>Trigger (alle Varianten)</th></tr></thead>
                     <tbody>
-                        <tr><td>Aufnahme starten</td><td><code>aufnahme starten</code> · <code>neuer patient</code> · <code>aufnahme</code></td></tr>
-                        <tr><td>Aufnahme beenden</td><td><code>aufnahme beenden</code> · <code>aufnahme stoppen</code> · <code>stopp aufnahme</code></td></tr>
-                        <tr><td>Analysieren</td><td><code>analysieren</code> · <code>alle patienten analysieren</code></td></tr>
-                        <tr><td>9-Liner-Modus</td><td><code>neuner liner</code> · <code>medevac</code></td></tr>
+                        <tr>
+                            <td><strong>Neuer Patient</strong><br><span style="color:var(--text-dim);font-size:0.9em">Akte anlegen + Aufnahme starten in einem Schritt</span></td>
+                            <td><code>neuer patient</code> · <code>patient aufnehmen</code> · <code>neue aufnahme</code> · <code>nächster patient</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Aufnahme starten</strong><br><span style="color:var(--text-dim);font-size:0.9em">Nur Aufnahme, ohne neuen Patienten</span></td>
+                            <td><code>aufnahme starten</code> · <code>aufnahme start</code> · <code>start aufnahme</code> · <code>starte aufnahme</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Aufnahme stoppen</strong><br><span style="color:var(--text-dim);font-size:0.9em">Beendet Diktat, Whisper transkribiert im Hintergrund</span></td>
+                            <td><code>aufnahme stoppen</code> · <code>aufnahme stopp</code> · <code>aufnahme stop</code> · <code>stopp aufnahme</code> · <code>stop aufnahme</code> · <code>stoppe aufnahme</code> · <code>aufnahme beenden</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Patient fertig</strong><br><span style="color:var(--text-dim);font-size:0.9em">Stoppt Aufnahme + markiert Patient als versorgt</span></td>
+                            <td><code>patient fertig</code> · <code>patient abgeschlossen</code> · <code>versorgung abgeschlossen</code> · <code>patient abschließen</code></td>
+                        </tr>
                     </tbody>
                 </table>
 
-                <h2>RFID</h2>
+                <h2>5.4 Analyse, Übergabe &amp; Export</h2>
                 <table class="hb-vc-table">
-                    <thead><tr><th>Aktion</th><th>Sprachbefehle</th></tr></thead>
+                    <thead><tr><th style="width:32%">Aktion</th><th>Trigger (alle Varianten)</th></tr></thead>
                     <tbody>
-                        <tr><td>Karten schreiben (Batch)</td><td><code>karte schreiben</code> · <code>patient auf karte</code></td></tr>
-                        <tr><td>Schreiben abbrechen</td><td><code>abbrechen</code> · <code>schreiben stoppen</code></td></tr>
-                        <tr><td>Karte löschen</td><td><code>karte loeschen</code> · <code>karte leeren</code> · <code>karte bereinigen</code></td></tr>
+                        <tr>
+                            <td><strong>Alle Patienten analysieren</strong><br><span style="color:var(--text-dim);font-size:0.9em">KI-Segmentierung + Feldextraktion pro Patient</span></td>
+                            <td><code>alle patienten analysieren</code> · <code>patienten analysieren</code> · <code>alle analysieren</code> · <code>analyse starten</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Patienten melden</strong><br><span style="color:var(--text-dim);font-size:0.9em">Übertragung an die Leitstelle (POST /api/ingest)</span></td>
+                            <td><code>alle patienten melden</code> · <code>patienten melden</code> · <code>daten senden</code> · <code>an leitstelle melden</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Export (DOCX)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Akte als Word-Dokument speichern</span></td>
+                            <td><code>export</code> · <code>exportieren</code> · <code>dokument erstellen</code> · <code>akte exportieren</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>9-Liner MEDEVAC-Modus</strong><br><span style="color:var(--text-dim);font-size:0.9em">Geführter NATO-9-Liner-Funkspruch</span></td>
+                            <td><code>neun liner</code> · <code>neunliner</code> · <code>neun-liner</code> · <code>9 liner</code></td>
+                        </tr>
                     </tbody>
                 </table>
 
-                <h2>Triage (nur in der Rettungsstation)</h2>
+                <h2>5.5 RFID-Karten</h2>
                 <table class="hb-vc-table">
-                    <thead><tr><th>Aktion</th><th>Sprachbefehle</th></tr></thead>
+                    <thead><tr><th style="width:32%">Aktion</th><th>Trigger (alle Varianten)</th></tr></thead>
                     <tbody>
-                        <tr><td>Triage Rot (T1)</td><td><code>triage rot</code></td></tr>
-                        <tr><td>Triage Gelb (T2)</td><td><code>triage gelb</code></td></tr>
-                        <tr><td>Triage Grün (T3)</td><td><code>triage gruen</code></td></tr>
-                        <tr><td>Triage Blau (T4)</td><td><code>triage blau</code></td></tr>
+                        <tr>
+                            <td><strong>Karten schreiben (Batch)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Alle Patienten ohne Karte werden nacheinander geschrieben</span></td>
+                            <td><code>karte schreiben</code> · <code>patient auf karte</code> · <code>patient auf karte speichern</code> · <code>auf karte speichern</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Schreiben abbrechen</strong><br><span style="color:var(--text-dim);font-size:0.9em">Stoppt laufenden Batch ohne Datenverlust</span></td>
+                            <td><code>schreiben abbrechen</code> · <code>schreiben stoppen</code> · <code>karten stopp</code> · <code>karten stop</code> · <code>stop schreiben</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Karte löschen</strong><br><span style="color:var(--text-dim);font-size:0.9em">Patientendaten von Karte entfernen, Karte bleibt wiederverwendbar (Operator-Karten werden erkannt &amp; geschützt)</span></td>
+                            <td><code>karte löschen</code> · <code>karte loeschen</code> · <code>rfid löschen</code> · <code>rfid loeschen</code></td>
+                        </tr>
                     </tbody>
                 </table>
 
-                <h2>Sonstiges</h2>
+                <h2>5.6 Triage <span style="color:var(--text-dim);font-size:0.6em;font-weight:400;text-transform:none">— nur Role 1 / Rettungsstation</span></h2>
+                <p style="color:var(--text-dim);font-size:0.95em;margin-top:-8px">
+                    Auf dem BAT (Phase 0) sind diese Befehle absichtlich deaktiviert — der
+                    Sanitäter im Feld macht keine Triage-Klassifikation. TTS-Hinweis bei
+                    Versuch: <em>„Triage erfolgt erst in der Rettungsstation"</em>.
+                </p>
                 <table class="hb-vc-table">
-                    <thead><tr><th>Aktion</th><th>Sprachbefehle</th></tr></thead>
+                    <thead><tr><th style="width:32%">Aktion</th><th>Trigger (alle Varianten)</th></tr></thead>
                     <tbody>
-                        <tr><td>An Leitstelle melden</td><td><code>patient melden</code> · <code>daten senden</code> · <code>an leitstelle senden</code></td></tr>
-                        <tr><td>DOCX-Export</td><td><code>export</code> · <code>dokument erstellen</code></td></tr>
-                        <tr><td>Patient-Count</td><td><code>wie viele patienten</code></td></tr>
-                        <tr><td>Letzten Eintrag löschen</td><td><code>letzten eintrag loeschen</code></td></tr>
-                        <tr><td>Mikrofon-Test</td><td><code>mikrofontest</code> · <code>audio test</code></td></tr>
-                        <tr><td>Rückfahrt zur Rettungsstation</td><td><code>rueckfahrt zur rettungsstation</code> · <code>fahre zur rettungsstation</code></td></tr>
+                        <tr>
+                            <td><span style="color:var(--cgi-red);font-weight:700">&#9679;</span> <strong>Triage Rot (T1)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Sofortbehandlung — Verlust von Leben/Glied/Augenlicht in &lt; 2 h</span></td>
+                            <td><code>triage rot</code> · <code>triage eins</code> · <code>patient rot</code></td>
+                        </tr>
+                        <tr>
+                            <td><span style="color:#d4871a;font-weight:700">&#9679;</span> <strong>Triage Gelb (T2)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Verzögerte Behandlung — innerhalb 4 h</span></td>
+                            <td><code>triage gelb</code> · <code>triage zwei</code> · <code>patient gelb</code></td>
+                        </tr>
+                        <tr>
+                            <td><span style="color:#5a9e3a;font-weight:700">&#9679;</span> <strong>Triage Grün (T3)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Spätbehandlung — gehfähig, &lt; 24 h</span></td>
+                            <td><code>triage grün</code> · <code>triage gruen</code> · <code>triage drei</code> · <code>patient grün</code></td>
+                        </tr>
+                        <tr>
+                            <td><span style="color:#5DADE2;font-weight:700">&#9679;</span> <strong>Triage Blau (T4)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Erwartend — palliativ, keine Erfolgsaussicht</span></td>
+                            <td><code>triage blau</code> · <code>triage vier</code> · <code>patient blau</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h2>5.7 Demo, Wartung &amp; Sonstiges</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:32%">Aktion</th><th>Trigger (alle Varianten)</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Letzten Eintrag löschen</strong><br><span style="color:var(--text-dim);font-size:0.9em">Letzte Aufnahme zurücknehmen — z.B. nach Versprecher</span></td>
+                            <td><code>letzten eintrag löschen</code> · <code>eintrag löschen</code> · <code>eintrag weg</code> · <code>letzte aufnahme löschen</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Patientenzahl abfragen</strong><br><span style="color:var(--text-dim);font-size:0.9em">TTS sagt aktuelle Anzahl + Triage-Verteilung</span></td>
+                            <td><code>wie viele patienten</code> · <code>patientenzahl</code> · <code>anzahl patienten</code> · <code>status patienten</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Mikrofon-/Audio-Test</strong><br><span style="color:var(--text-dim);font-size:0.9em">3-Sekunden-Loopback zur Pegel-Kontrolle</span></td>
+                            <td><code>mikrofontest</code> · <code>mikrofon test</code> · <code>mikrotest</code> · <code>mikro test</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Rückfahrt zur Rettungsstation</strong><br><span style="color:var(--text-dim);font-size:0.9em">Demo-Story: BAT-Marker bewegt sich animiert auf der Lagekarte</span></td>
+                            <td><code>rückfahrt zur rettungsstation</code> · <code>rueckfahrt zur rettungsstation</code> · <code>rueckfahrt rettungsstation</code> · <code>rueckfahrt starten</code> · <code>zurück zur rettungsstation</code></td>
+                        </tr>
                     </tbody>
                 </table>
 
                 <div class="hb-note info">
-                    <div class="hb-note-title">Bearbeitbar</div>
-                    Alle Trigger sind in <em>Einstellungen → Sprachbefehle</em> editierbar. Du kannst eigene Alternativen hinzufügen, ohne Code-Änderungen.
+                    <div class="hb-note-title">Eigene Trigger ergänzen</div>
+                    Alle Befehle sind in <em>Einstellungen → Sprachbefehle</em> editierbar. Pro
+                    Aktion lassen sich beliebig viele Alternativ-Phrasen hinzufügen — ohne
+                    Code-Änderungen. Empfehlung: kurze, klar artikulierbare Phrasen wählen,
+                    keine Anglizismen (Vosk-Modell ist deutsch).
+                </div>
+
+                <div class="hb-note">
+                    <div class="hb-note-title">Warum keine Einzelwort-Trigger wie „dringend"?</div>
+                    Einzelne deutsche Adjektive (<em>dringend</em>, <em>abwartend</em>,
+                    <em>aufschiebbar</em>, <em>abbrechen</em>) wurden bewusst <strong>aus
+                    der Trigger-Liste entfernt</strong>. Sie kommen im normalen
+                    medizinischen Sprachfluss zu häufig vor und feuern Aktionen
+                    versehentlich aus — z.B. mitten im Diktat <em>„der Patient braucht
+                    dringend Blutkonserven"</em> hätte sonst einen Triage-Gelb-Popup
+                    ausgelöst. Stattdessen sind alle Triage- und Abbruch-Trigger jetzt
+                    mehrwortig und kontextgebunden („triage gelb", „schreiben
+                    abbrechen"). Wer trotzdem Single-Wort-Shortcuts braucht, kann sie
+                    in <em>Einstellungen → Sprachbefehle</em> wieder hinzufügen — aber
+                    auf eigene Gefahr.
+                </div>
+
+                <div class="hb-note">
+                    <div class="hb-note-title">Quelle der Wahrheit</div>
+                    Die hier dokumentierten Trigger spiegeln <code>config.json</code> →
+                    <code>voice_commands</code>. Bei Abweichung gewinnt die Config — sie ist
+                    pro Gerät individuell anpassbar (z.B. lokale Dialekte).
                 </div>
             </section>
 
@@ -720,7 +1144,6 @@
                 <h2>📋 System</h2>
                 <ul>
                     <li>Daten zurücksetzen</li>
-                    <li>Testdaten generieren</li>
                     <li>Demo-Szenarien laden (Standard, Massenanfall, 9-Liner, Role-1-Übergabe)</li>
                     <li>Export (DOCX / PDF / JSON / XML)</li>
                     <li>RFID-Karte löschen</li>

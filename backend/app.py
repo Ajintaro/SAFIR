@@ -39,6 +39,8 @@ import sys as _sys
 if str(ROOT_DIR) not in _sys.path:
     _sys.path.insert(0, str(ROOT_DIR))
 from shared import exports  # noqa: E402
+from shared import sitaware  # noqa: E402
+from shared.version import VERSION, get_build_hash, get_full_version  # noqa: E402
 TEMPLATES_DIR = ROOT_DIR / "templates"          # Einheitliches Template
 TEMPLATES_DIR_LOCAL = PROJECT_DIR / "templates"  # Fallback
 STATIC_DIR = PROJECT_DIR / "static"
@@ -50,6 +52,15 @@ PATIENTS_DIR.mkdir(exist_ok=True)
 app = FastAPI(title="SAFIR Leitstelle")
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Vision-Use-Case-Mocks (docs/vision-mocks/) direkt ausliefern, damit
+# Messe-Besucher die branchentypischen Demos per URL erreichen koennen.
+VISION_MOCKS_DIR = ROOT_DIR / "docs" / "vision-mocks"
+if VISION_MOCKS_DIR.exists():
+    app.mount(
+        "/vision-mocks",
+        StaticFiles(directory=str(VISION_MOCKS_DIR), html=True),
+        name="vision-mocks",
+    )
 # Einheitliches Template bevorzugen, Fallback auf lokales
 _tpl_dir = TEMPLATES_DIR if TEMPLATES_DIR.exists() else TEMPLATES_DIR_LOCAL
 templates = Jinja2Templates(directory=str(_tpl_dir))
@@ -257,6 +268,21 @@ async def get_status():
         "device_id": cfg.get("device_id", "surface-01"),
         "unit_name": cfg.get("unit_name", "Rettungsstation"),
         "role": cfg.get("role", "role1"),
+        # Geraete-Name fuer Settings -> SAFIR Informationen und das
+        # Hardware-Monitor-Overlay. Frontend faellt auf 'Microsoft
+        # Surface' zurueck wenn dieses Feld fehlt (Backwards-Compat).
+        "system_name": cfg.get("system_name", "Microsoft Surface"),
+        # Versionsinfo aus shared/version.py — eine zentrale Quelle.
+        # get_build_hash() ist lazy-cached und re-tryt bei "dev"-
+        # Fallback automatisch beim naechsten Aufruf.
+        "version": VERSION,
+        "build": get_build_hash(),
+        "full_version": get_full_version(),
+        # Aktiv konfigurierter LLM-Tag und Ollama-URL — wird vom UI
+        # dynamisch in Settings/Tech-Stack eingeblendet, statt
+        # hardcoded "Qwen" anzuzeigen. Empty-String wenn nicht gesetzt.
+        "llm_model": cfg.get("ollama", {}).get("model", ""),
+        "llm_url": cfg.get("ollama", {}).get("url", ""),
         "patients_total": len(state.patients),
         "triage": triage_counts,
         "transports_active": len(state.transports),
@@ -909,11 +935,17 @@ PRUEFE DREI DINGE:
     "Atmung 18", "GCS 12"), der bei einem extrahierten Patient aber
     leer ist?
 
+   Im EXTRAKTOR-OUTPUT steht pro Patient unter "Vitals:" eine vollstaendige
+   Liste der Vital-Felder MIT WERT. Felder mit "<leer>" sind nicht
+   extrahiert, Felder mit einer Zahl SIND extrahiert.
+
    MELDE NUR WENN:
    - Eine konkrete Zahl im Transkript steht UND
-   - Das entsprechende Feld im Patient-Record leer/fehlt.
+   - Im EXTRAKTOR-OUTPUT das entsprechende Feld als "<leer>" markiert ist.
 
    NICHT MELDEN WENN:
+   - Im Patient-Record steht beim Feld schon eine Zahl (egal welche) —
+     der Jetson hat das Feld korrekt extrahiert, da gibt es kein Loch.
    - Im Transkript steht nur eine allgemeine Beschreibung ("blutet stark",
      "sieht schlecht aus") ohne Messwert.
    - Das Transkript sagt gar nichts zu diesem Feld.
@@ -938,20 +970,40 @@ BEISPIELE wie du (NICHT) melden sollst:
 
 Beispiel A — NICHT melden:
   Transkript: "Erika hat Nasenbluten."
-  Patient Erika hat: injuries=[Nasenbluten], vitals=leer
-  -> status=ok, keine Meldung. Transkript nennt keine Vitals-Zahl fuer
-     Erika, also keine Luecke.
+  EXTRAKTOR-OUTPUT:
+    - Erika
+        Verletzungen: Nasenbluten
+        Vitals:
+          pulse: <leer>
+          spo2: <leer>
+  -> status=ok. Transkript nennt keine Vital-Zahlen fuer Erika.
 
-Beispiel B — MELDEN:
+Beispiel B — NICHT melden (Werte sind extrahiert):
+  Transkript: "Marius hat Schusswunden, Puls 110, SpO2 95 Prozent."
+  EXTRAKTOR-OUTPUT:
+    - Marius
+        Verletzungen: Schusswunden
+        Vitals:
+          pulse: 110
+          spo2: 95
+  -> status=ok. Beide Vitalwerte stehen im Patient-Record (110, 95) —
+     der Jetson hat alles korrekt extrahiert. KEIN Finding ausspucken.
+
+Beispiel C — MELDEN (Werte fehlen wirklich):
   Transkript: "Marius hat drei Schusswunden. Puls 140, SpO2 90 Prozent."
-  Patient Marius hat: injuries=[Schusswunden], vitals=leer
+  EXTRAKTOR-OUTPUT:
+    - Marius
+        Verletzungen: Schusswunden
+        Vitals:
+          pulse: <leer>
+          spo2: <leer>
   -> status=issues, missing_fields enthaelt zwei Eintraege:
      (patient=Marius, field=pulse, value_from_transcript=140,
       evidence=Puls 140)
      (patient=Marius, field=spo2, value_from_transcript=90,
       evidence=SpO2 90 Prozent)
 
-Beispiel C — MELDEN (falsche Zuordnung):
+Beispiel D — MELDEN (falsche Zuordnung):
   Transkript: "Patient Marius hat Schusswunden. Puls 140. Naechster
                Patient Hubert hat Gehirnerschuetterung."
   Marius.vitals ist leer, Hubert.vitals.pulse=140
@@ -1016,7 +1068,23 @@ async def llm_review_session(body: dict):
     if not transcript:
         return {"error": "Kein Transkript in dieser Session"}
 
-    # Extrahierte Patienten des Jetsons formatieren
+    # Extrahierte Patienten des Jetsons formatieren — INKLUSIVE Vitalwerte!
+    # Bug-Fix 2026-04-26: Frueher wurden nur name+rang+injuries geschickt,
+    # die Vitals wurden weggelassen. Resultat: wenn das Transkript "Puls 110"
+    # erwaehnt UND der Jetson das Feld korrekt extrahiert hat, sah Gemma 4
+    # nur (name, injuries) in der Vergleichsliste — nicht die extrahierten
+    # Vitals — und meldete fuer JEDEN konkreten Vitalwert im Transkript ein
+    # "fehlendes Feld", obwohl der Jetson alles richtig gemacht hatte.
+    # Jetzt formatieren wir die Vitals explizit mit, ALLE Felder (auch
+    # leere) damit Gemma klar erkennt was extrahiert vs. wirklich leer ist.
+    VITAL_KEYS_LABELED = [
+        ("pulse", "Puls"),
+        ("bp", "RR"),
+        ("spo2", "SpO2"),
+        ("resp_rate", "AF"),
+        ("temp", "Temperatur"),
+        ("gcs", "GCS"),
+    ]
     extracted_list_lines = []
     for pid in session.get("patient_ids", []):
         p = state.patients.get(pid)
@@ -1024,11 +1092,28 @@ async def llm_review_session(body: dict):
             continue
         name = (p.get("name") or "Unbekannt").strip()
         rank = (p.get("rank") or "").strip()
-        injs = ", ".join(p.get("injuries") or [])
-        label = f"- {rank} {name}".strip() if rank else f"- {name}"
-        if injs:
-            label += f" ({injs})"
-        extracted_list_lines.append(label)
+        injs = ", ".join(p.get("injuries") or []) or "(keine)"
+        title = f"- {rank} {name}".strip() if rank else f"- {name}"
+        extracted_list_lines.append(title)
+        extracted_list_lines.append(f"    Verletzungen: {injs}")
+        vitals = p.get("vitals") or {}
+        # Alle Vital-Felder explizit listen (auch leere) — Gemma soll genau
+        # sehen was extrahiert ist und was nicht.
+        vital_lines = []
+        for key, label in VITAL_KEYS_LABELED:
+            val = vitals.get(key)
+            val_str = str(val).strip() if val is not None and str(val).strip() else "<leer>"
+            vital_lines.append(f"      {key} ({label}): {val_str}")
+        extracted_list_lines.append("    Vitals:")
+        extracted_list_lines.extend(vital_lines)
+        # Allergien / Blutgruppe falls vorhanden — die nennt der Sanitaeter
+        # auch oft im Diktat und Gemma soll das gegenpruefen koennen.
+        allergies = (p.get("allergies") or "").strip()
+        blood = (p.get("blood_type") or "").strip()
+        if allergies or blood:
+            extracted_list_lines.append(
+                f"    Allergien: {allergies or '<leer>'}, Blutgruppe: {blood or '<leer>'}"
+            )
     extracted_block = "\n".join(extracted_list_lines) if extracted_list_lines else "(keine)"
 
     prompt = SESSION_REVIEW_PROMPT.format(
@@ -1458,14 +1543,26 @@ async def data_reset(body: dict | None = None):
     if cascade:
         import httpx
         for peer in peer_snapshot:
-            peer_url = peer.get("url") or ""
-            if not peer_url:
+            # Bug-Fix 2026-04-25: Heartbeat speichert ip+port (nicht url),
+            # also bauen wir die URL hier zur Laufzeit. Frueher fiel der
+            # ganze Cascade-Loop durch das ``peer.get("url") or ""``-Filter,
+            # weil "url" nie gesetzt war — Reset auf Surface liess die
+            # Jetson-State unangetastet, danach pushte der Jetson seine
+            # Patienten via WS-init zurueck und sie tauchten wieder auf.
+            # Self-Peer und Dummy-Peer (ip=0.0.0.0 von test-data) skippen.
+            if peer.get("is_self"):
                 continue
+            ip = peer.get("ip", "")
+            if not ip or ip in ("0.0.0.0", "127.0.0.1"):
+                continue
+            peer_url = peer.get("url") or f"http://{ip}:{peer.get('port', 8080)}"
             try:
                 r = httpx.post(f"{peer_url}/api/data/reset",
                                json={"cascade": False}, timeout=3)
                 if r.status_code == 200:
                     cascaded_count += 1
+                else:
+                    print(f"[RESET] Cascade an {peer_url} HTTP {r.status_code}")
             except Exception as e:
                 print(f"[RESET] Cascade an {peer_url} fehlgeschlagen: {e}")
 
@@ -2222,3 +2319,85 @@ async def startup():
         print("  Omnikey Reader-Task gestartet (wartet auf pyscard/Reader)")
 
     print("Warte auf Verbindungen von Feldgeräten...")
+
+
+# ---------------------------------------------------------------------------
+# SitaWare / Tactical-Medical Interoperability (parallel zum Jetson-Endpoint)
+# ---------------------------------------------------------------------------
+def _surface_sitaware_params() -> dict:
+    """Standardparameter fuer SitaWare-Exporte aus der Surface-Konfig."""
+    cfg = load_backend_config()
+    pos = cfg.get("device_position") or cfg.get("position") or {}
+    return {
+        "unit_name": cfg.get("unit_name", "Rettungsstation"),
+        "device_id": cfg.get("device_id", "surface-01"),
+        "lat": float(pos.get("lat", 50.7374)),
+        "lon": float(pos.get("lon", 7.0982)),
+        "radio_freq": cfg.get("radio_frequency", "0.0"),
+        "radio_callsign": cfg.get("radio_callsign", cfg.get("unit_name", "")),
+    }
+
+
+@app.get("/api/sitaware/status")
+async def surface_sitaware_status():
+    """Capability-Reporting (auch fuer Frontend-Anzeige)."""
+    return sitaware.get_sitaware_status()
+
+
+@app.get("/api/sitaware/cot")
+async def surface_sitaware_cot():
+    """TAK-MEDEVAC-CoT-Events fuer alle gemeldeten Patienten."""
+    if not state.patients:
+        return {"error": "Keine Patienten vorhanden"}
+    p = _surface_sitaware_params()
+    xml = sitaware.generate_cot_batch(
+        list(state.patients.values()),
+        unit_name=p["unit_name"], device_id=p["device_id"],
+        lat=p["lat"], lon=p["lon"],
+    )
+    return Response(content=xml, media_type="application/xml",
+                    headers={"Content-Disposition": "attachment; filename=safir_medevac_cot.xml"})
+
+
+@app.get("/api/sitaware/nvg")
+async def surface_sitaware_nvg():
+    """NVG-Overlay (APP-6D-Symbole) fuer SitaWare HQ / Frontline."""
+    if not state.patients:
+        return {"error": "Keine Patienten vorhanden"}
+    p = _surface_sitaware_params()
+    xml = sitaware.generate_nvg_overlay(
+        list(state.patients.values()),
+        unit_name=p["unit_name"], lat=p["lat"], lon=p["lon"],
+    )
+    return Response(content=xml, media_type="application/xml",
+                    headers={"Content-Disposition": "attachment; filename=safir_overlay.nvg"})
+
+
+@app.get("/api/sitaware/medevac")
+async def surface_sitaware_medevac():
+    """MEDEVAC-9-Liner-XML (ATP-3.7.2 / FM 4-25.13)."""
+    if not state.patients:
+        return {"error": "Keine Patienten vorhanden"}
+    p = _surface_sitaware_params()
+    xml = sitaware.generate_medevac_9line(
+        list(state.patients.values()),
+        unit_name=p["unit_name"], device_id=p["device_id"],
+        lat=p["lat"], lon=p["lon"],
+        radio_freq=p["radio_freq"], radio_callsign=p["radio_callsign"],
+    )
+    return Response(content=xml, media_type="application/xml",
+                    headers={"Content-Disposition": "attachment; filename=safir_medevac_9line.xml"})
+
+
+@app.get("/api/sitaware/fhir")
+async def surface_sitaware_fhir():
+    """HL7 FHIR R4 Collection-Bundle fuer KIS / Klinik-Adapter."""
+    if not state.patients:
+        return {"error": "Keine Patienten vorhanden"}
+    p = _surface_sitaware_params()
+    body = sitaware.generate_fhir_bundle(
+        list(state.patients.values()),
+        unit_name=p["unit_name"], device_id=p["device_id"],
+    )
+    return Response(content=body, media_type="application/fhir+json",
+                    headers={"Content-Disposition": "attachment; filename=safir_fhir_bundle.json"})

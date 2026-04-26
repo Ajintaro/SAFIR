@@ -1428,11 +1428,32 @@
             border: 1px solid rgba(204,34,34,0.35);
             border-radius: 3px;
             font-size: var(--fs-body-sm); color: var(--text-primary);
+            display: flex; align-items: flex-start; gap: 8px;
         }
         .r1-review-missing-item .rev-evidence {
             display: block; margin-top: 3px;
             font-size: 11px; font-style: italic;
             color: var(--text-dim);
+        }
+        .r1-review-dismiss-btn {
+            flex-shrink: 0; align-self: center;
+            padding: 3px 9px; font-size: 11px;
+            background: var(--bg-elevated); color: var(--text-secondary);
+            border: 1px solid var(--border); border-radius: 3px;
+            cursor: pointer; white-space: nowrap;
+            transition: background 0.15s;
+        }
+        .r1-review-dismiss-btn:hover {
+            background: var(--mil-green, #5a9e3a); color: #fff;
+            border-color: var(--mil-green, #5a9e3a);
+        }
+        .r1-review-help {
+            margin-top: 6px; padding: 8px 10px;
+            font-size: 11px; line-height: 1.5;
+            color: var(--text-secondary);
+            background: var(--bg-elevated);
+            border-left: 3px solid var(--info, #5DADE2);
+            border-radius: 3px;
         }
 
         .role1-transport-list { flex: 1; overflow-y: auto; padding: var(--space-3); }
@@ -2103,7 +2124,7 @@
             <!-- Wird dynamisch aus config.json geladen -->
         </div>
         <div class="sidebar-footer">
-            <span class="nav-label">v2.1</span>
+            <span class="nav-label" id="sidebar-version">v0.1</span>
         </div>
     </nav>
 
@@ -2214,47 +2235,18 @@
                     <div id="pending-transcripts-list" style="display:flex;flex-direction:column;gap:6px;max-height:380px;overflow-y:auto"></div>
                 </div>
 
-                <!-- Sprachbefehle-Referenz (Feld) -->
-                <!-- Einsatzablauf (aufklappbar). flex-shrink:0 damit es nicht
-                     zerquetscht wird; max-height:40vh damit es nicht die
-                     Patientenliste darunter erdrueckt wenn aufgeklappt. -->
-                <details id="flow-guide" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;flex-shrink:0">
-                    <summary style="padding:10px 16px;cursor:pointer;font-size:var(--fs-body);font-weight:700;color:var(--cgi-red);display:flex;align-items:center;gap:8px;user-select:none">
-                        Einsatzablauf — Sprachbefehle
-                        <span style="margin-left:auto;font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">aufklappen</span>
-                    </summary>
-                    <div style="padding:8px 12px 12px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border);max-height:45vh;overflow-y:auto">
-                        <div style="font-size:var(--fs-body-sm);font-weight:700;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:2px 0">Phase A — Patienten aufnehmen</div>
-                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
-                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">1</span>
-                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">Neuer Patient + Aufnahme</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Neuer Patient"</strong> — Akte anlegen, Aufnahme startet automatisch</span></div>
-                        </div>
-                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
-                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">2</span>
-                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">Befund frei sprechen</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Aufnahme läuft — Verletzungen, Vitalwerte, Maßnahmen diktieren</span></div>
-                        </div>
-                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
-                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">3</span>
-                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">Aufnahme abschließen</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Patient fertig"</strong> stoppt die Aufnahme. Triage erfolgt erst in der Rettungsstation (Role 1).</span></div>
-                        </div>
-                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid var(--cgi-red);background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
-                            <span style="font-size:16px;font-weight:800;color:var(--cgi-red);min-width:20px;text-align:center">&#8634;</span>
-                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">Nächster Patient</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Neuer Patient"</strong> — stoppt laufende Aufnahme, legt neuen an</span></div>
-                        </div>
-                        <div style="font-size:var(--fs-body-sm);font-weight:700;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">Phase B — Alle Patienten verarbeiten</div>
-                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid #5DADE2;background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
-                            <span style="font-size:16px;font-weight:800;color:#5DADE2;min-width:20px;text-align:center">4</span>
-                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">KI-Analyse</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Alle Patienten analysieren"</strong> — KI extrahiert Felder aus Transkripten</span></div>
-                        </div>
-                        <div style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-left:3px solid #2ECC71;background:var(--bg-surface2);border-radius:0 var(--radius) var(--radius) 0">
-                            <span style="font-size:16px;font-weight:800;color:#2ECC71;min-width:20px;text-align:center">5</span>
-                            <div><span style="font-size:var(--fs-body-sm);font-weight:600">An Leitstelle melden</span><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)"><strong>"Patienten melden"</strong> — analysierte Daten übertragen</span></div>
-                        </div>
-                        <div style="margin-top:4px;padding:6px 10px;background:var(--bg-elevated);border-radius:var(--radius);font-size:var(--fs-body-sm);color:var(--text-dim)">
-                            Weitere: <strong>"Eintrag löschen"</strong> · <strong>"Wie viele Patienten"</strong> · <strong>"Export"</strong>
-                        </div>
-                    </div>
-                </details>
+                <!-- Kurzer Sprachbefehl-Hint statt der frueher hier aufklappbaren
+                     "Einsatzablauf"-Box. Der vollstaendige Befehlskatalog
+                     (alle 19 Aktionen mit allen Triggern) liegt jetzt im
+                     Handbuch unter Sektion 5 "Voice-Commands". -->
+                <div id="flow-hint" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);font-size:var(--fs-body-sm);flex-shrink:0">
+                    <span style="font-size:14px">&#127908;</span>
+                    <span style="color:var(--text-dim)">
+                        Sprachbefehle: <strong>"Neuer Patient"</strong> &middot; <strong>"Patient fertig"</strong> &middot; <strong>"Alle analysieren"</strong> &middot; <strong>"Patienten melden"</strong>
+                    </span>
+                    <a href="javascript:void(0)" onclick="navigateTo('handbook'); setTimeout(()=>{const t=document.getElementById('hb-voice'); if(t)t.scrollIntoView({behavior:'smooth'});}, 100); return false;"
+                       style="margin-left:auto;color:var(--cgi-red);font-weight:600;text-decoration:none;font-size:var(--fs-body-sm)">Vollständige Liste &rarr;</a>
+                </div>
 
                 <!-- Patientenliste (aufklappbare Karten) -->
                 <div id="patient-cards-feld" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
@@ -2279,11 +2271,16 @@
                 </div>
 
                 <!-- BAT-Standort + Rueckfahrt zur Rettungsstation (Demo-Story) -->
-                <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;padding:8px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);font-size:var(--fs-body-sm)">
+                <!-- Onchange-Auto-Set entfernt: ein Preset zu waehlen "selektiert"
+                     nur, gesetzt wird erst wenn der User explizit auf
+                     "Position setzen" klickt. Klare Trennung von "Auswahl"
+                     und "Aktion" — User-Wunsch 2026-04-26. -->
+                <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;padding:8px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);font-size:var(--fs-body-sm);flex-wrap:wrap">
                     <span style="font-size:var(--fs-body-sm);font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">&#127757; Standort</span>
-                    <select id="bat-position-preset" onchange="setBatPositionFromPreset(this.value)" style="padding:5px 8px;border:1px solid var(--border);background:var(--bg-surface2);color:var(--text-primary);font-size:var(--fs-body-sm);min-width:160px">
+                    <select id="bat-position-preset" style="padding:5px 8px;border:1px solid var(--border);background:var(--bg-surface2);color:var(--text-primary);font-size:var(--fs-body-sm);min-width:160px">
                         <option value="">— Standort wählen —</option>
                     </select>
+                    <button class="btn" onclick="batSetPositionExplicit()" id="btn-bat-set" style="padding:6px 12px;font-size:var(--fs-body-sm);font-weight:700;background:var(--mil-tan,#c8b878);border-color:var(--mil-tan,#c8b878);color:#000" title="BAT sofort an den gewählten Standort setzen (kein Animations-Lauf)">&#128205; Position setzen</button>
                     <span id="bat-position-status" style="font-size:var(--fs-body-sm);color:var(--text-dim);flex:1"></span>
                     <button class="btn" onclick="batReturnToStation()" id="btn-bat-return" style="padding:6px 12px;font-size:var(--fs-body-sm);font-weight:700;background:var(--info,#5DADE2);border-color:var(--info,#5DADE2);color:#fff" title="BAT bewegt sich animiert vom gewählten Standort zur Rettungsstation">&#9881; Rückfahrt zur Rettungsstation</button>
                 </div>
@@ -2318,6 +2315,13 @@
              ====================================================== -->
         <div class="page" id="page-patients">
             <div style="display:flex;flex-direction:column;height:100%;gap:10px">
+                <!-- KI-Review-Panel (Surface-only). Gemma 4 prueft hier die
+                     Konsistenz aller Patientendatensaetze gegen das
+                     Original-Transkript. Versteckt sich auf dem Jetson
+                     via data-leitstelle-only — der Sanitaeter im Feld
+                     hat diese Cross-Check-Funktion nicht. -->
+                <div id="r1-review-wrap" class="r1-review-wrap" style="display:none" data-leitstelle-only></div>
+
                 <!-- Kopfzeile mit Titel, Zähler und Filter-Toggle -->
                 <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
                     <div style="font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:0.05em">PATIENTEN-DATENBANK</div>
@@ -2412,12 +2416,11 @@
                          wenn keine Anfahrt aktiv ist. -->
                     <div id="r1-inbound-alerts" class="r1-inbound-wrap" style="display:none"></div>
 
-                    <!-- KI-Review-Panel: Gemma 4 auf der Surface prueft die
-                         Jetson-Extraktionen der juengsten Session und
-                         meldet fehlende Patienten. Wird beim empfangen
-                         einer neuen Session automatisch sichtbar und
-                         aktualisiert sich nach dem Review. -->
-                    <div id="r1-review-wrap" class="r1-review-wrap" style="display:none"></div>
+                    <!-- KI-Review-Panel verschoben in die Patientendatenbank
+                         (page-patients). Hier im Dashboard hat es nichts
+                         verloren — der Arzt am Surface arbeitet im
+                         Dashboard mit der Lagekarte und Triage, nicht mit
+                         Datenkonsistenz-Findings. -->
 
                     <!-- Transport-Liste -->
                     <div class="role1-transport-list" id="r1-transport-list">
@@ -2721,7 +2724,7 @@
                 <div class="vision-tech-stack">
                     <div class="vts-row">
                         <div class="vts-label">Hardware</div>
-                        <div class="vts-value">NVIDIA Jetson Orin Nano Super · Whisper.cpp (GPU) · Qwen 2.5 LLM · Piper TTS</div>
+                        <div class="vts-value" id="vts-hardware-row">NVIDIA Jetson Orin Nano Super · Whisper.cpp (GPU) · LLM · Piper TTS</div>
                     </div>
                     <div class="vts-row">
                         <div class="vts-label">Transport</div>
@@ -2874,7 +2877,7 @@
                             </div>
                             <div class="field">
                                 <label>Modell</label>
-                                <input type="text" id="settings-ollama-model" placeholder="qwen2.5:1.5b">
+                                <input type="text" id="settings-ollama-model" placeholder="z.B. gemma3:4b oder gemma4:e4b">
                             </div>
                             <div class="btn-group">
                                 <button class="btn btn-cgi" onclick="saveLLMSettings()">Speichern</button>
@@ -2953,27 +2956,33 @@
                         <div class="settings-title">Interoperabilität</div>
                         <div class="settings-desc">Schnittstellen zu externen Führungsinformationssystemen.</div>
                         <div class="settings-card">
-                            <div class="settings-card-title">SitaWare (D-LBO)</div>
+                            <div class="settings-card-title">Tactical &amp; Medical Standards</div>
                             <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:8px">
-                                Schnittstelle zu SitaWare Edge / Frontline / Headquarters.<br>
-                                Protokolle: Cursor-on-Target 2.0, NATO Vector Graphics 2.0.2<br>
-                                Standards: APP-6D, MIL-STD-2525D, MIP 4.3+, STANAG 4609
+                                Vier komplementäre Export-Formate für die Anbindung an externe Führungs- und Healthcare-Systeme.
+                                Strikt nach öffentlich dokumentierten NATO-/HL7-Standards — keine erfundenen Schemata.
                             </div>
                             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Edge 2.0</span>
-                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Frontline</span>
-                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Headquarters</span>
-                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">ATAK / WinTAK</span>
-                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">NATO JCOP</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">SitaWare Edge / Frontline / HQ</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">ATAK / WinTAK / iTAK</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">FüInfoSysH</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">FHIR-fähige KIS</span>
+                                <span style="font-size:var(--fs-body-sm);padding:3px 8px;background:var(--accent-light);color:var(--accent);border-radius:4px;font-weight:600">Bundeswehr BHS-Adapter</span>
                             </div>
                             <div style="font-size:var(--fs-body-sm);font-weight:600;margin-bottom:6px;color:var(--text-primary)">Datenexport</div>
-                            <div class="btn-group">
-                                <button class="btn" onclick="exportSitawareCot()" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#9878; CoT XML (MEDEVAC)</button>
-                                <button class="btn" onclick="exportSitawareNvg()" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#9873; NVG Overlay (APP-6D)</button>
+                            <div class="btn-group" style="flex-wrap:wrap;gap:6px">
+                                <button class="btn" onclick="exportSitawareCot()" title="Cursor-on-Target 2.0 mit TAK-MEDEVAC-Detail-Schema (a-f-G-U-C-D / b-r-f-h-c)" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#9878; CoT XML &mdash; TAK MEDEVAC</button>
+                                <button class="btn" onclick="exportSitawareNvg()" title="NATO Vector Graphics 2.0.2 mit APP-6D-Symbolen pro Patient" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#9873; NVG Overlay &mdash; APP-6D</button>
+                                <button class="btn" onclick="exportSitawareMedevac()" title="MEDEVAC 9-Liner XML nach ATP-3.7.2 / FM 4-25.13" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#128226; MEDEVAC 9-Liner &mdash; ATP-3.7.2</button>
+                                <button class="btn" onclick="exportSitawareFhir()" title="HL7 FHIR R4 Bundle mit Patient + Observation + Condition + Encounter" style="padding:6px 12px;font-size:var(--fs-body-sm)">&#128137; HL7 FHIR R4 Bundle</button>
                             </div>
-                            <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-radius:var(--radius)">
-                                CoT-Events werden als XML exportiert und können direkt in SitaWare, ATAK oder WinTAK importiert werden.
-                                NVG-Overlays enthalten APP-6D SIDC-Symbole für die taktische Lagekarte.
+                            <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:10px;padding:8px 10px;background:var(--bg-elevated);border-left:3px solid var(--accent,#c8b878);border-radius:var(--radius);line-height:1.5">
+                                <strong style="color:var(--text-primary)">Hinweis zur Anbindung:</strong>
+                                Die Exporte folgen öffentlich dokumentierten NATO- (CoT, NVG, APP-6D, ATP-3.7.2)
+                                und HL7-Standards (FHIR R4, LOINC, SNOMED CT, UCUM). Die finale Anbindung an das
+                                Bundeswehr <em>Battle Health System</em> (BHS) erfolgt über den Vendor-Adapter bzw.
+                                die BAAINBw-Spezifikation der jeweiligen Zielinstanz — diese API ist nicht öffentlich.
+                                SAFIR liefert die Daten in den erwarteten Standardformaten; die letzte Meile
+                                übernimmt der Adapter beim Empfänger.
                             </div>
                         </div>
                     </div>
@@ -3364,8 +3373,9 @@
                         <div class="settings-card">
                             <div class="settings-card-title">SAFIR Informationen</div>
                             <div style="font-size:var(--fs-body);color:var(--text-secondary);line-height:1.8">
-                                <div><strong>Version:</strong> 2.1</div>
-                                <div><strong>Gerät:</strong> NVIDIA Jetson Orin Nano</div>
+                                <div><strong>Version:</strong> <span id="info-version">0.1</span> <span id="info-build" style="color:var(--text-dim);font-size:0.85em"></span></div>
+                                <div><strong>Gerät:</strong> <span id="info-device-name">—</span></div>
+                                <div><strong>LLM:</strong> <span id="info-llm-model">—</span> <span id="info-llm-url" style="color:var(--text-dim);font-size:0.85em"></span></div>
                                 <div><strong>Projekt:</strong> CGI Deutschland / AFCEA 2026</div>
                                 <div><strong>Zweck:</strong> KI-gestützte Felddokumentation entlang der Bundeswehr-Rettungskette</div>
                             </div>
@@ -3376,28 +3386,11 @@
                                 <button class="btn" onclick="exportConfig()">config.json herunterladen</button>
                             </div>
                         </div>
-                        <div class="settings-card" style="border:1px solid var(--info,#5DADE2)">
-                            <div class="settings-card-title" style="color:var(--info,#5DADE2)">Testdaten generieren</div>
-                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
-                                Erzeugt einen Mix aus Test-Patienten in verschiedenen Zuständen (Entwurf, analysiert, gemeldet) und einen Test-BAT auf der Karte. So lässt sich der ganze Patient-Flow ohne vorheriges Diktieren demonstrieren. Patient-IDs haben das Prefix <code>TEST-</code>.
-                            </div>
-                            <div class="btn-group">
-                                <button class="btn" style="background:var(--info,#5DADE2);color:#fff" onclick="generateTestData()">Testdaten erzeugen</button>
-                            </div>
-                        </div>
+                        <!-- "Testdaten generieren" Card entfernt: dafuer gibt es
+                             die thematischen "Demo-Szenarien" weiter unten. -->
 
-                        <!-- Export-Duplikat entfernt: Export-Funktionen sind
-                             jetzt auf der Dokumente-Seite gebuendelt. Link
-                             dorthin als Shortcut. -->
-                        <div class="settings-card" style="border-left:3px solid var(--accent,#c8b878)">
-                            <div class="settings-card-title" style="color:var(--accent,#c8b878)">&#128196; Patientendatenbank exportieren</div>
-                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
-                                Alle Export-Funktionen (DOCX, PDF, JSON, XML) und die Historie bereits erzeugter Dokumente findest du gebuendelt im Menue <strong>Dokumente</strong>.
-                            </div>
-                            <div class="btn-group">
-                                <button class="btn" onclick="navigateTo('documents')">&#128196; Zur Dokumente-Seite</button>
-                            </div>
-                        </div>
+                        <!-- Patientendatenbank-Export Card entfernt: alle
+                             Export-Funktionen sind auf der Dokumente-Seite. -->
                         <div class="settings-card" style="border:1px solid var(--warning)">
                             <div class="settings-card-title" style="color:var(--warning)">Daten zurücksetzen</div>
                             <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
@@ -3432,7 +3425,7 @@
                             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
                                 <button class="btn" onclick="loadDemoScenario('standard')" style="padding:12px;text-align:left;line-height:1.4">
                                     <div style="font-weight:700;font-size:var(--fs-body)">&#128203; Standard-Mix</div>
-                                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:2px">6 Patienten (Entwurf / analysiert / gemeldet) + 2 Pending-Transkripte fuer Live-Analyse</div>
+                                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:2px">2 analysierte (warten auf Melden), 2 gemeldete (auf Surface sichtbar), 1 langes Multi-Patient-Diktat (4 Verwundete am Stück) zum Live-Analysieren</div>
                                 </button>
                                 <button class="btn" onclick="loadDemoScenario('mass_cas')" style="padding:12px;text-align:left;line-height:1.4">
                                     <div style="font-weight:700;font-size:var(--fs-body)">&#9876; Massenanfall</div>
@@ -3457,7 +3450,7 @@
     </div><!-- /page-container -->
 </div><!-- /app-layout -->
 
-<div class="footer-badge">SAFIR v2.1 &middot; CGI Deutschland &middot; AFCEA 2026</div>
+<div class="footer-badge" id="footer-badge">SAFIR v0.1 &middot; CGI Deutschland &middot; AFCEA 2026</div>
 
 <!-- HARDWARE OVERLAY — <dialog> Element, komplett außerhalb des Layout-Flows -->
 <dialog class="hw-overlay" id="hw-overlay">
@@ -5201,6 +5194,26 @@
                     // Inbound-Liste aktualisieren — der gerade angekommene
                     // BAT verschwindet dort, da er nicht mehr "auf Anfahrt" ist.
                     try { role1UpdateInboundAlerts(); } catch (e) {}
+                    // Fahrzeug-Modus auf dem Jetson: Rueckfahrt-Button sofort
+                    // wieder freischalten und Dropdown zuruecksetzen, damit
+                    // der Sanitaeter bewusst einen NEUEN Standort waehlt.
+                    // Sonst muesste er warten bis das setTimeout in
+                    // batReturnToStation den Button freigibt — und das
+                    // alte Preset bliebe selektiert (verwirrend: "warum
+                    // springt der BAT zurueck nach Beuel?").
+                    const _batBtn = document.getElementById('btn-bat-return');
+                    if (_batBtn) {
+                        _batBtn.disabled = false;
+                        _batBtn.innerHTML = '⚙ Rückfahrt zur Rettungsstation';
+                    }
+                    const _batSel = document.getElementById('bat-position-preset');
+                    if (_batSel) _batSel.value = '';
+                    const _batStatus = document.getElementById('bat-position-status');
+                    if (_batStatus) {
+                        _batStatus.textContent = 'eingetroffen — neuen Standort wählen';
+                        _batStatus.style.color = 'var(--success, #5a9e3a)';
+                        setTimeout(() => { if (_batStatus) _batStatus.style.color = ''; }, 8000);
+                    }
                 }
                 break;
             case 'init':
@@ -5524,6 +5537,21 @@
         const res = await api('/api/rfid/batch', 'POST', {});
         if (res.status === 'started') {
             showToast(`RFID-Batch gestartet: ${notWritten.length} Karte(n). Zum Abbrechen: Sprachbefehl "abbrechen" oder Button "Abbruch"`, '&#128179;');
+        }
+    }
+
+    // RFID schreiben fuer EINEN spezifischen Patient (Per-Patient-Button
+    // im Fahrzeug-Modus). Use-Case: Sanitaeter auf Rueckfahrt mit nur
+    // wenigen Karten waehlt gezielt aus. Identische Hardware-Sequenz wie
+    // der Batch — TTS-Ansage, LED, Karte auflegen, schreiben.
+    async function rfidWriteSingle(patientId, name) {
+        if (!patientId) return;
+        if (!confirm(`Karte schreiben fuer "${name || patientId}"?\n\nLege die Karte auf den RC522-Reader sobald die TTS dich auffordert.`)) return;
+        const res = await api('/api/rfid/write-single', 'POST', { patient_id: patientId });
+        if (res.status === 'started') {
+            showToast(`RFID-Schreiben fuer ${name || patientId} gestartet — Karte auflegen`, '\u{1F4C7}');
+        } else if (res.error) {
+            showToast(res.error, '&#9888;');
         }
     }
 
@@ -6016,26 +6044,47 @@
         }
     }
 
-    // ---- SitaWare Export ----
-    async function exportSitawareCot() {
-        const res = await fetch('/api/sitaware/cot');
-        if (res.ok) {
+    // ---- Tactical / Medical Standard Exports ----
+    // Generischer Helper: holt Endpoint, prueft auf JSON-Error
+    // (Backend gibt bei leerer Patientenliste {error:"..."} zurueck),
+    // sonst speichert als Datei. Vermeidet 4x denselben Boilerplate.
+    async function _downloadStandardExport(endpoint, filename, label) {
+        try {
+            const res = await fetch(endpoint);
+            if (!res.ok) {
+                showToast('Export fehlgeschlagen: HTTP ' + res.status, '&#9888;');
+                return;
+            }
+            const ctype = res.headers.get('content-type') || '';
+            if (ctype.includes('application/json') && !ctype.includes('fhir')) {
+                // Fehler-Response wie {"error":"Keine Patienten vorhanden"}
+                const j = await res.json();
+                if (j && j.error) {
+                    showToast(j.error, '&#9888;');
+                    return;
+                }
+            }
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'safir_medevac_cot.xml'; a.click();
+            const a = document.createElement('a');
+            a.href = url; a.download = filename; a.click();
             URL.revokeObjectURL(url);
-            showToast('CoT XML exportiert', '&#9989;');
-        } else { showToast('Keine Patienten für Export', '&#9888;'); }
+            showToast(label + ' exportiert', '&#9989;');
+        } catch (e) {
+            showToast('Export-Fehler: ' + e.message, '&#9888;');
+        }
+    }
+    async function exportSitawareCot() {
+        return _downloadStandardExport('/api/sitaware/cot', 'safir_medevac_cot.xml', 'CoT XML');
     }
     async function exportSitawareNvg() {
-        const res = await fetch('/api/sitaware/nvg');
-        if (res.ok) {
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'safir_overlay.nvg'; a.click();
-            URL.revokeObjectURL(url);
-            showToast('NVG Overlay exportiert', '&#9989;');
-        } else { showToast('Keine Patienten für Export', '&#9888;'); }
+        return _downloadStandardExport('/api/sitaware/nvg', 'safir_overlay.nvg', 'NVG Overlay');
+    }
+    async function exportSitawareMedevac() {
+        return _downloadStandardExport('/api/sitaware/medevac', 'safir_medevac_9line.xml', 'MEDEVAC 9-Liner');
+    }
+    async function exportSitawareFhir() {
+        return _downloadStandardExport('/api/sitaware/fhir', 'safir_fhir_bundle.json', 'HL7 FHIR Bundle');
     }
 
     // ---- Model Management ----
@@ -6539,9 +6588,35 @@
         const status = document.getElementById('bat-position-status');
         if (res && res.lat !== undefined && status) {
             status.textContent = `gesetzt: ${res.lat.toFixed(4)}, ${res.lon.toFixed(4)}`;
+            status.style.color = '';
         }
         if (res && res.error) {
             showToast(res.error, '&#9888;');
+        }
+        return res;
+    }
+
+    // Expliziter "Position setzen"-Button: kein Animations-Lauf, der BAT
+    // springt einfach an den gewaehlten Preset-Standort. Nuetzlich um
+    // den BAT zwischen Demo-Szenen umzusetzen ohne jedes Mal die
+    // 60-Sekunden-Rueckfahrt-Animation laufen zu lassen.
+    async function batSetPositionExplicit() {
+        const sel = document.getElementById('bat-position-preset');
+        if (!sel || !sel.value) {
+            showToast('Bitte erst einen Standort wählen', '&#9888;');
+            return;
+        }
+        const presetLabel = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : sel.value;
+        const res = await setBatPositionFromPreset(sel.value);
+        if (res && res.lat !== undefined) {
+            showToast(`BAT bei ${presetLabel} platziert`, '&#128205;');
+            // "Eingetroffen"-Marker zuruecksetzen falls da, damit die
+            // Lagekarte den BAT wieder als regulaer-platziert zeigt.
+            try {
+                if (window.role1ArrivedBats) {
+                    Object.keys(window.role1ArrivedBats).forEach(k => delete window.role1ArrivedBats[k]);
+                }
+            } catch (e) {}
         }
     }
 
@@ -6551,6 +6626,10 @@
             showToast('Bitte erst einen Standort wählen', '&#9888;');
             return;
         }
+        // Der User hat eventuell den Preset gewechselt aber nicht "Position
+        // setzen" geklickt — wir setzen die Position implicit mit, sonst
+        // bekaeme er eine Rueckfahrt vom alten Standort.
+        await setBatPositionFromPreset(sel.value);
         const btn = document.getElementById('btn-bat-return');
         if (btn) { btn.disabled = true; btn.textContent = '⟳ Rückfahrt läuft...'; }
         try {
@@ -7172,15 +7251,26 @@
                         <input type="text" value="${p.vitals?.spo2||''}" placeholder="SpO2" style="flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-surface2);color:var(--text-primary);font-size:var(--fs-body-sm)" onblur="saveVitalFor('${p.patient_id}','spo2',this.value)">
                     </div>` : '';
 
-                // Fahrzeug-Modus: Löschen-Icon
-                const deleteIcon = isFz ? `<span onclick="event.stopPropagation();deletePatient('${p.patient_id}')" style="cursor:pointer;color:var(--text-dim);font-size:14px;padding:0 4px" title="Patient löschen">&#128465;</span>` : '';
-
                 // RFID-Karte geschrieben? Pruefen ueber Timeline-Event
                 // "rfid_written" (wird von voice_write_card in app.py gesetzt).
                 // Badge bleibt dauerhaft am Patient (auch nach Role-Wechsel),
                 // damit man auf einen Blick sieht welche Patienten schon auf
                 // MIFARE-Karten sind vs. welche noch offen.
+                // WICHTIG: Diese Definition muss VOR rfidIcon stehen — sonst
+                // ReferenceError (Temporal Dead Zone) bricht den ganzen
+                // .map()-Loop ab, Patientenliste bleibt leer und das
+                // Fahrzeug-Menue zeigt nichts.
                 const hasRfidWritten = (p.timeline || []).some(ev => ev.event === 'rfid_written');
+
+                // Fahrzeug-Modus: Löschen-Icon
+                const deleteIcon = isFz ? `<span onclick="event.stopPropagation();deletePatient('${p.patient_id}')" style="cursor:pointer;color:var(--text-dim);font-size:14px;padding:0 4px" title="Patient löschen">&#128465;</span>` : '';
+                // Fahrzeug-Modus: Per-Patient-RFID-Button — schreibt nur
+                // diesen einen Patient auf die naechste aufgelegte Karte.
+                // Use-Case: BAT-Sanitaeter auf Rueckfahrt mit begrenztem
+                // Kartenvorrat. Nur sichtbar wenn der Patient noch keine
+                // Karte hat (sonst wuerde er die alte Karte ueberschreiben
+                // wollen und das ist hier nicht der Use-Case).
+                const rfidIcon = (isFz && !hasRfidWritten) ? `<button onclick="event.stopPropagation();rfidWriteSingle('${p.patient_id}','${(p.name||'Unbekannt').replace(/'/g,'')}')" style="background:none;border:1px solid var(--mil-tan,#c8b878);color:var(--mil-tan,#c8b878);padding:2px 8px;font-size:var(--fs-body-sm);font-weight:600;border-radius:var(--radius);cursor:pointer;margin-right:4px" title="Nur diesen Patient auf die naechste aufgelegte Karte schreiben">&#128179; Karte</button>` : '';
 
                 // Schulterstueck-vs-Triage-Logik:
                 // - Phase 0 (BAT): immer Schulterstueck, weil Triage dort bewusst
@@ -7230,6 +7320,7 @@
                             ${hasRfidWritten ? '<span class="badge-sm" style="background:rgba(200,184,120,0.2);color:#c8b878" title="RFID-Karte geschrieben">&#128179; RFID</span>' : ''}
                             ${p.synced ? '<span class="badge-sm" style="background:rgba(46,204,113,0.15);color:#2ECC71">gemeldet</span>' : ''}
                         </div>
+                        ${rfidIcon}
                         ${deleteIcon}
                         <span class="patient-card-chevron">&#9654;</span>
                     </summary>
@@ -7621,9 +7712,39 @@
         }
     }
 
+    // Findings die der User explizit als "geprueft / ignorieren" markiert
+    // hat. Persistent in localStorage damit ein Page-Reload die Dismissals
+    // nicht vergisst. Schluessel = sessionId + finding-Hash, sodass eine
+    // neue Review-Runde dieselben Findings nochmal zeigt (sinnvoll, falls
+    // der User wirklich was uebersehen hat).
+    function _reviewDismissKey(sessionId, kind, finding) {
+        const id = (finding.field || '') + '|' + (finding.patient || '') + '|' + (finding.evidence || '').slice(0, 60);
+        return `safir-review-dismissed:${sessionId}:${kind}:${id}`;
+    }
+    function reviewIsDismissed(sessionId, kind, finding) {
+        try { return localStorage.getItem(_reviewDismissKey(sessionId, kind, finding)) === '1'; }
+        catch (e) { return false; }
+    }
+    function reviewDismissFinding(sessionId, kind, encoded) {
+        try {
+            const finding = JSON.parse(decodeURIComponent(encoded));
+            localStorage.setItem(_reviewDismissKey(sessionId, kind, finding), '1');
+        } catch (e) { console.warn('[REVIEW] dismiss failed', e); }
+        role1RenderReviewPanel();
+    }
+
     function role1RenderReviewPanel() {
         const wrap = document.getElementById('r1-review-wrap');
         if (!wrap) return;
+        // Defensive-Check: Review-Panel ist Surface-only. Auf dem Jetson
+        // hat der Sanitaeter keine Cross-Check-Funktion, deshalb gar nicht
+        // erst rendern — auch wenn fremde session_review_done-Events
+        // ueber die Backend-WS-Bruecke reinkommen sollten.
+        if (window._safirDevice && window._safirDevice !== 'leitstelle') {
+            wrap.style.display = 'none';
+            wrap.innerHTML = '';
+            return;
+        }
         // Nur anzeigen wenn es mindestens eine Session mit Transkript gibt.
         const session = (role1Sessions || []).find(s => s && s.transcript);
         if (!session) {
@@ -7657,40 +7778,75 @@
                 <span style="color:var(--text-dim);font-size:10px">(${rv.elapsed_s}s)</span>
             </div>`;
         } else if (rv.status === 'issues' || rv.status === 'missing') {
-            // Drei Kategorien von Problemen rendern
-            const missingBlocks = (rv.missing || []).map(m => `
+            // Findings mit "Erledigt"-Button: User kann je Eintrag klicken,
+            // dass er ihn geprueft hat. Persistent in localStorage damit ein
+            // Reload nicht alles wieder zeigt. Re-Run der Review zeigt
+            // gleiche Findings wieder (sinnvoll: KI hat ja Recht haben
+            // koennen — wir wollen die Bestaetigung nicht serverseitig
+            // verschwinden lassen).
+            const sid = session.session_id;
+            const renderFinding = (kind, label, body, finding) => {
+                if (reviewIsDismissed(sid, kind, finding)) return '';
+                const enc = encodeURIComponent(JSON.stringify(finding));
+                return `
                 <div class="r1-review-missing-item">
-                    <strong>&#9888; Fehlender Patient:</strong> ${escapeHtml(m.description || '')}
-                    ${m.evidence ? `<span class="rev-evidence">"${escapeHtml(m.evidence)}"</span>` : ''}
-                </div>
-            `).join('');
-            const fieldBlocks = (rv.missing_fields || []).map(f => `
-                <div class="r1-review-missing-item">
-                    <strong>&#9888; Fehlendes Feld:</strong>
-                    <code>${escapeHtml(f.field || '?')}</code> bei
-                    <strong>${escapeHtml(f.patient || '?')}</strong>
-                    ${f.value_from_transcript ? `= <em>${escapeHtml(f.value_from_transcript)}</em>` : ''}
-                    ${f.evidence ? `<span class="rev-evidence">"${escapeHtml(f.evidence)}"</span>` : ''}
-                </div>
-            `).join('');
-            const wrongBlocks = (rv.wrong_assignment || []).map(w => `
-                <div class="r1-review-missing-item">
-                    <strong>&#9888; Falsche Zuordnung:</strong>
-                    <code>${escapeHtml(w.field || '?')}</code> gehoert zu
-                    <strong>${escapeHtml(w.patient_should_be || '?')}</strong>,
-                    steht aber bei ${escapeHtml(w.patient_current || '?')}
-                    ${w.evidence ? `<span class="rev-evidence">"${escapeHtml(w.evidence)}"</span>` : ''}
-                </div>
-            `).join('');
+                    <div style="flex:1">
+                        <strong>&#9888; ${label}:</strong> ${body}
+                    </div>
+                    <button class="r1-review-dismiss-btn"
+                            onclick="reviewDismissFinding('${escapeHtml(sid)}','${kind}','${enc}')"
+                            title="Geprueft / ignorieren — Eintrag ausblenden">&#10003; Erledigt</button>
+                </div>`;
+            };
+            const missingBlocks = (rv.missing || []).map(m => renderFinding(
+                'missing',
+                'Fehlender Patient',
+                `${escapeHtml(m.description || '')} ${m.evidence ? `<span class="rev-evidence">"${escapeHtml(m.evidence)}"</span>` : ''}`,
+                m
+            )).join('');
+            const fieldBlocks = (rv.missing_fields || []).map(f => renderFinding(
+                'missing_fields',
+                'Fehlendes Feld',
+                `<code>${escapeHtml(f.field || '?')}</code> bei <strong>${escapeHtml(f.patient || '?')}</strong>` +
+                `${f.value_from_transcript ? ` = <em>${escapeHtml(f.value_from_transcript)}</em>` : ''}` +
+                `${f.evidence ? `<span class="rev-evidence">"${escapeHtml(f.evidence)}"</span>` : ''}`,
+                f
+            )).join('');
+            const wrongBlocks = (rv.wrong_assignment || []).map(w => renderFinding(
+                'wrong_assignment',
+                'Falsche Zuordnung',
+                `<code>${escapeHtml(w.field || '?')}</code> gehoert zu <strong>${escapeHtml(w.patient_should_be || '?')}</strong>, ` +
+                `steht aber bei ${escapeHtml(w.patient_current || '?')}` +
+                `${w.evidence ? `<span class="rev-evidence">"${escapeHtml(w.evidence)}"</span>` : ''}`,
+                w
+            )).join('');
             const totalFindings = (rv.missing || []).length +
                                   (rv.missing_fields || []).length +
                                   (rv.wrong_assignment || []).length;
+            const visibleFindings = (rv.missing || []).filter(m => !reviewIsDismissed(sid, 'missing', m)).length +
+                                    (rv.missing_fields || []).filter(f => !reviewIsDismissed(sid, 'missing_fields', f)).length +
+                                    (rv.wrong_assignment || []).filter(w => !reviewIsDismissed(sid, 'wrong_assignment', w)).length;
+            const dismissedNote = (totalFindings - visibleFindings) > 0
+                ? ` <span style="color:var(--text-dim);font-size:10px">(${totalFindings - visibleFindings} bereits abgehakt)</span>`
+                : '';
+            // Erklaerungsbox: was bedeuten die Findings, was soll der Arzt tun?
+            const helpBox = visibleFindings > 0 ? `
+                <div class="r1-review-help">
+                    <strong>So liest du diese Hinweise:</strong> Gemma 4 hat das Roh-Transkript
+                    nochmal gegen die extrahierten Patienten-Felder gegengeprueft.
+                    "<em>Fehlendes Feld</em>" heisst: ein medizinischer Wert wurde im Diktat
+                    erwaehnt, ist aber nicht in der Patienten-Karte gelandet.
+                    Pruefe und ergaenze es manuell in der Patienten-Karte —
+                    oder klick <strong>&#10003; Erledigt</strong> wenn der Hinweis falsch ist
+                    (z.B. Wert war nicht relevant, KI hat sich vertan).
+                </div>` : '';
             statusBlock = `
                 <div class="r1-review-status missing">
                     <strong>Gemma 4 meldet ${totalFindings} Auffaelligkeit${totalFindings === 1 ? '' : 'en'}:</strong>
-                    ${rv.expected_patients ?? '?'} Patienten erkannt, ${rv.extracted_count ?? '?'} extrahiert.
+                    ${rv.expected_patients ?? '?'} Patienten erkannt, ${rv.extracted_count ?? '?'} extrahiert.${dismissedNote}
                     <span style="color:var(--text-dim);font-size:10px">(${rv.elapsed_s}s)</span>
                 </div>
+                ${helpBox}
                 ${missingBlocks}${fieldBlocks}${wrongBlocks}
             `;
         } else {
@@ -8413,13 +8569,56 @@
         }
         // Hardware-Monitor-Overlay: NUR Geraete-Name als Subtitle.
         // Keine Rollenbezeichnung (Unit-Name steht ohnehin in der Topbar).
+        // Geraete-Name kommt jetzt zentral aus status.system_name (siehe
+        // shared/version.py-Pattern), Fallback fuer alte Backends ohne
+        // das Feld bleibt bestehen.
+        const devLabel = status.system_name
+            || (status.device === 'leitstelle'
+                ? 'Microsoft Surface'
+                : 'NVIDIA Jetson Orin Nano');
         const hwName = document.getElementById('hw-overlay-device-name');
-        if (hwName) {
-            const devLabel = status.system_name
-                || (status.device === 'leitstelle'
-                    ? 'Microsoft Surface'
-                    : 'Jetson Orin Nano');
-            hwName.textContent = devLabel;
+        if (hwName) hwName.textContent = devLabel;
+        // Settings -> SAFIR Informationen: Geraete-Name + Version aus
+        // /api/status. Damit ist die Card pro Geraet korrekt (Surface
+        // zeigt "Microsoft Surface", Jetson zeigt "NVIDIA Jetson...").
+        const infoDev = document.getElementById('info-device-name');
+        if (infoDev) infoDev.textContent = devLabel;
+        // Versionsanzeige in Settings, Sidebar und Footer-Badge — alle
+        // drei Stellen aus dem gleichen status.version. Build-Hash wird
+        // klein dahintergesetzt damit unterschiedliche Builds derselben
+        // Version unterscheidbar sind (z.B. "0.1.0  build a1b2c3d").
+        const ver = status.version || '?';
+        const build = status.build && status.build !== 'dev' ? status.build : '';
+        const sidebarVer = document.getElementById('sidebar-version');
+        if (sidebarVer) sidebarVer.textContent = 'v' + ver;
+        const infoVer = document.getElementById('info-version');
+        if (infoVer) infoVer.textContent = ver;
+        const infoBuild = document.getElementById('info-build');
+        if (infoBuild) infoBuild.textContent = build ? '(build ' + build + ')' : '';
+        const footerBadge = document.getElementById('footer-badge');
+        if (footerBadge) {
+            footerBadge.innerHTML = 'SAFIR v' + ver
+                + (build ? ' · ' + build : '')
+                + ' · CGI Deutschland · AFCEA 2026';
+        }
+        // Settings -> SAFIR Informationen: LLM-Modell + Server-URL
+        // dynamisch aus /api/status (statt hardcoded "Qwen").
+        const llmModel = status.llm_model || '—';
+        const llmUrl = status.llm_url || '';
+        const llmModelEl = document.getElementById('info-llm-model');
+        if (llmModelEl) llmModelEl.textContent = llmModel;
+        const llmUrlEl = document.getElementById('info-llm-url');
+        if (llmUrlEl) llmUrlEl.textContent = llmUrl ? '· ' + llmUrl : '';
+        // Vision-Tech-Stack: Hardware-Row dynamisch je Geraet bauen.
+        // Surface = Microsoft Surface · Whisper extern · <model> · TTS extern
+        // Jetson  = NVIDIA Jetson ... Super · Whisper.cpp (GPU) · <model> · Piper TTS
+        const vtsRow = document.getElementById('vts-hardware-row');
+        if (vtsRow) {
+            const isLeitstelle = status.device === 'leitstelle';
+            const parts = isLeitstelle
+                ? [devLabel, 'Whisper extern', llmModel, 'TTS extern']
+                : [devLabel + ' Super', 'Whisper.cpp (GPU)', llmModel, 'Piper TTS'];
+            vtsRow.textContent = parts.filter(p => p && p !== '—').join(' · ');
         }
         // Audio/Recording-Features ausblenden wenn nicht verfügbar
         if (status.has_audio === false || status.has_whisper === false) {
@@ -8454,6 +8653,18 @@
         if (status.has_vosk === false) {
             const voskInd = document.getElementById('vosk-indicator');
             if (voskInd) voskInd.style.display = 'none';
+        }
+        // Geraetetyp global merken — wird von role1RenderReviewPanel
+        // und anderen Komponenten als Defensive-Gate genutzt.
+        window._safirDevice = status.device;
+        // Surface-only-Elemente verstecken auf dem Jetson. Aktuell: das
+        // KI-Review-Panel in der Patientendatenbank — nur die Surface
+        // betreibt Gemma 4 als zweite Instanz, der Jetson-Sanitaeter
+        // hat keine Cross-Check-Funktion.
+        if (status.device !== 'leitstelle') {
+            document.querySelectorAll('[data-leitstelle-only]').forEach(el => {
+                el.style.display = 'none';
+            });
         }
         // Phase 11: Lock-Status sichtbar machen
         updateLockBanner(status.locked === true);

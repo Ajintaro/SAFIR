@@ -7,10 +7,106 @@
 > `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md` (lokal,
 > nicht im Repo).
 
-**Letzte Session:** 18.04.2026 (**Messe-Hardening Phase A komplett: A1–A5**)
-**Demo-Ziel:** AFCEA-Messe in 3–4 Wochen
-**Nächste Aktion:** 🛡 **B1 Confidence-Badges pro Feld** — siehe `docs/messe-hardening-plan.md` Phase B. User will morgen (19.04.2026) damit weitermachen.
+**Letzte Session:** 26.04.2026 (Post-Hardening Polish + Demo-Vorbereitung)
+**Demo-Ziel:** Mittwoch 29.04.2026
+**Nächste Aktion:** Stand einfrieren bis Demo, nicht mehr an Code rühren.
 **Phase 8 Entscheidung:** User hat "Überspringen für jetzt" gewählt — Remote-Audio wird als "konzeptionell vorhanden, V2-Roadmap" in der Messe-Präsentation erwähnt, aber nicht implementiert. Priorität auf Demo-Robustheit.
+
+## 🆕 Session 26.04.2026 — Post-Hardening Polish
+
+Lange Tag-Session, ein Haufen UX-Polish und Bug-Fixes nach dem Hardening
+in Phase A–D. System ist jetzt für Mittwoch eingefroren.
+
+### Infrastruktur
+- **HTTPS via Tailscale Serve** auf beiden Geräten:
+  - `https://jetson-orin.tail0fe60f.ts.net/` (Feldgerät)
+  - `https://ai-station.tail0fe60f.ts.net/` (Leitstelle)
+  - Echte Let's-Encrypt-Zertifikate, grünes Schloss im Browser, nur im Tailnet erreichbar (mesh-internal)
+  - Aktiviert via `tailscale serve --bg --https=443 http://localhost:8080`. HTTP `localhost:8080` bleibt parallel verfügbar für Diagnose
+- **Surface `start_backend.bat` / `stop_backend.bat`** auf Desktop für User-Selbstbedienung (Win32_Process.Create für detached uvicorn)
+- **`.claude/settings.json`** im Surface-Repo mit Allowlist (59 Allow / 16 Deny) — minimiert Permission-Prompts
+- **Surface config.json**: `ollama.model` von `qwen2.5:7b` auf `gemma4:e4b` korrigiert (war Mojibake-Konflikt + falsches Modell)
+
+### Versionsanzeige + Geräte-Identität
+- **`shared/version.py`** als Single Source of Truth (`VERSION = "0.1.0"`, plus lazy git-rev-Hash mit `safe.directory=*`-Fallback fuer Service als root)
+- **`/api/status`** liefert jetzt `version`, `build`, `full_version`, `system_name`, `device`, `llm_model`, `llm_url`
+- **Frontend dynamisch**: Sidebar-Footer, Footer-Badge, Settings → SAFIR-Informationen, Vision-Tech-Stack alle aus `/api/status` (statt hardcoded "v2.1 / Qwen 2.5")
+- **Phase 0 = "Feldgerät"** in beiden config.json (war "Selbst-/Kameradenhilfe" auf Jetson, Mojibake "FeldgerÃ¤t" auf Surface)
+
+### Voice-Recognition-Hardening
+- **Single-Wort-Trigger entfernt** (User-Beschwerde: "Blutkonserven" triggerte Triage-Gelb wegen `"dringend"`-Trigger). Entfernt: `dringend`, `aufschiebbar`, `abwartend`, `sofort behandlung`, `abbrechen` (alle 5 in Live + Worktree + Surface configs)
+- **Recording-Guard** in Vosk-Pipeline (3 Schichten):
+  1. Action-Whitelist während Aufnahme: nur `record_stop`, `patient_ready`, `new_patient` — Triage/Export/RFID etc. stumm
+  2. Trigger-am-Ende-Check: max. 1 Filler-Wort nach Trigger (User darf "...stabilisieren. Aufnahme beenden" sagen, "die Blutung stoppen und stabilisieren" wird geblockt)
+  3. Confidence-Gate (≥ 0.6) gegen offensichtliche Vosk-Halluzinationen
+- **Vosk SetWords(True)** aktiviert um Per-Wort-Confidence zu bekommen
+- **Vollständiges Vosk-Logging** (`[VOSK] text=... words=N conf=0.XX match=ACTION rec=BOOL`) für Diagnose
+
+### RFID-Workflow
+- **Per-Patient-RFID-Button** im Fahrzeug-Modus (`📇 Karte` neben Lösch-Icon, nur sichtbar wenn Patient noch keine Karte). Endpoint: `POST /api/rfid/write-single` mit `{patient_id}`, ruft `voice_write_card(only_pid=...)` auf
+- **`create_patient_record` Auto-Generate-Bug behoben**: vorher generierte jeder neue Patient sofort einen synthetischen RFID-Tag → `_patient_has_written_rfid()` immer True → Batch sagte "alle haben schon Karten". Jetzt bleibt `rfid_tag_id` leer bis tatsächlich auf eine MIFARE-Karte geschrieben wurde
+- **Cleanup-Endpoint `/api/rfid/clear-synthetic`** für Bestandspatienten ohne `rfid_written`-Timeline-Event
+- **Auto-Push nach RFID-Write differenziert** (User-Beschwerde "automatisch gemeldet ist komisch"):
+  - `synced=False` Patient: NICHT pushen, bleibt lokal bis explizites "Patienten melden"
+  - `synced=True` Patient: UID-Update sofort an Surface (sonst kennt Surface die UID-Mapping nicht beim Karten-Scan)
+- **3-Stufen-Recovery beim Block-Write** (Phase2 wrong bit count Errors):
+  1. Direktwrite
+  2. Soft-Recovery: stop_crypto + Re-Auth
+  3. Hard-Recovery: voller RC522-Reset + REQA + Anticoll + Select + Re-Auth (= "Magic Recipe" wie zwischen Sektoren)
+- **Inter-Block-Delay 50 ms** zwischen Block-Writes (gibt MIFARE-EEPROM Zeit für Brennvorgang)
+- **100 ms Warm-up** vor erstem Sektor (gleicht "kalten Start"-Effekt aus, der Single-Write zuvor unzuverlässiger als Voice-Batch machte)
+
+### Surface SitaWare / Tactical & Medical Standards
+- **`shared/sitaware.py` neu geschrieben** mit 4 echten Export-Formaten:
+  1. **CoT XML** (TAK MEDEVAC, Type `b-r-f-h-c`, korrekt strukturiertes `<_medevac_>`-Schema mit allen 9-Liner-Linien als Attributes)
+  2. **NVG Overlay** (NATO Vector Graphics 2.0.2, APP-6D SIDC-Symbole)
+  3. **MEDEVAC 9-Liner XML** (ATP-3.7.2 / FM 4-25.13, alle 9 Linien strukturiert mit Aggregation A/B/C/D/E)
+  4. **HL7 FHIR R4 Bundle** (Patient + Observation mit LOINC-Codes für Vitals + Condition für Verletzungen + Encounter mit SNOMED-Triage)
+- **CoT-Batch wrappt in `<events>`-Root** (vorher: mehrere Top-Level-`<event>` ohne Wrapper → Browser-Parser failed)
+- **Endpoints auf BEIDEM Backends** (`/api/sitaware/cot`, `/nvg`, `/medevac`, `/fhir`, `/status`) — Surface hatte vorher überhaupt keine, lieferte 404
+- **UI**: SitaWare-Card umbenannt in „Tactical & Medical Standards", 4 Buttons mit Tooltips, ehrlicher Disclaimer ("...finale BHS-Anbindung über Vendor-Adapter / BAAINBw-Spezifikation")
+
+### KI-Review (Surface-only)
+- **Position**: Review-Panel verschoben von Dashboard (`page-role1`) in **Patientendatenbank** (`page-patients`)
+- **Surface-only-Gate**: `data-leitstelle-only`-Attribute + `_safirDevice !== 'leitstelle'` → defensiv: Jetson zeigt nie eine Review-UI
+- **Per-Finding "✓ Erledigt"-Button** mit `localStorage`-Persistenz pro Session+Finding-Hash. Counter "(X bereits abgehakt)"
+- **Help-Box** über Findings ("So liest du diese Hinweise") — User wusste vorher nicht was zu tun
+- **Review-Prompt-Bug behoben**: Vorher schickte der Surface nur `name + rank + injuries` an Gemma 4. Resultat: jeder konkrete Vital-Wert im Transkript wurde als „Fehlendes Feld" gemeldet, weil Gemma keine Vitals im Vergleichsblock sah. Jetzt: kompletter Vitals-Block im EXTRAKTOR-OUTPUT (alle 6 Felder mit Wert oder `<leer>`), Beispiele im Prompt zeigen explizit "Wert ist da → NICHT melden"
+
+### OLED-Refactor
+- **Submenu-Scrolling** mit Window-basiertem Rendering (max. 5 sichtbar, Selektion zentriert) + Pfeil-Indikatoren oben/unten. Patient-Submenu hat 6 Einträge, vorher war letzter abgeschnitten
+- **Patient-Detail-Seite radikal vereinfacht** (User-Beschwerde "Triage und registered ist Unsinn"): nur noch Name groß + "PATIENT 2/4" groß lesbar + Triage-Badge falls gesetzt + "A lang = Aktionen"-Hinweis
+- **Submenu-Labels klarer**: "Aktiven loeschen" → "Patient loeschen", "RFID schreiben" → "RFID-Batch", "Aufnahme" → "Aufnahme an/aus"
+
+### BAT-Position UX
+- **„Position setzen"-Button** (📍 mil-tan) zwischen Dropdown und „Rückfahrt"-Button — setzt BAT sofort an gewählten Standort ohne Animation
+- **Auto-Set-onchange entfernt** vom Dropdown — Auswahl ≠ Aktion
+- **Nach `bat_arrived`-Event** Reset: Button sofort aktiv, Dropdown auf "—", Status-Text "eingetroffen — neuen Standort wählen" (8s grün hervorgehoben)
+
+### Reset-Cascade-Bug behoben
+- **Heartbeat speicherte `ip` + `port`**, Cascade-Code suchte `peer.url` → jeder Cascade-Loop wurde geskippt, Surface-Reset ließ Jetson-State unverändert, Jetson pushte beim nächsten WS-`init` die Patienten zurück → "Reset löscht nichts"
+- Plus: `is_self`-Peers + `ip in ("0.0.0.0","127.0.0.1")` werden im Cascade explizit übersprungen
+
+### Demo-Szenarien realistisch
+- **Standard-Mix neu**: 2 analysierte (warten auf Melden) + 2 schon gemeldete (mit echtem `push_single_patient` an Surface, nicht nur kosmetischer `synced=True`-Flag) + **1 großer zusammenhängender Multi-Patient-Diktat-Block** mit 4 Patienten am Stück (statt 3 separater künstlicher Pendings). Realistischer Sani-Sprachfluss inkl. Intro, Übergangsphrasen, Schluss
+
+### Vision-Mocks erreichbar gemacht
+- `docs/vision-mocks/` (6 HTMLs: Polizei, Feuerwehr, THW, Logistik, Sanitätsdienste, Forschung) wurden vom Backend nicht serviert — Mount in `backend/app.py` ergänzt
+- URL-Schema: `https://ai-station.tail0fe60f.ts.net/vision-mocks/polizei.html` etc.
+
+### Cleanup in Settings
+- **„Patientendatenbank exportieren"-Karte** entfernt (war Shortcut zur Dokumente-Seite, redundant)
+- **„Testdaten generieren"-Karte** entfernt (Demo-Szenarien sind das bessere Tool)
+- **Handbuch-Inhaltsverzeichnis** entsprechend angepasst
+
+### Handbuch-Erweiterung
+- **Sektion 4 „Diktat-Workflow — Komplett-Ablauf"** komplett neu (~1500 Wörter, 11 Unterabschnitte 4.1–4.11): Pre-Flight, Freitext mit vollständigem Beispiel, 9-Liner-Modus mit allen 9 Linien als Tabelle + Beispiel-Diktat, Aufnahme stoppen, Transkript-Review, KI-Analyse, Patientenkarten verifizieren, RFID, Melden, Was sieht die Rettungsstation, Happy-Path-Zusammenfassung
+- **Sektion 5 „Voice-Commands"** komplett ausgebaut: alle 19 Aktionen mit allen 94 Triggern in 5 thematischen Unter-Tabellen, plus Funktionsweise-Erklärung + Workflow-Beispiel + Erklär-Box "Warum keine Einzelwort-Trigger?"
+- **Phase-0-Hint-Zeile** statt der alten 45vh-aufklappbaren Box (kompakt + Link zum Handbuch)
+
+---
+
+
 
 ## 🛡 Messe-Hardening — Fortschritt
 
