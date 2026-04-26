@@ -10,7 +10,7 @@
     },
     "ollama": {
         "url": "http://127.0.0.1:11434",
-        "model": "qwen2.5:7b"
+        "model": "gemma4:e4b"
     },
     "phase0_target_url": "",
     "phase0_unit_name": "BAT Simulation",
