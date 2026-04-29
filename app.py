@@ -5482,7 +5482,6 @@ async def state_soft_reset(body: dict | None = None):
       - next_recording_is_nine_liner -> False
       - recording, transcribing -> False (falls haengend)
       - audio_chunks -> []
-      - swap_mode -> "coexist"
       - vosk_command_queue -> leer
 
     Was bleibt:
@@ -5491,6 +5490,9 @@ async def state_soft_reset(body: dict | None = None):
       - state.sessions
       - state.current_operator (Login bleibt)
       - RFID-Map, Peers, Sync-State
+      - swap_mode (NICHT zuruecksetzen — der Mode reflektiert was im
+        VRAM ist; ein Reset auf "coexist" wuerde den naechsten Analyze
+        ohne Whisper-Swap starten und OOM riskieren)
     """
     cleared = []
     if state.next_recording_is_nine_liner:
@@ -5505,9 +5507,6 @@ async def state_soft_reset(body: dict | None = None):
     if state.audio_chunks:
         state.audio_chunks = []
         cleared.append("audio_buffer")
-    if getattr(state, "swap_mode", "coexist") != "coexist":
-        state.swap_mode = "coexist"
-        cleared.append("swap_mode")
     if state.vosk_command_queue:
         state.vosk_command_queue.clear()
         cleared.append("vosk_queue")
