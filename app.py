@@ -3735,9 +3735,14 @@ async def analyze_pending_transcript(body: dict):
     finally:
         pt["analyzing"] = False
     session_duration = round(time.monotonic() - session_started, 1)
-    pt["analyzed"] = True
     pt["analysis_duration_s"] = session_duration
-    pt["created_patient_ids"] = created
+    # WICHTIG: pt["created_patient_ids"] und pt["analyzed"] werden ERST
+    # NACH dem empty-Cleanup gesetzt — sonst zeigen sie auf bereits
+    # geloeschte Patient-IDs (Bug 1A: stale references). Außerdem ist
+    # ein Pending mit 0 nutzbaren Patienten KEIN echter Erfolg —
+    # entsprechend setzen wir analyzed=False + analysis_failed=True
+    # damit der User klar sieht dass nichts uebernommen wurde
+    # (Bug 1C: confusing dual-state "analysiert + kein Patient").
     count = len(created)
 
     # B2 Coaching-Hinweis: Wenn 0 Patienten oder alle erzeugten Patienten
@@ -3784,6 +3789,16 @@ async def analyze_pending_transcript(body: dict):
     created = [pid for pid in created if pid not in empty_pids]
     count = len(created)
 
+    # Bug 1B: state.active_patient zeigt evtl. auf einen gerade geloeschten
+    # Patient (wurde in _segment_and_create_patients auf created_pids[-1]
+    # gesetzt, BEVOR der empty-Cleanup hier zugeschlagen hat). Wenn die ID
+    # nicht mehr in state.patients ist -> active_patient zuruecksetzen.
+    # Sonst zeigen Folgeaktionen (RFID-Schreiben, Voice-Commands) ins Leere.
+    if state.active_patient and state.active_patient not in state.patients:
+        print(f"[ANALYZE] active_patient {state.active_patient} verweist auf "
+              f"geloeschten Patient — zuruecksetzen", flush=True)
+        state.active_patient = ""
+
     all_empty = count == 0
     coaching_hint = None
     if all_empty and not is_nine_liner:
@@ -3812,6 +3827,21 @@ async def analyze_pending_transcript(body: dict):
             tts.speak("Kein Patient erkannt. Bitte mit Erster Patient ist beginnen.")
         except Exception:
             pass
+
+    # JETZT pt["analyzed"] und pt["created_patient_ids"] setzen — NACH dem
+    # Cleanup. Bei all_empty bewusst analyzed=False + analysis_failed=True,
+    # damit das Frontend einen Retry-Button zeigt statt einem irrefuehrenden
+    # "ANALYSIERT"-Badge neben einem leeren Ergebnis (Bug 1C).
+    if all_empty:
+        pt["analyzed"] = False
+        pt["analysis_failed"] = True
+        pt["analysis_error"] = "Kein nutzbarer Patient extrahiert"
+    else:
+        pt["analyzed"] = True
+        pt.pop("analysis_failed", None)
+        pt.pop("analysis_error", None)
+    # Bug 1A: list-Copy damit spaetere Mutationen nicht zurueck-leaken
+    pt["created_patient_ids"] = list(created)
 
     # A5: Wenn Transkript truncated wurde, Warning dem ersten Patienten
     # anhaengen (sichtbar im Warn-Badge + Card-Body-Liste) und am
