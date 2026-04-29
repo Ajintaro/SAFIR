@@ -5426,11 +5426,25 @@
 
     function markPendingAnalyzed(id, createdPids, durationS) {
         if (!id || !pendingTranscripts[id]) return;
-        pendingTranscripts[id].analyzing = false;
-        pendingTranscripts[id].analyzed = true;
-        pendingTranscripts[id].created_patient_ids = createdPids || [];
+        const entry = pendingTranscripts[id];
+        entry.analyzing = false;
+        const pids = createdPids || [];
+        entry.created_patient_ids = pids;
+        // Bug 1C: Ein Pending mit 0 nutzbaren Patienten ist KEINE erfolgreiche
+        // Analyse. Sonst zeigt die UI gleichzeitig "ANALYSIERT" UND "Kein
+        // Patient erkannt" was verwirrend ist. Synchron zum Backend
+        // (das jetzt analyzed=False + analysis_failed=True bei all_empty setzt).
+        if (pids.length === 0) {
+            entry.analyzed = false;
+            entry.analysis_failed = true;
+            entry.analysis_error = 'Kein nutzbarer Patient extrahiert';
+        } else {
+            entry.analyzed = true;
+            entry.analysis_failed = false;
+            entry.analysis_error = null;
+        }
         if (typeof durationS === 'number') {
-            pendingTranscripts[id].analysis_duration_s = durationS;
+            entry.analysis_duration_s = durationS;
         }
         renderPendingList();
     }
