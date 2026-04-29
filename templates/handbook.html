@@ -501,17 +501,22 @@
 
                 <h2>4.4 9-Liner-MEDEVAC-Modus — geführter Funkspruch</h2>
                 <p>
-                    Statt Freitext kann der Sanitäter den NATO-9-Liner als <em>strukturierten
+                    Statt Freitext kann der Sanitäter den 9-Liner als <em>strukturierten
                     Funkspruch</em> diktieren. Die KI parst dann genau die 9 Linien (statt
                     Freitext-Felder) und füllt das MEDEVAC-Template aus. Das Ergebnis ist 1:1
-                    der Funkspruch, den die Rettungsstation für ATP-3.7.2-Anforderung braucht.
+                    der Funkspruch, den die Rettungsstation für die Anforderung braucht.
+                </p>
+                <p style="background:#1a1612;border-left:3px solid var(--mil-amber,#d4871a);padding:10px 12px;font-size:0.95em">
+                    <strong>Wichtig:</strong> SAFIR verwendet das <strong>Bundeswehr-Schema GSG 07/2018</strong>,
+                    nicht den US-NATO-Standard ATP-3.7.2. Die Codes für Dringlichkeit, Ausrüstung,
+                    Markierung und Nationalität unterscheiden sich!
                 </p>
 
                 <h3>Wann benutzen?</h3>
                 <ul>
                     <li>Wenn ein <strong>MEDEVAC angefordert</strong> wird (Hubschrauber/Sani-Fahrzeug)</li>
                     <li>Wenn die Funkbrücke standardisierten Wortlaut erwartet</li>
-                    <li>Für Demo-/Übungs-Zwecke wenn man den NATO-Standard zeigen will</li>
+                    <li>Für Demo-/Übungs-Zwecke wenn man den BW-Standard zeigen will</li>
                 </ul>
                 <p style="color:var(--text-dim);font-size:0.95em">
                     Im Normalfall (Doku am Patienten) ist Freitext besser — du sparst dir
@@ -530,35 +535,36 @@
                     Diktat.
                 </p>
 
-                <h3>Was sage ich? Die 9 Linien (NATO ATP-3.7.2)</h3>
+                <h3>Was sage ich? Die 9 Linien (Bundeswehr GSG 07/2018)</h3>
                 <table class="hb-vc-table">
-                    <thead><tr><th style="width:8%">Line</th><th style="width:32%">Inhalt</th><th>Beispiel-Wortlaut</th></tr></thead>
+                    <thead><tr><th style="width:8%">Line</th><th style="width:32%">Inhalt</th><th>Codes / Beispiel-Wortlaut</th></tr></thead>
                     <tbody>
-                        <tr><td><strong>1</strong></td><td>Koordinaten Landezone</td><td>„MGRS 32 U MC 1234 5678" oder „GPS 50.7374 Nord, 7.0982 Ost"</td></tr>
-                        <tr><td><strong>2</strong></td><td>Funkfrequenz / Rufzeichen</td><td>„30 komma 075 Megahertz, Rufzeichen Bravo Alpha Tango Alpha 42"</td></tr>
-                        <tr><td><strong>3</strong></td><td>Patienten nach Dringlichkeit</td><td>„1 mal Alpha urgent, 2 mal Charlie priority"</td></tr>
-                        <tr><td><strong>4</strong></td><td>Sonderausstattung</td><td>„A keine" oder „B Winde" / „C Bergungsgerät" / „D Beatmung"</td></tr>
-                        <tr><td><strong>5</strong></td><td>Liegend / Gehfähig</td><td>„2 liegend, 1 gehfähig"</td></tr>
-                        <tr><td><strong>6</strong></td><td>Sicherheitslage</td><td>„November kein Feind" / „Papa möglicher Feind" / „Echo Feind im Gebiet" / „X-Ray bewaffnete Eskorte"</td></tr>
-                        <tr><td><strong>7</strong></td><td>Markierung Landeplatz</td><td>„A Panels" / „B Pyrotechnik" / „C Rauch" / „D keine" / „E sonstige"</td></tr>
-                        <tr><td><strong>8</strong></td><td>Nationalität / Status</td><td>„3 Bundeswehr-Soldaten, 0 Zivilisten, 0 Kriegsgefangene"</td></tr>
-                        <tr><td><strong>9</strong></td><td>Kontamination / Gelände</td><td>„Keine Kontamination, Gelände flach offen"</td></tr>
+                        <tr><td><strong>1</strong></td><td>Koordinaten / Landezone</td><td>Ortsangabe, UTM/MGRS, Markierung. Z.B. „32 U 12345 67890" — <em>Stellen exakt aussprechen, keine Quadrant-ID erfinden!</em></td></tr>
+                        <tr><td><strong>2</strong></td><td>Anprechpartner vor Ort</td><td>Funkrufname + Frequenz für MIST Report. Z.B. „Frequenz Alpha 1, Rufzeichen Sandtrop 1"</td></tr>
+                        <tr><td><strong>3</strong></td><td>Anzahl + Priorität</td><td><strong>A</strong>=Lebensbedrohlich (30 Min) · <strong>B</strong>=Dringend (60 Min) · <strong>C</strong>=Mit Vorrang (90 Min) · <strong>D</strong>=Routine (24 h) · <strong>E</strong>=Bei Gelegenheit</td></tr>
+                        <tr><td><strong>4</strong></td><td>Besondere Ausrüstung</td><td><strong>A</strong>=Keine · <strong>B</strong>=Defibrillator · <strong>C</strong>=Drahtschneider · <strong>D</strong>=Sanitätsrucksack · <strong>E</strong>=Sonstiges (in Remarks namentlich nennen)</td></tr>
+                        <tr><td><strong>5</strong></td><td>Anzahl + Transportart</td><td><strong>L</strong>=Liegend · <strong>A</strong>=Gehfähig · <strong>E</strong>=Eskorte/Begleitperson. Z.B. „1 gehfähig + 1 Begleitung"</td></tr>
+                        <tr><td><strong>6</strong></td><td>Militärische Sicherheit vor Ort</td><td><strong>N</strong>=NO ENEMY · <strong>P</strong>=Possible Enemy/Gelb · <strong>E</strong>=Enemy in Area/Rot · <strong>X</strong>=Eskorte erforderlich</td></tr>
+                        <tr><td><strong>7</strong></td><td>Markierung der Landezone</td><td><strong>A</strong>=Rauchsignal · <strong>B</strong>=Pyro · <strong>C</strong>=Keine · <strong>D</strong>=Andere<br><em style="color:var(--mil-amber)">Achtung: A ist Rauch, nicht Panels (NATO-Reihenfolge weicht ab!)</em></td></tr>
+                        <tr><td><strong>8</strong></td><td>Anzahl + Nationalitäten</td><td><strong>A</strong>=Eigene Kräfte · <strong>B</strong>=Verbündete Kräfte · <strong>D</strong>=Zivilisten · <strong>E</strong>=feindl. Kriegsgefangener<br><em style="color:var(--mil-amber)">Achtung: Kein Code „C" in diesem Schema!</em></td></tr>
+                        <tr><td><strong>9</strong></td><td>Hinweise zur Landezone</td><td>Anflugrichtung, Hindernisse, Geländebeschreibung. <em>(NICHT mehr ABC/NBC — das gehört in die Remarks!)</em></td></tr>
+                        <tr style="background:#1a1612"><td><strong>RE</strong></td><td>Remarks / Anmerkungen</td><td>Anmerkungen nach Readback: CBRN-Lage, Feindlage, Patienten-Beschreibung, alles was nicht in 1–9 passt</td></tr>
                     </tbody>
                 </table>
 
                 <h3>Beispiel-Diktat (vollständiger 9-Liner)</h3>
                 <div class="hb-note" style="background:#0f1a14;border-left:3px solid var(--info,#5DADE2);font-style:italic;line-height:1.7">
                     „Neuner Liner.<br>
-                    Linie 1: MGRS 32 U MC 1234 5678.<br>
-                    Linie 2: 30 komma 075 Megahertz, Rufzeichen Bravo Alpha Tango Alpha 42.<br>
-                    Linie 3: 1 mal Alpha urgent, 2 mal Charlie priority.<br>
-                    Linie 4: A keine.<br>
-                    Linie 5: 2 liegend, 1 gehfähig.<br>
-                    Linie 6: November, kein Feind im Gebiet.<br>
-                    Linie 7: C Rauch grün.<br>
-                    Linie 8: 3 Bundeswehr-Soldaten.<br>
-                    Linie 9: Keine Kontamination, Gelände flach offen.<br>
-                    Patient fertig."
+                    Linie 1: Abholzone bei Koordinate 32 U, 12345, 67890. Sammelpunkt südlicher Übungsbereich.<br>
+                    Linie 2: Funkkontakt Frequenz Alpha 1, Rufzeichen Sandtrop 1.<br>
+                    Linie 3: Ein Patient, Kategorie Routine.<br>
+                    Linie 4: Keine benötigte Spezialausrüstung erforderlich.<br>
+                    Linie 5: Patient gehfähig, Begleitung empfohlen.<br>
+                    Linie 6: Abholzone gesichert, keine unmittelbare Gefährdung erkennbar.<br>
+                    Linie 7: Markierung durch Einweiser.<br>
+                    Linie 8: Eigener Soldat, militärisch betroffen.<br>
+                    Linie 9: Lageaufnahme nach Zwischenfall im Übungsbetrieb. Keine Hinweise auf CBRN-Gefährdung, keine Brand- oder Explosionsgefahr, keine Feindlage.<br>
+                    Aufnahme beenden."
                 </div>
 
                 <h2>4.5 Aufnahme stoppen</h2>

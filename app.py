@@ -3463,21 +3463,34 @@ def segment_transcript_to_patients(transcript: str) -> dict:
 # ("zeile eins", "zeile zwei", "medevac", "MGRS", "Funkfrequenz"),
 # wird der 9-Liner-Pfad auch ohne Voice-Command aktiviert.
 
-NINE_LINER_PROMPT = PROMPT_DEFENSE_PREAMBLE + """Extrahiere aus dem Sanitaeter-Transkript einen NATO MEDEVAC 9-Liner.
-Gib NUR ein JSON mit den Feldern line1 bis line9 zurueck, sonst NICHTS.
+NINE_LINER_PROMPT = PROMPT_DEFENSE_PREAMBLE + """Extrahiere aus dem Sanitaeter-Transkript einen MEDEVAC 9-Liner nach
+Bundeswehr-Standard GSG 07/2018.
 
-Bedeutung der Zeilen (nach NATO-Standard):
-- line1: Koordinaten der Landezone (MGRS-Format, z.B. "32U MC 12345678")
-- line2: Funkfrequenz + Rufzeichen (z.B. "40.250 MHz, Alpha 2-6")
-- line3: Patienten nach Dringlichkeit (A=Urgent <2h, B=Urgent-Surgical, C=Priority <4h, D=Routine, E=Convenience). Format: "<Zahl> <Buchstabe>", z.B. "2 A"
-- line4: Sonderausstattung (A=Keine, B=Winde, C=Bergungsgeraet, D=Beatmungsgeraet)
-- line5: Patienten Liegend/Gehfaehig, Format "L<n>" fuer liegend, "A<n>" fuer gehfaehig
-- line6: Sicherheitslage (N=Kein Feind, P=Moeglicher Feind, E=Feind im Gebiet, X=Bewaffnete Eskorte)
-- line7: Markierung Landeplatz (A=Panels, B=Pyrotechnik, C=Rauch, D=Keine, E=Sonstige)
-- line8: Patienten-Nationalitaet (A=US Militaer, B=US Zivil, C=NATO, D=Gegner/POW, E=Zivilisten)
-- line9: ABC-Kontamination (N=keine, B=Biologisch, C=Chemisch) oder Gelaende-Beschreibung
+Gib NUR ein JSON mit den Feldern line1..line9 + remarks zurueck, sonst NICHTS.
 
-WICHTIGSTE REGEL — HALLUZINATIONS-SCHUTZ:
+Bedeutung der Zeilen (Bundeswehr GSG 07/2018):
+- line1: Koordinaten / Landezone (Ortsangabe, UTM/MGRS, Markierung, "in der Naehe von ...")
+- line2: Anprechpartner vor Ort (Funkrufname + Frequenz fuer MIST Report, z.B. "Alpha 1, Sandtrop 1")
+- line3: Anzahl Verwundeter + Prioritaet — Format: "<Zahl> <Buchstabe>". Codes:
+    A=Lebensbedrohlich (30 Min), B=Dringend (60 Min), C=Mit Vorrang (90 Min),
+    D=Routine (24 h), E=Bei Gelegenheit
+- line4: Besondere Ausruestung — A=Keine, B=Defibrillator, C=Drahtschneider,
+    D=Sanitaetsrucksack, E=Sonstiges (in remarks namentlich nennen)
+- line5: Anzahl Verwundeter + Transportart — L=Liegend, A=Gehfaehig, E=Eskorte/Begleitperson.
+    Format: "<Buchstabe><Zahl>" oder kombiniert "L2 A1"
+- line6: Militaerische Sicherheit vor Ort — N=NO ENEMY, P=Possible Enemy/Gelb,
+    E=Enemy in Area/Rot, X=Eskorte erforderlich
+- line7: Markierung der Landezone — A=Rauchsignal, B=Pyro, C=Keine, D=Andere
+    (ACHTUNG: NICHT NATO-Reihenfolge, A ist Rauch nicht Panels!)
+- line8: Anzahl + Nationalitaeten — A=Eigene Kraefte, B=Verbuendete Kraefte,
+    D=Zivilisten, E=feindl. Kriegsgefangener / Festgenommen
+    (ACHTUNG: KEIN Code "C" in diesem Schema!)
+- line9: Hinweise zur Landezone — Anflugrichtung, Hindernisse, Gelaendebeschreibung
+    (KEIN ABC/NBC-Feld mehr in diesem Schema!)
+- remarks: Anmerkungen nach Readback (Zusatzinfos, CBRN-Lage, Feindlage,
+    Patienten-Beschreibung). Hier landet alles was nicht in line1-9 passt.
+
+WICHTIGSTE REGEL #1 — HALLUZINATIONS-SCHUTZ:
 Wenn der Transkript-Text KEIN MEDEVAC-9-Liner ist (z.B. normales Patient-
 Diktat ohne Landezone, Funkfrequenz, etc.) ODER ein Feld im Text nicht
 genannt wird: Gib fuer die entsprechenden Zeilen einen LEEREN STRING ""
@@ -3485,22 +3498,41 @@ zurueck. NIEMALS die Beispielwerte unten kopieren, wenn sie nicht im
 Input-Text stehen. Ein leerer 9-Liner (alle Zeilen "") ist erlaubt und
 besser als falsche Werte.
 
+WICHTIGSTE REGEL #2 — KOORDINATEN EXAKT UEBERNEHMEN:
+- Niemals MGRS-Stellen kuerzen oder hinzufuegen.
+- Niemals einen 100-km-Quadrat-Code (wie "MC", "PB") erfinden, wenn der
+  Sprecher KEINEN genannt hat. Beispiel: Sprecher sagt "32 U, 12345, 67890"
+  → line1 = "32U 12345 67890" (OHNE erfundenes "MC"!).
+- Wenn der Sprecher 5+5 = 10 Stellen liefert, schreib alle 10. NICHT
+  auf 8 kuerzen. Genauigkeit ist sicherheitskritisch.
+- Falls Stellen mit Komma getrennt gehoert wurden ("12345, 67890") →
+  schreibe sie mit Leerzeichen "12345 67890" oder zusammen "1234567890".
+
 Weitere Regeln:
-- Wenn der Sprecher explizit "Zeile eins", "Zeile zwei" etc. sagt, mappe direkt darauf
+- Wenn der Sprecher explizit "Zeile eins", "Linie eins", "1." etc. sagt, mappe direkt darauf
 - Wenn ein Feld nicht genannt wird: leerer String ""
-- Buchstaben-Codes normalisieren (aus "bravo" wird "B", aus "charlie" wird "C", etc.)
+- Buchstaben-Codes normalisieren (aus "alpha" wird "A", "bravo" wird "B", etc.)
 - Zahlen ausschreiben verstehen ("zwei Patienten" → 2)
 - Kurze, praezise Werte (nicht den ganzen Satz in line1 packen)
+- Bei "eigener Soldat" / "Bundeswehr" / "eigene Kraefte" → line8 = "<Zahl> A"
+- Bei "Verbuendete" / "NATO-Partner" / "Allied" → line8 = "<Zahl> B"
+- Bei "Zivilisten" → line8 = "<Zahl> D"
+- Bei "Feind" / "POW" / "Kriegsgefangener" → line8 = "<Zahl> E"
 
 BEISPIEL 1 — Nicht-9-Liner (normales Patient-Diktat):
 Transkript: "Hauptgefreiter Schmidt hat Schussverletzung am Bein, Puls 130."
-Antwort: {"line1":"","line2":"","line3":"","line4":"","line5":"","line6":"","line7":"","line8":"","line9":""}
+Antwort: {"line1":"","line2":"","line3":"","line4":"","line5":"","line6":"","line7":"","line8":"","line9":"","remarks":""}
 
-BEISPIEL 2 — echter 9-Liner:
-"Neun liner starten. Zeile eins MGRS drei zwei uniform mike charlie eins zwei drei vier fuenf sechs sieben acht. Zeile zwei Funkfrequenz vierzig komma zwei fuenf null Megahertz, Rufzeichen alpha zwei sechs. Zeile drei zwei Patienten Dringlichkeit alpha. Zeile vier bravo, wir brauchen Winde. Zeile fuenf beide liegend. Zeile sechs papa. Zeile sieben charlie, Rauch. Zeile acht charlie NATO. Zeile neun november, offenes Gelaende."
+BEISPIEL 2 — echter 9-Liner mit allen Feldern:
+"Abholzone bei Koordinate 32 U 12345 67890. Sammelpunkt suedlicher Uebungsbereich.
+Funkkontakt Frequenz Alpha 1, Rufzeichen Sandtrop 1. Ein Patient, Kategorie Routine.
+Patient wach, ansprechbar, keine lebensbedrohlichen Verletzungen.
+Keine Spezialausruestung erforderlich. Patient gehfaehig, Begleitung empfohlen.
+Abholzone gesichert, keine unmittelbare Gefaehrdung. Markierung durch Einweiser.
+Eigener Soldat. Lageaufnahme nach Zwischenfall im Uebungsbetrieb. Keine CBRN-Gefaehrdung."
 
 Antwort fuer BEISPIEL 2:
-{"line1":"32U MC 12345678","line2":"40.250 MHz, Alpha 2-6","line3":"2 A","line4":"B","line5":"L 2","line6":"P","line7":"C","line8":"C","line9":"N"}
+{"line1":"32U 12345 67890","line2":"Alpha 1, Sandtrop 1","line3":"1 D","line4":"A","line5":"A1 E1","line6":"N","line7":"D","line8":"1 A","line9":"","remarks":"Patient wach/ansprechbar, Markierung durch Einweiser, keine CBRN, keine Feindlage"}
 
 Transkript:
 """
@@ -3508,20 +3540,25 @@ Transkript:
 
 def extract_nine_liner(transcript: str) -> dict:
     """Extrahiert 9-Liner-Felder aus einem Transkript via LLM.
-    Gibt ein Dict mit line1..line9 zurueck, fehlende Felder als "".
+    Schema nach Bundeswehr GSG 07/2018 — line1..line9 + remarks (10. Feld).
+    Gibt ein Dict mit allen Feldern zurueck, fehlende Felder als "".
     """
+    empty = {f"line{i}": "" for i in range(1, 10)}
+    empty["remarks"] = ""
     if not transcript or not transcript.strip():
-        return {f"line{i}": "" for i in range(1, 10)}
+        return empty
     prompt = NINE_LINER_PROMPT + transcript.strip() + "\n\nAntwort:"
     result = _call_ollama(prompt, "9-Liner")
     if not isinstance(result, dict):
-        return {f"line{i}": "" for i in range(1, 10)}
-    # Alle 9 Felder sicherstellen (auch wenn das LLM eines ausgelassen hat)
+        return empty
+    # Alle 9 Felder + remarks sicherstellen (auch wenn das LLM eines ausgelassen hat)
     out = {}
     for i in range(1, 10):
         key = f"line{i}"
         val = result.get(key, "")
         out[key] = str(val).strip() if val else ""
+    rem = result.get("remarks", "")
+    out["remarks"] = str(rem).strip() if rem else ""
     return out
 
 
