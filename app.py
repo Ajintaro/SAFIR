@@ -6335,21 +6335,15 @@ async def stop_recording():
     if state.active_session and state.active_session in state.sessions:
         state.sessions[state.active_session]["records"].append(record_entry)
 
-    # Transkript in aktiven Patienten einfügen (Edge case: es gab vor der
-    # Aufnahme schon einen aktiven Patienten — z.B. manuelle Voice-Command-Aufnahme)
-    if state.active_patient and state.active_patient in state.patients:
-        patient = state.patients[state.active_patient]
-        patient["transcripts"].append({
-            "time": record_entry["time"],
-            "text": full_text,
-            "speaker": "sanitaeter",
-            "role_level": patient["current_role"],
-        })
-
-    # Das Transkript wird als neuer Eintrag an die pending-Liste angehängt
-    # — NIE überschrieben, jede Aufnahme bleibt unabhängig erhalten bis
-    # der User sie analysiert oder verwirft. Jeder Eintrag bekommt eine
-    # eindeutige ID damit das Frontend gezielt drauf referenzieren kann.
+    # WICHTIG: Jede Aufnahme ist ein neues, unabhaengiges Transkript.
+    # Frueher gab es hier einen "Edge case"-Branch der das Transkript an
+    # einen bereits existierenden active_patient angehaengt hat — das hat
+    # nach Multi-Patient-Workflow IMMER getroffen (active_patient ist nach
+    # Analyse auf den letzten erzeugten Patienten gesetzt) und neue
+    # Diktate wurden so unbemerkt einem alten Patienten untergejubelt
+    # statt als unanalysiertes Transkript erkannt. Jetzt: jede Aufnahme
+    # landet ausschliesslich in pending_transcripts und wird vom User
+    # explizit analysiert oder verworfen.
     import uuid
     # 9-Liner-Flag vom Voice-Command-Vorlauf ans pending_transcript
     # transferieren, dann State-Flag zuruecksetzen. Wenn der User vorher
@@ -6377,7 +6371,12 @@ async def stop_recording():
         "session_id": state.active_session,
         "patient_id": state.active_patient,
         "full_text": full_text,
-        "pending_analysis": not bool(state.active_patient),
+        # IMMER als unanalysiertes Pending-Transkript markieren — egal ob
+        # gerade ein active_patient gesetzt ist oder nicht. Vorher: bei
+        # gesetztem active_patient wurde das Transkript stillschweigend
+        # an den alten Patienten angehaengt statt als neue unanalysierte
+        # Aufnahme angezeigt zu werden.
+        "pending_analysis": True,
         "pending_entry": pending_entry,
     })
 
