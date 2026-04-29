@@ -7214,12 +7214,13 @@
                       (p.vitals.spo2  ? `<span>${cfDot(cfVitals.spo2, 'SpO2')}SpO2: ${p.vitals.spo2}</span>` : '') +
                       '</div>' : '';
 
-                // 9-Liner Kompakt-Anzeige — nur wenn template_type=9liner ODER
-                // mindestens ein line-Feld gefüllt ist. Jetson (Feld + Fahrzeug)
-                // zeigt die 9 Zeilen in einem schmalen Block, Monospace.
+                // 9-Liner Kompakt-Anzeige — Bundeswehr GSG 07/2018 Schema.
+                // Aktiv wenn template_type=9liner ODER mindestens ein line-Feld
+                // bzw. remarks gefuellt ist. Jetson (Feld + Fahrzeug) zeigt die
+                // 9 Zeilen in einem schmalen Block, Monospace.
                 const nl = p.nine_liner || {};
                 const nlFilled = ['line1','line2','line3','line4','line5','line6','line7','line8','line9'].filter(k => nl[k]).length;
-                const isNlPatient = p.template_type === '9liner' || nlFilled > 0;
+                const isNlPatient = p.template_type === '9liner' || nlFilled > 0 || !!nl.remarks;
                 const nineLinerHtml = isNlPatient
                     ? `<div style="margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-left:3px solid var(--info,#5DADE2);font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm)">
                         <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:4px;letter-spacing:0.1em;text-transform:uppercase">&#9992; 9-Liner MEDEVAC (${nlFilled}/9)</div>
@@ -7227,6 +7228,7 @@
                             const v = nl[`line${i}`] || '';
                             return `<div style="display:flex;gap:6px;${v?'':'opacity:0.35'}"><span style="color:var(--info,#5DADE2);min-width:22px">L${i}</span><span>${v || '—'}</span></div>`;
                         }).join('')}
+                        ${nl.remarks ? `<div style="display:flex;gap:6px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--border)"><span style="color:var(--mil-tan,#c8b878);min-width:22px">RE</span><span>${nl.remarks}</span></div>` : ''}
                     </div>`
                     : '';
 
@@ -8300,23 +8302,24 @@
             </div>`;
         }
 
-        // 9-Liner MEDEVAC — nur wenn Template-Type 9liner ODER mindestens
-        // ein Line-Feld gefüllt ist. Labels nach NATO-Standard (siehe
-        // docs/nine-liner-template.md).
+        // 9-Liner MEDEVAC — Bundeswehr GSG 07/2018 Schema. Labels und Codes
+        // nach offiziellem Bundeswehr-Standard (NICHT NATO ATP-3.7.2 — siehe
+        // docs/nine-liner-template.md). Plus Remarks-Feld als 10. Feld.
         let nineLinerHtml = '';
         const nineLinerLabels = {
-            line1: 'L1 Koordinaten Landezone',
-            line2: 'L2 Funkfrequenz / Rufzeichen',
-            line3: 'L3 Dringlichkeit',
-            line4: 'L4 Sonderausstattung',
-            line5: 'L5 Liegend / Gehfähig',
-            line6: 'L6 Sicherheitslage',
-            line7: 'L7 Markierung Landeplatz',
-            line8: 'L8 Nationalität / Status',
-            line9: 'L9 Kontamination / Gelände',
+            line1: 'L1 Koordinaten / Landezone',
+            line2: 'L2 Anprechpartner vor Ort',
+            line3: 'L3 Anzahl + Priorität',
+            line4: 'L4 Besondere Ausrüstung',
+            line5: 'L5 Anzahl + Transportart',
+            line6: 'L6 Militärische Sicherheit',
+            line7: 'L7 Markierung Landezone',
+            line8: 'L8 Anzahl + Nationalitäten',
+            line9: 'L9 Hinweise zur Landezone',
         };
         const filledLines = Object.keys(nineLinerLabels).filter(k => nineLiner[k]);
-        const isNineLiner = p.template_type === '9liner' || filledLines.length > 0;
+        const hasRemarks = !!nineLiner.remarks;
+        const isNineLiner = p.template_type === '9liner' || filledLines.length > 0 || hasRemarks;
         if (isNineLiner) {
             const rows = Object.keys(nineLinerLabels).map(k => {
                 const val = nineLiner[k] || '—';
@@ -8326,9 +8329,15 @@
                     <div class="field-value" style="font-family:'Share Tech Mono',monospace;font-size:var(--fs-body)">${val}</div>
                 </div>`;
             }).join('');
+            const remarksHtml = hasRemarks ? `
+                <div style="margin-top:10px;padding:8px 10px;background:var(--bg-elevated);border-left:2px solid var(--mil-tan,#c8b878)">
+                    <div class="field-label" style="font-size:var(--fs-body-sm);margin-bottom:4px">RE Remarks / Anmerkungen</div>
+                    <div class="field-value" style="font-size:var(--fs-body)">${nineLiner.remarks}</div>
+                </div>` : '';
             nineLinerHtml = `<div class="r1-detail-section" style="border-left:3px solid var(--info,#5DADE2);padding-left:10px">
-                <div class="r1-detail-section-title">&#9992; 9-Liner MEDEVAC <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(${filledLines.length}/9 Felder)</span></div>
+                <div class="r1-detail-section-title">&#9992; 9-Liner MEDEVAC <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(${filledLines.length}/9 Felder · GSG 07/2018)</span></div>
                 <div class="r1-detail-grid">${rows}</div>
+                ${remarksHtml}
             </div>`;
         }
 

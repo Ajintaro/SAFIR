@@ -89,17 +89,18 @@ PATIENT_SCHEMA = {
     # welcher LLM-Extraction-Prompt verwendet wird.
     "template_type": "",
 
-    # 9-Liner MEDEVAC (Phase 0 / Role 1)
+    # 9-Liner MEDEVAC (Bundeswehr GSG 07/2018) — Phase 0 / Role 1
     "nine_liner": {
-        "line1": "",  # Koordinaten Landezone
-        "line2": "",  # Funkfrequenz / Rufzeichen
-        "line3": "",  # Patienten nach Dringlichkeit
-        "line4": "",  # Sonderausstattung
-        "line5": "",  # Patienten Liegend/Gehfähig
-        "line6": "",  # Sicherheitslage
-        "line7": "",  # Markierung Landeplatz
-        "line8": "",  # Nationalität / Status
-        "line9": "",  # ABC / Gelände
+        "line1": "",   # Koordinaten / Landezone (Ortsangabe, UTM/MGRS)
+        "line2": "",   # Anprechpartner vor Ort (Funkrufname / Frequenz für MIST)
+        "line3": "",   # Anzahl + Priorität (A=30Min, B=60Min, C=90Min, D=24h, E=Bei Gelegenheit)
+        "line4": "",   # Besondere Ausrüstung (A=Keine, B=Defi, C=Drahtschneider, D=San-Rucksack, E=Sonstiges)
+        "line5": "",   # Anzahl + Transportart (L=Liegend, A=Gehfähig, E=Eskorte)
+        "line6": "",   # Militärische Sicherheit (N=NO ENEMY, P=Possible/Gelb, E=Enemy/Rot, X=Eskorte)
+        "line7": "",   # Markierung Landezone (A=Rauchsignal, B=Pyro, C=Keine, D=Andere)
+        "line8": "",   # Anzahl + Nationalitäten (A=Eigene, B=Verbündete, D=Zivilisten, E=POW)
+        "line9": "",   # Hinweise zur Landezone (Anflugrichtung, Hindernisse)
+        "remarks": "", # Anmerkungen nach Readback (RE-Feld, GSG 07/2018)
     },
 
     # Medizinische Daten
