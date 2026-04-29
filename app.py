@@ -5467,6 +5467,129 @@ async def data_reset(body: dict | None = None):
     }
 
 
+@app.post("/api/state/soft-reset")
+async def state_soft_reset(body: dict | None = None):
+    """Soft-Reset: setzt nur transient-State-Flags zurueck. Patienten,
+    Sessions, Pending-Transcripts, Operator-Login und alle persistenten
+    Daten bleiben unangetastet.
+
+    Use-Case: Das System haengt in einem komischen Zustand — z.B. der
+    Sanitaeter hat per Voice-Command "neun liner" aktiviert, will aber
+    doch ein normales Diktat machen. Statt Service-Restart (60 s
+    Downtime) reicht hier ein State-Cleanup (sofort).
+
+    Was wird zurueckgesetzt:
+      - next_recording_is_nine_liner -> False
+      - recording, transcribing -> False (falls haengend)
+      - audio_chunks -> []
+      - swap_mode -> "coexist"
+      - vosk_command_queue -> leer
+
+    Was bleibt:
+      - state.patients (Patient-Daten)
+      - state.pending_transcripts (unanalysierte Aufnahmen)
+      - state.sessions
+      - state.current_operator (Login bleibt)
+      - RFID-Map, Peers, Sync-State
+    """
+    cleared = []
+    if state.next_recording_is_nine_liner:
+        state.next_recording_is_nine_liner = False
+        cleared.append("nine_liner_mode")
+    if state.recording:
+        state.recording = False
+        cleared.append("recording_flag")
+    if state.transcribing:
+        state.transcribing = False
+        cleared.append("transcribing_flag")
+    if state.audio_chunks:
+        state.audio_chunks = []
+        cleared.append("audio_buffer")
+    if getattr(state, "swap_mode", "coexist") != "coexist":
+        state.swap_mode = "coexist"
+        cleared.append("swap_mode")
+    if state.vosk_command_queue:
+        state.vosk_command_queue.clear()
+        cleared.append("vosk_queue")
+    print(f"[SOFT-RESET] cleared={cleared}", flush=True)
+    try:
+        tts.speak("Zustand zurueckgesetzt")
+    except Exception:
+        pass
+    try:
+        oled_menu.show_status("RESET", "Zustand OK", 0)
+        await asyncio.sleep(1.5)
+        oled_menu.clear_status()
+    except Exception:
+        pass
+    await broadcast({
+        "type": "soft_reset",
+        "cleared": cleared,
+    })
+    return {
+        "status": "ok",
+        "cleared": cleared,
+        "message": "State-Flags zurueckgesetzt — Patienten/Sessions/Operator bleiben.",
+    }
+
+
+@app.post("/api/system/restart-service")
+async def system_restart_service(body: dict | None = None):
+    """Hard-Reset: SAFIR-Dienst via systemd neu starten. ~30-60 s Downtime
+    bis Whisper + Ollama wieder geladen sind. Patient-Daten bleiben
+    persistent (auf Disk in backend/data/), aber State-of-the-Moment
+    (Pending-Transcripts ohne save, OLED-Page, Recording etc.) ist weg.
+
+    Use-Case: Ollama OOM, RC522-Reader haengt, Whisper-Server tot,
+    irgendwas schief das Soft-Reset nicht repariert.
+
+    Sicherheit: Endpoint nutzt subprocess + asyncio Task mit Delay
+    damit die HTTP-Response zuerst beim Client ankommt, BEVOR der
+    eigene Prozess endet. Sonst sieht der Client nur "Connection
+    closed" ohne Bestaetigung.
+
+    Linux-only: nutzt 'systemctl restart safir'. Auf Surface (Windows)
+    ist das Backend ein User-Prozess ohne Auto-Restart — dort wuerde
+    der Hard-Reset das Backend toeten ohne Restart-Mechanismus, daher
+    return 501 Not Implemented.
+    """
+    import platform, subprocess
+    if platform.system() != "Linux":
+        return {
+            "status": "error",
+            "error": "Hard-Reset nur auf Linux/systemd verfuegbar. "
+                     "Auf Surface bitte start_backend.bat manuell starten.",
+            "platform": platform.system(),
+        }
+    print("[HARD-RESET] systemctl restart safir wird in 2s ausgeloest ...", flush=True)
+    try:
+        tts.speak("Dienst wird neu gestartet")
+    except Exception:
+        pass
+    try:
+        oled_menu.show_status("NEUSTART", "Dienst restart", 0)
+    except Exception:
+        pass
+
+    async def _delayed_restart():
+        await asyncio.sleep(2.0)
+        try:
+            subprocess.Popen(
+                ["systemctl", "restart", "safir"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            print(f"[HARD-RESET] subprocess Fehler: {e}", flush=True)
+
+    asyncio.create_task(_delayed_restart())
+    return {
+        "status": "ok",
+        "message": "Service-Restart in 2 Sekunden. ~30-60 s Downtime bis Backend wieder erreichbar.",
+        "expected_downtime_s": 60,
+    }
+
+
 @app.post("/api/data/test-generate")
 async def data_test_generate(body: dict | None = None):
     """Erzeugt einen realistischen Mix von Test-Patienten in verschiedenen

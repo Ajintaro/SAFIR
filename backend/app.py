@@ -1493,6 +1493,48 @@ async def update_patient(patient_id: str, body: dict):
 # ---------------------------------------------------------------------------
 
 
+@app.post("/api/state/soft-reset")
+async def state_soft_reset(body: dict | None = None):
+    """Soft-Reset auf Surface: setzt nur transient-Flags zurueck.
+
+    Surface hat kein Mikrofon, kein Recording, keine Vosk-Queue —
+    deshalb ist hier wenig zurueckzusetzen. Endpoint existiert fuer
+    UI-Konsistenz mit dem Jetson (gleiche Buttons, gleiches Frontend).
+    """
+    cleared = []
+    # Surface hat aktuell keine transient-State-Flags die soft-reset-
+    # baer waeren. Falls in Zukunft welche dazukommen (z.B. ein
+    # haengender Sync-Job oder LLM-Review-Lock), hier rein.
+    print(f"[SOFT-RESET] cleared={cleared}", flush=True)
+    return {
+        "status": "ok",
+        "cleared": cleared,
+        "message": ("Surface hat keine transient-State-Flags die "
+                    "haengen koennten — alles sauber.") if not cleared else "OK",
+    }
+
+
+@app.post("/api/system/restart-service")
+async def system_restart_service(body: dict | None = None):
+    """Hard-Reset: NICHT verfuegbar auf Surface (Windows).
+
+    Surface laeuft als User-Prozess via start_backend.bat (cmd-Fenster
+    auf dem Desktop). Es gibt keinen Auto-Restart-Mechanismus wie
+    systemd auf dem Jetson — wuerde der Server sich selbst toeten,
+    bliebe das Backend tot bis manuell neu gestartet.
+
+    Gibt 501 zurueck mit Hinweis was der User stattdessen tun soll.
+    """
+    import platform
+    return {
+        "status": "error",
+        "error": ("Hard-Reset auf Surface nicht verfuegbar "
+                  "(kein systemd-Auto-Restart). Bitte stop_backend.bat "
+                  "und dann start_backend.bat manuell ausfuehren."),
+        "platform": platform.system(),
+    }
+
+
 @app.post("/api/data/reset")
 async def data_reset(body: dict | None = None):
     """Löscht ALLE Patientendaten, Transporte, Positionen, Events und

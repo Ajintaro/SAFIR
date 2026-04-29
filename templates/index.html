@@ -3391,6 +3391,32 @@
 
                         <!-- Patientendatenbank-Export Card entfernt: alle
                              Export-Funktionen sind auf der Dokumente-Seite. -->
+                        <div class="settings-card" style="border:1px solid var(--info,#5DADE2)">
+                            <div class="settings-card-title" style="color:var(--info,#5DADE2)">&#128260; Dienst-Steuerung</div>
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:12px">
+                                Bei haengenden Zustaenden (z.B. 9-Liner-Modus aktiviert obwohl normales Diktat gewollt, Recording-Flag stuck nach Crash) — kein Reboot des ganzen Geraetes noetig.
+                            </div>
+
+                            <div style="margin-bottom:14px;padding:10px 12px;background:var(--bg-elevated);border-left:3px solid var(--info,#5DADE2)">
+                                <div style="font-weight:700;color:var(--info,#5DADE2);margin-bottom:4px;letter-spacing:0.06em;text-transform:uppercase;font-size:var(--fs-body-sm)">Soft-Reset (sofort, keine Downtime)</div>
+                                <div style="font-size:var(--fs-body-sm);color:var(--text-secondary);margin-bottom:8px;line-height:1.5">
+                                    Setzt nur transient-Flags zurueck: 9-Liner-Modus, Recording-Status, Audio-Buffer, Vosk-Queue, Swap-Mode.<br>
+                                    <strong>Bleibt erhalten:</strong> Patienten, Sessions, Pending-Aufnahmen, Operator-Login, RFID-Map.
+                                </div>
+                                <button class="btn" onclick="softResetService()" style="background:var(--info,#5DADE2);color:#000;font-weight:700">&#9889; Soft-Reset</button>
+                            </div>
+
+                            <div style="padding:10px 12px;background:var(--bg-elevated);border-left:3px solid var(--mil-amber,#d4871a)">
+                                <div style="font-weight:700;color:var(--mil-amber,#d4871a);margin-bottom:4px;letter-spacing:0.06em;text-transform:uppercase;font-size:var(--fs-body-sm)">Service neu starten (~30-60 s Downtime)</div>
+                                <div style="font-size:var(--fs-body-sm);color:var(--text-secondary);margin-bottom:8px;line-height:1.5">
+                                    Vollstaendiger Restart von SAFIR via systemd. Whisper + Ollama + Vosk werden neu geladen.<br>
+                                    <strong>Use-Case:</strong> Ollama-OOM, RC522-Reader haengt, Whisper-Server tot.<br>
+                                    <strong>Daten bleiben persistent</strong> (Patienten, Operatoren, Config), aber Pending-Aufnahmen ohne Save sind weg.
+                                </div>
+                                <button class="btn" onclick="restartService()" style="background:var(--mil-amber,#d4871a);color:#000;font-weight:700">&#128260; Service neu starten</button>
+                            </div>
+                        </div>
+
                         <div class="settings-card" style="border:1px solid var(--warning)">
                             <div class="settings-card-title" style="color:var(--warning)">Daten zurücksetzen</div>
                             <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
@@ -3926,6 +3952,41 @@
             showToast(`${res.removed || 0} Patienten gelöscht — System bereit`, 'success');
         } catch(e) {
             showToast('Fehler beim Zurücksetzen: ' + e.message, 'error');
+        }
+    }
+
+    // ============================================================
+    // Service-Steuerung: Soft-Reset + Hard-Restart
+    // ============================================================
+    async function softResetService() {
+        if (!confirm('Soft-Reset durchführen?\n\nSetzt nur State-Flags zurück (9-Liner-Modus, Recording-Status, Audio-Buffer, Vosk-Queue).\n\nPatienten, Sessions und Operator-Login bleiben erhalten.')) return;
+        try {
+            const res = await api('/api/state/soft-reset', 'POST');
+            const cleared = (res && res.cleared) || [];
+            if (cleared.length === 0) {
+                showToast('Nichts zurückzusetzen — alle Flags sind sauber', '&#9989;');
+            } else {
+                showToast(`Soft-Reset OK — ${cleared.length} Flag(s) geleert: ${cleared.join(', ')}`, '&#9889;');
+            }
+        } catch(e) {
+            showToast('Soft-Reset fehlgeschlagen: ' + e.message, '&#9888;');
+        }
+    }
+
+    async function restartService() {
+        if (!confirm('SAFIR-Dienst neu starten?\n\nDownsime ~30-60 Sekunden bis Whisper + Ollama wieder geladen sind.\n\nDaten bleiben persistent. Pending-Aufnahmen ohne Save sind weg.')) return;
+        try {
+            const res = await api('/api/system/restart-service', 'POST');
+            if (res && res.status === 'error') {
+                showToast('Hard-Reset nicht verfügbar: ' + (res.error || ''), '&#9888;');
+                return;
+            }
+            showToast('Service-Neustart läuft — bitte ~60s warten und Seite neu laden.', '&#128260;');
+            // Verbindungsverlust ist erwartet, kein Reconnect-Spam — UI rendert bei
+            // naechstem WS-Reconnect automatisch wieder.
+        } catch(e) {
+            // Connection drop ist ERWARTET — der Service stirbt ja gerade
+            showToast('Service wird neu gestartet. Bitte ~60s warten.', '&#128260;');
         }
     }
 
