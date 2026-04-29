@@ -3893,14 +3893,29 @@ async def test_segment(body: dict):
 @app.post("/api/test/nine-liner")
 async def test_nine_liner(body: dict):
     """Proof-of-Concept-Endpoint: POST {"transcript": "..."} →
-    Qwen extrahiert die 9 MEDEVAC-Zeilen. Dient zum Testen ohne
-    Recording-Flow (kein Mikro, kein Vosk, direkt Text rein)."""
+    Gemma extrahiert die 9 MEDEVAC-Zeilen. Dient zum Testen ohne
+    Recording-Flow (kein Mikro, kein Vosk, direkt Text rein).
+
+    GPU-Swap: Wenn swap_mode != coexist (Whisper ist gerade im VRAM),
+    erst Whisper raus, Gemma rein. Sonst OOM bei 7.4 GB unified RAM.
+    Nach dem Test wird Whisper wieder geladen damit Aufnahmen
+    weiter moeglich bleiben.
+    """
     transcript = body.get("transcript", "")
     if not transcript:
         return {"error": "no transcript provided"}
+    # GPU-Swap analog zum echten /api/analyze/{pending_id} Flow
+    swap_active = getattr(state, "swap_mode", "coexist") != "coexist"
+    if swap_active:
+        await _enter_analysis_mode(reason="test_nine_liner")
     import time as _t
     t0 = _t.monotonic()
-    nine_liner = extract_nine_liner(transcript)
+    try:
+        nine_liner = extract_nine_liner(transcript)
+    finally:
+        # Swap zurueck damit Aufnahmen weiterhin gehen
+        if swap_active:
+            asyncio.create_task(_enter_recording_mode())
     elapsed = _t.monotonic() - t0
     filled = sum(1 for v in nine_liner.values() if v)
     return {
