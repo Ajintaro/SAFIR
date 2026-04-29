@@ -3463,75 +3463,32 @@ def segment_transcript_to_patients(transcript: str) -> dict:
 # ("zeile eins", "zeile zwei", "medevac", "MGRS", "Funkfrequenz"),
 # wird der 9-Liner-Pfad auch ohne Voice-Command aktiviert.
 
-NINE_LINER_PROMPT = PROMPT_DEFENSE_PREAMBLE + """Extrahiere aus dem Sanitaeter-Transkript einen MEDEVAC 9-Liner nach
-Bundeswehr-Standard GSG 07/2018.
+NINE_LINER_PROMPT = """Extrahiere MEDEVAC 9-Liner (Bundeswehr GSG 07/2018) aus dem Transkript.
+Gib NUR JSON zurueck mit Feldern line1..line9 + remarks.
 
-Gib NUR ein JSON mit den Feldern line1..line9 + remarks zurueck, sonst NICHTS.
+Felder:
+line1: Koordinaten/Landezone (Ortsangabe, UTM/MGRS)
+line2: Anprechpartner (Frequenz, Rufzeichen)
+line3: <Zahl> + <A=30Min B=60Min C=90Min D=24h E=Bei Gelegenheit>
+line4: <A=Keine B=Defi C=Drahtschneider D=San-Rucksack E=Sonstiges>
+line5: <Zahl><L=Liegend|A=Gehfaehig|E=Eskorte>, z.B. "A1 E1"
+line6: <N=NO_ENEMY P=Possible E=Enemy X=Eskorte_erforderlich>
+line7: <A=Rauch B=Pyro C=Keine D=Andere>  (NICHT Panels!)
+line8: <Zahl> + <A=Eigene B=Verbuendete D=Zivil E=POW>  (KEIN C!)
+line9: Hinweise zur Landezone (Anflug, Hindernisse) — KEIN ABC/NBC
+remarks: Alles was nicht in line1-9 passt (CBRN-Status, Feindlage, etc.)
 
-Bedeutung der Zeilen (Bundeswehr GSG 07/2018):
-- line1: Koordinaten / Landezone (Ortsangabe, UTM/MGRS, Markierung, "in der Naehe von ...")
-- line2: Anprechpartner vor Ort (Funkrufname + Frequenz fuer MIST Report, z.B. "Alpha 1, Sandtrop 1")
-- line3: Anzahl Verwundeter + Prioritaet — Format: "<Zahl> <Buchstabe>". Codes:
-    A=Lebensbedrohlich (30 Min), B=Dringend (60 Min), C=Mit Vorrang (90 Min),
-    D=Routine (24 h), E=Bei Gelegenheit
-- line4: Besondere Ausruestung — A=Keine, B=Defibrillator, C=Drahtschneider,
-    D=Sanitaetsrucksack, E=Sonstiges (in remarks namentlich nennen)
-- line5: Anzahl Verwundeter + Transportart — L=Liegend, A=Gehfaehig, E=Eskorte/Begleitperson.
-    Format: "<Buchstabe><Zahl>" oder kombiniert "L2 A1"
-- line6: Militaerische Sicherheit vor Ort — N=NO ENEMY, P=Possible Enemy/Gelb,
-    E=Enemy in Area/Rot, X=Eskorte erforderlich
-- line7: Markierung der Landezone — A=Rauchsignal, B=Pyro, C=Keine, D=Andere
-    (ACHTUNG: NICHT NATO-Reihenfolge, A ist Rauch nicht Panels!)
-- line8: Anzahl + Nationalitaeten — A=Eigene Kraefte, B=Verbuendete Kraefte,
-    D=Zivilisten, E=feindl. Kriegsgefangener / Festgenommen
-    (ACHTUNG: KEIN Code "C" in diesem Schema!)
-- line9: Hinweise zur Landezone — Anflugrichtung, Hindernisse, Gelaendebeschreibung
-    (KEIN ABC/NBC-Feld mehr in diesem Schema!)
-- remarks: Anmerkungen nach Readback (Zusatzinfos, CBRN-Lage, Feindlage,
-    Patienten-Beschreibung). Hier landet alles was nicht in line1-9 passt.
+KRITISCHE REGELN:
+1. Wenn ein Feld nicht im Transkript genannt: leerer String ""
+2. KOORDINATEN EXAKT: Niemals Quadrant-IDs (MC,PB) erfinden wenn nicht genannt.
+   Niemals Stellen kuerzen. "32 U, 12345, 67890" -> "32U 12345 67890" (10 Stellen!)
+3. Phonetik normalisieren: alpha->A bravo->B charlie->C, "zwei"->2
+4. "eigener Soldat"/"Bundeswehr" -> line8=<Zahl> A
+5. CBRN/Feindlage gehoert in remarks, NICHT line9
 
-WICHTIGSTE REGEL #1 — HALLUZINATIONS-SCHUTZ:
-Wenn der Transkript-Text KEIN MEDEVAC-9-Liner ist (z.B. normales Patient-
-Diktat ohne Landezone, Funkfrequenz, etc.) ODER ein Feld im Text nicht
-genannt wird: Gib fuer die entsprechenden Zeilen einen LEEREN STRING ""
-zurueck. NIEMALS die Beispielwerte unten kopieren, wenn sie nicht im
-Input-Text stehen. Ein leerer 9-Liner (alle Zeilen "") ist erlaubt und
-besser als falsche Werte.
-
-WICHTIGSTE REGEL #2 — KOORDINATEN EXAKT UEBERNEHMEN:
-- Niemals MGRS-Stellen kuerzen oder hinzufuegen.
-- Niemals einen 100-km-Quadrat-Code (wie "MC", "PB") erfinden, wenn der
-  Sprecher KEINEN genannt hat. Beispiel: Sprecher sagt "32 U, 12345, 67890"
-  → line1 = "32U 12345 67890" (OHNE erfundenes "MC"!).
-- Wenn der Sprecher 5+5 = 10 Stellen liefert, schreib alle 10. NICHT
-  auf 8 kuerzen. Genauigkeit ist sicherheitskritisch.
-- Falls Stellen mit Komma getrennt gehoert wurden ("12345, 67890") →
-  schreibe sie mit Leerzeichen "12345 67890" oder zusammen "1234567890".
-
-Weitere Regeln:
-- Wenn der Sprecher explizit "Zeile eins", "Linie eins", "1." etc. sagt, mappe direkt darauf
-- Wenn ein Feld nicht genannt wird: leerer String ""
-- Buchstaben-Codes normalisieren (aus "alpha" wird "A", "bravo" wird "B", etc.)
-- Zahlen ausschreiben verstehen ("zwei Patienten" → 2)
-- Kurze, praezise Werte (nicht den ganzen Satz in line1 packen)
-- Bei "eigener Soldat" / "Bundeswehr" / "eigene Kraefte" → line8 = "<Zahl> A"
-- Bei "Verbuendete" / "NATO-Partner" / "Allied" → line8 = "<Zahl> B"
-- Bei "Zivilisten" → line8 = "<Zahl> D"
-- Bei "Feind" / "POW" / "Kriegsgefangener" → line8 = "<Zahl> E"
-
-BEISPIEL 1 — Nicht-9-Liner (normales Patient-Diktat):
-Transkript: "Hauptgefreiter Schmidt hat Schussverletzung am Bein, Puls 130."
-Antwort: {"line1":"","line2":"","line3":"","line4":"","line5":"","line6":"","line7":"","line8":"","line9":"","remarks":""}
-
-BEISPIEL 2 — echter 9-Liner mit allen Feldern:
-"Abholzone bei Koordinate 32 U 12345 67890. Sammelpunkt suedlicher Uebungsbereich.
-Funkkontakt Frequenz Alpha 1, Rufzeichen Sandtrop 1. Ein Patient, Kategorie Routine.
-Patient wach, ansprechbar, keine lebensbedrohlichen Verletzungen.
-Keine Spezialausruestung erforderlich. Patient gehfaehig, Begleitung empfohlen.
-Abholzone gesichert, keine unmittelbare Gefaehrdung. Markierung durch Einweiser.
-Eigener Soldat. Lageaufnahme nach Zwischenfall im Uebungsbetrieb. Keine CBRN-Gefaehrdung."
-
-Antwort fuer BEISPIEL 2:
+Beispiel-Antwort fuer Diktat ueber 1 Bundeswehr-Soldat, Routine, gehfaehig+Eskorte,
+Frequenz Alpha 1 Rufzeichen Sandtrop 1, MGRS 32U 12345 67890, Einweiser-Markierung,
+keine Feindlage, keine CBRN:
 {"line1":"32U 12345 67890","line2":"Alpha 1, Sandtrop 1","line3":"1 D","line4":"A","line5":"A1 E1","line6":"N","line7":"D","line8":"1 A","line9":"","remarks":"Patient wach/ansprechbar, Markierung durch Einweiser, keine CBRN, keine Feindlage"}
 
 Transkript:
