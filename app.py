@@ -1684,23 +1684,20 @@ async def process_vosk_commands():
                         await bat_position_set({"preset_id": "hardthoehe"})
                     await bat_return_to_station()
                 elif action == "nine_liner_mode":
-                    # Naechste Aufnahme als 9-Liner MEDEVAC analysieren
-                    # statt als Multi-Patient-Diktat. Flag wird beim
-                    # Recording-Stop ans pending_transcript vererbt.
-                    # Mutual-exclusive zu ATMIST: aktivieren impliziert
-                    # ATMIST-Flag zuruecksetzen.
+                    # 9-Liner-Modus aktivieren UND direkt Aufnahme starten.
+                    # User-Wunsch: kein separater Aufnahme-Start noetig.
+                    # OLED zeigt 9-LINER, _start_record_flow spielt seine
+                    # Standard-TTS-Bestaetigung — kein Doppel-TTS.
                     state.next_recording_is_nine_liner = True
                     state.next_recording_is_atmist = False
-                    tts.speak("Neun Liner Modus aktiv. Aufnahme starten.")
-                    oled_menu.show_status("9-LINER", "Modus aktiv", 0)
+                    oled_menu.show_status("9-LINER", "Aufnahme startet", 0)
+                    await _start_record_flow()
                 elif action == "atmist_mode":
-                    # Naechste Aufnahme als ATMIST-Patientenuebergabe
-                    # analysieren statt als Multi-Patient-Diktat.
-                    # Mutual-exclusive zu 9-Liner.
+                    # ATMIST-Modus aktivieren UND direkt Aufnahme starten.
                     state.next_recording_is_atmist = True
                     state.next_recording_is_nine_liner = False
-                    tts.speak("ATMIST Modus aktiv. Aufnahme starten.")
-                    oled_menu.show_status("ATMIST", "Modus aktiv", 0)
+                    oled_menu.show_status("ATMIST", "Aufnahme startet", 0)
+                    await _start_record_flow()
                 elif action == "template_mode_off":
                     # 9-Liner / ATMIST Modus deaktivieren -> naechste
                     # Aufnahme wird als normales Multi-Patient-Diktat
@@ -6714,6 +6711,56 @@ async def data_test_generate(body: dict | None = None):
         test_patients = [p9]
         pending_texts = []
 
+    elif scenario == "nine_liner_pending":
+        # Unanalysiertes Pending-Diktat im 9-Liner-Format — ideal fuer
+        # Live-Demo der Analyse-Pipeline. User klickt "Analysieren",
+        # Gemma extrahiert die 9 Felder.
+        test_patients = []
+        pending_texts = [{
+            "is_nine_liner": True,
+            "text": (
+                "Neun Liner starten. Zeile eins: Die Aufnahmestelle befindet "
+                "sich bei MGRS drei zwei Uniform Mike Victor eins zwei drei, "
+                "vier fuenf sechs. Pickup Zone ist ADLER. Zeile zwei: "
+                "Erreichbar auf Kanal MEDEVAC DEMO. Rufname an der Pickup "
+                "Site ist MESSE SAN EINS. Zeile drei: Alfa eins, ein Patient "
+                "Prioritaet URGENT. Zeile vier: Alfa, keine Sonderausruestung "
+                "erforderlich. Zeile fuenf: Lima eins, ein Tragenpatient. "
+                "Zeile sechs: November, keine feindlichen Kraefte im Bereich. "
+                "Zeile sieben: Alfa, die Pickup Site ist mit Panel markiert. "
+                "Farbe wird erst bei Kontakt bestaetigt. Zeile acht: Charlie, "
+                "Non-U.S. military, Bundeswehr-Patient. Zeile neun: Charlie, "
+                "chemische CBRN-Kontamination wird vermutet."
+            ),
+        }]
+
+    elif scenario == "atmist_pending":
+        # Unanalysiertes ATMIST-Diktat fuer Live-Demo der ATMIST-
+        # Patientenuebergabe.
+        test_patients = []
+        pending_texts = [{
+            "is_atmist": True,
+            "text": (
+                "ATMIST starten. A, Angaben: Patient Schmidt, maennlich, "
+                "neunundzwanzig Jahre, ungefaehr achtzig Kilogramm. "
+                "T, Time: Verletzungszeit eins null eins sieben Zulu. "
+                "Uebergabezeit eins null zwei null Zulu. Zustand seit "
+                "Anlage des Tourniquets stabilisiert. "
+                "M, Mechanismus: Explosion mit Splitterwirkung in "
+                "unmittelbarer Naehe. Zusaetzlich Verdacht auf chemische "
+                "Kontamination der Umgebung. "
+                "I, Verletzungen: Penetrierende Verletzung rechter "
+                "Oberschenkel. Initial starke Blutung, aktuell kontrolliert. "
+                "S, Signs: Patient wach und ansprechbar. Atemweg frei. "
+                "Atemfrequenz vierundzwanzig. Puls einhundertzwanzig. "
+                "Blutdruck einhundert zu siebzig. Sauerstoffsaettigung "
+                "vierundneunzig Prozent. Schmerz sieben von zehn. "
+                "T, Treatment: Tourniquet rechter Oberschenkel angelegt "
+                "um eins null eins zwei Zulu. Druckverband angelegt. "
+                "Waermeerhalt eingeleitet."
+            ),
+        }]
+
     elif scenario == "role1":
         # 2 Patienten die schon in Role 1 angekommen + analyzed + synced
         # sind. Demo-Szene fuer Role-1-Uebergabe. Triage bewusst LEER —
@@ -6866,7 +6913,17 @@ async def data_test_generate(body: dict | None = None):
 
     import uuid as _uuid_p
     created_pending = []
-    for idx, full_text in enumerate(pending_texts, start=1):
+    for idx, item in enumerate(pending_texts, start=1):
+        # item ist entweder ein String (alte Szenarien) ODER ein Dict mit
+        # zusaetzlichen Template-Flags (nine_liner_pending / atmist_pending).
+        if isinstance(item, dict):
+            full_text = item.get("text", "")
+            is_nl = bool(item.get("is_nine_liner"))
+            is_atm = bool(item.get("is_atmist"))
+        else:
+            full_text = str(item)
+            is_nl = False
+            is_atm = False
         pending_id = f"TEST-P{idx:02d}-{_uuid_p.uuid4().hex[:6].upper()}"
         entry = {
             "id": pending_id,
@@ -6878,7 +6935,8 @@ async def data_test_generate(body: dict | None = None):
             "analyzed": False,
             "analyzing": False,
             "created_patient_ids": [],
-            "is_nine_liner": False,
+            "is_nine_liner": is_nl,
+            "is_atmist": is_atm,
         }
         state.pending_transcripts.append(entry)
         created_pending.append(pending_id)
