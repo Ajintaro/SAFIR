@@ -2884,6 +2884,20 @@
                                 <span id="llm-save-status" style="font-size:var(--fs-body-sm);color:var(--success);margin-left:8px"></span>
                             </div>
                         </div>
+
+                        <!-- Prompt-Editor — User-anpassbare LLM-Prompts -->
+                        <div class="settings-card" style="border:1px solid var(--info,#5DADE2)">
+                            <div class="settings-card-title" style="color:var(--info,#5DADE2)">&#128221; Prompt-Editor</div>
+                            <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:8px;line-height:1.5">
+                                Anpassbare Prompts fuer Segmentierung, 9-Liner-Extraktion, Patient-Feld-Extraktion und Prompt-Injection-Schutz. Aenderungen wirken <strong>sofort</strong> beim naechsten LLM-Aufruf — Service-Restart nicht noetig.
+                            </div>
+                            <div style="font-size:var(--fs-body-sm);color:var(--mil-amber,#d4871a);margin-bottom:14px;padding:8px 10px;background:rgba(212,135,26,0.08);border-left:3px solid var(--mil-amber,#d4871a)">
+                                <strong>Achtung:</strong> Aenderungen koennen die Extraktion brechen. Wenn etwas schiefgeht, einfach <em>"Auf Default zuruecksetzen"</em> klicken. Pflicht-Platzhalter wie <code>{text}</code> muessen erhalten bleiben — sonst Fallback auf Default.
+                            </div>
+                            <div id="prompts-editor-list">
+                                <div style="color:var(--text-dim);font-style:italic">Wird geladen ...</div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Gerät & Netzwerk -->
@@ -3920,6 +3934,126 @@
     }
 
     // ============================================================
+    // Prompt-Editor (Settings → LLM)
+    // ============================================================
+    async function loadPromptEditor() {
+        const container = document.getElementById('prompts-editor-list');
+        if (!container) return;
+        try {
+            const res = await api('/api/prompts');
+            const prompts = (res && res.prompts) || {};
+            const keys = Object.keys(prompts);
+            if (keys.length === 0) {
+                container.innerHTML = '<div style="color:var(--text-dim)">Keine Prompts gefunden.</div>';
+                return;
+            }
+            container.innerHTML = keys.map(key => {
+                const p = prompts[key];
+                const overriddenBadge = p.is_overridden
+                    ? '<span style="background:var(--mil-amber,#d4871a);color:#000;padding:2px 8px;border-radius:3px;font-size:var(--fs-body-sm);margin-left:8px;font-weight:700">CUSTOM</span>'
+                    : '<span style="background:var(--mil-green,#5a9e3a);color:#000;padding:2px 8px;border-radius:3px;font-size:var(--fs-body-sm);margin-left:8px;font-weight:700">DEFAULT</span>';
+                const placeholders = (p.placeholders || []).length > 0
+                    ? `<div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:4px">Pflicht-Platzhalter: ${p.placeholders.map(ph => '<code>{' + ph + '}</code>').join(', ')}</div>`
+                    : '';
+                const escapedDefault = (p.default || '').replace(/`/g, '\\`').replace(/</g, '&lt;');
+                return `
+                    <div style="margin-bottom:18px;padding:12px;background:var(--bg-elevated);border:1px solid var(--border)">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                            <div style="font-weight:700;font-size:var(--fs-body);text-transform:uppercase;letter-spacing:0.06em">
+                                ${p.label || key}
+                                ${overriddenBadge}
+                            </div>
+                            <code style="color:var(--text-dim);font-size:var(--fs-body-sm)">${key}</code>
+                        </div>
+                        <div style="font-size:var(--fs-body-sm);color:var(--text-secondary);margin-bottom:6px;line-height:1.5">
+                            ${p.description || ''}
+                        </div>
+                        ${placeholders}
+                        <textarea id="prompt-text-${key}" rows="${p.rows || 12}" style="width:100%;font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm);background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);padding:8px;margin-top:8px;line-height:1.5;resize:vertical">${(p.current || '').replace(/</g, '&lt;')}</textarea>
+                        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                            <button class="btn btn-cgi" onclick="savePromptOverride('${key}')" style="padding:6px 14px">Speichern</button>
+                            ${p.is_overridden
+                                ? `<button class="btn" onclick="resetPromptOverride('${key}')" style="padding:6px 14px;background:var(--mil-amber,#d4871a);color:#000">&#8634; Auf Default zur&uuml;ck</button>`
+                                : ''
+                            }
+                            <button class="btn" onclick="showPromptDefault('${key}')" style="padding:6px 14px">Default ansehen</button>
+                            <span id="prompt-status-${key}" style="font-size:var(--fs-body-sm);color:var(--success);align-self:center"></span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            container.innerHTML = '<div style="color:var(--cgi-red)">Fehler beim Laden: ' + (e.message || e) + '</div>';
+        }
+    }
+
+    async function savePromptOverride(key) {
+        const ta = document.getElementById('prompt-text-' + key);
+        if (!ta) return;
+        const status = document.getElementById('prompt-status-' + key);
+        const txt = ta.value.trim();
+        if (!txt) {
+            if (status) { status.textContent = 'Leer — nutze Reset.'; status.style.color = 'var(--cgi-red)'; }
+            return;
+        }
+        try {
+            const res = await api('/api/prompts/' + encodeURIComponent(key), 'POST', { prompt: txt });
+            if (res.status === 'error') {
+                if (status) { status.textContent = res.error || 'Fehler'; status.style.color = 'var(--cgi-red)'; }
+                return;
+            }
+            if (status) {
+                status.textContent = `Gespeichert (${res.length} chars)`;
+                status.style.color = 'var(--success)';
+                setTimeout(() => { status.textContent = ''; }, 3000);
+            }
+            // Editor neu laden damit Badge auf CUSTOM wechselt
+            loadPromptEditor();
+        } catch (e) {
+            if (status) { status.textContent = 'Fehler: ' + e.message; status.style.color = 'var(--cgi-red)'; }
+        }
+    }
+
+    async function resetPromptOverride(key) {
+        if (!confirm(`Prompt "${key}" auf Default zurücksetzen? Alle Anpassungen gehen verloren.`)) return;
+        try {
+            const res = await api('/api/prompts/' + encodeURIComponent(key) + '/reset', 'POST');
+            if (res.status === 'error') {
+                showToast('Reset fehlgeschlagen: ' + (res.error || ''), '&#9888;');
+                return;
+            }
+            showToast('Prompt zurückgesetzt — Default ist jetzt aktiv', '&#9989;');
+            loadPromptEditor();
+        } catch (e) {
+            showToast('Reset-Fehler: ' + e.message, '&#9888;');
+        }
+    }
+
+    async function showPromptDefault(key) {
+        try {
+            const res = await api('/api/prompts');
+            const p = (res && res.prompts || {})[key];
+            if (!p) return;
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            const escDefault = (p.default || '').replace(/</g, '&lt;');
+            modal.innerHTML = `
+                <div style="background:var(--bg-surface);border:2px solid var(--info,#5DADE2);max-width:900px;width:100%;max-height:80vh;display:flex;flex-direction:column;padding:18px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <h2 style="margin:0;color:var(--info,#5DADE2);font-size:var(--fs-h2);text-transform:uppercase;letter-spacing:0.08em">Default fuer ${p.label || key}</h2>
+                        <button class="btn" onclick="this.closest('[style*=\\'position:fixed\\']').remove()" style="padding:4px 10px">Schliessen</button>
+                    </div>
+                    <pre style="flex:1;overflow:auto;background:var(--bg-elevated);padding:12px;font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm);color:var(--text-primary);white-space:pre-wrap;word-break:break-word;border:1px solid var(--border);margin:0">${escDefault}</pre>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        } catch (e) {
+            showToast('Fehler beim Laden: ' + e.message, '&#9888;');
+        }
+    }
+
+    // ============================================================
     // Settings: Theme
     // ============================================================
     function setTheme(theme) {
@@ -4532,6 +4666,12 @@
             _startTailscaleAutoRefresh();
         } else {
             _stopTailscaleAutoRefresh();
+        }
+
+        // LLM-Section: Prompt-Editor neu laden beim Betreten damit
+        // aktuelle Overrides reflektiert werden
+        if (sectionId === 'llm') {
+            loadPromptEditor();
         }
 
         // Operatoren-Section: Liste frisch laden beim Betreten
