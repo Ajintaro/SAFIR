@@ -5802,6 +5802,87 @@ async def operators_scan_cancel():
     return {"status": "ok"}
 
 
+@app.post("/api/rfid/ntag-diagnose")
+async def rfid_ntag_diagnose():
+    """Detail-Diagnose fuer NTAG-Karte: liest Pages 0-31 + Konfig-Pages,
+    versucht eine Test-Page zu schreiben + verifizieren. Damit wir
+    pruefen koennen ob:
+    - die Karte ueberhaupt erreichbar ist (Anti-Coll + UID)
+    - User-Memory beschreibbar ist (oder durch Lock-Bytes geschuetzt)
+    - das Schreib-Format unseres Codes funktioniert
+    """
+    from shared import rfid as _rfid
+    if not _rfid.is_rc522_available():
+        return {"error": "RC522 nicht verfuegbar"}
+
+    def _diag():
+        import time as _t
+        result: dict = {"steps": []}
+        with _rfid._spi_lock:
+            # Anti-Coll
+            ok, _ = _rfid._rc522_request(_rfid._PICC_REQIDL)
+            if not ok:
+                result["error"] = "Keine Karte gefunden"
+                return result
+            uid_full, sak = _rfid._rc522_anticoll_full()
+            if uid_full is None:
+                result["error"] = "Anti-Coll fehlgeschlagen"
+                return result
+            result["uid"] = uid_full.hex().upper()
+            result["uid_len"] = len(uid_full)
+            result["sak"] = f"0x{sak:02X}"
+            result["card_type"] = "MIFARE Classic" if sak == 0x08 else (
+                "NTAG/Type2" if (len(uid_full) == 7 or sak == 0x00) else f"Unknown SAK")
+
+            # Lese Pages 0-31 (8 × 4 Pages = 32 Pages)
+            pages_data = {}
+            for start in (0, 4, 8, 12, 16, 20, 24, 28):
+                data = _rfid._ntag_read_pages(start)
+                if data is None:
+                    pages_data[start] = "READ FAILED"
+                    continue
+                # 4 Pages × 4 Bytes = 16 Byte
+                for i in range(4):
+                    pages_data[start + i] = data[i*4:(i+1)*4].hex().upper()
+            result["pages"] = pages_data
+
+            # Static Lock-Bytes Page 2 (Bytes 2-3 sind die Lock-Bits fuer Pages 4-15)
+            page2 = pages_data.get(2, "")
+            if page2 and page2 != "READ FAILED":
+                lock0 = int(page2[4:6], 16) if len(page2) >= 6 else 0
+                lock1 = int(page2[6:8], 16) if len(page2) >= 8 else 0
+                result["static_lock_bytes"] = {
+                    "lock0": f"0x{lock0:02X}",
+                    "lock1": f"0x{lock1:02X}",
+                    "any_locked": lock0 != 0 or lock1 != 0,
+                }
+
+            # Test-Schreibe auf Page 6 (sollte freier User-Memory sein)
+            test_data = b"TEST"
+            ok, err = _rfid._ntag_write_page(6, test_data)
+            result["test_write_page6"] = {"ok": ok, "error": err}
+            if ok:
+                # Verify-Read
+                _t.sleep(0.01)
+                read_back = _rfid._ntag_read_pages(6)
+                if read_back:
+                    result["test_read_page6"] = read_back[:4].hex().upper()
+                    result["test_match"] = read_back[:4] == test_data
+
+            _rfid._rc522_halt()
+            return result
+
+    # Im Executor laufen damit der HTTP-Worker nicht blockiert
+    loop = asyncio.get_event_loop()
+    try:
+        result = await asyncio.wait_for(loop.run_in_executor(None, _diag), timeout=15.0)
+    except asyncio.TimeoutError:
+        return {"error": "Diagnose-Timeout"}
+    except Exception as e:
+        return {"error": f"Diagnose-Exception: {e}"}
+    return result
+
+
 @app.post("/api/rfid/erase")
 async def rfid_erase_endpoint():
     """Einzel-Karte loeschen (GUI-Button oder anderer Trigger).

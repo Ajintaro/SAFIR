@@ -7068,30 +7068,39 @@
             }
             // KOMPLETT-Sync: Backend-Response enthaelt das aktualisierte
             // Patient-Object inkl. audit_log und transcripts[idx].edited.
-            // Wir nutzen das direkt — kein Warten auf WS-Broadcast.
+            let auditOperator = '';
             if (res && res.patient && res.patient.patient_id) {
                 patients[res.patient.patient_id] = res.patient;
                 if (activePatient && activePatient.patient_id === res.patient.patient_id) {
                     activePatient = res.patient;
                 }
+                // Letzten Audit-Eintrag finden um den Operator-Namen
+                // dem User im Toast anzuzeigen — Beweis dass die
+                // Aenderung dokumentiert wurde.
+                const audit = res.patient.audit_log || [];
+                if (audit.length > 0) {
+                    auditOperator = audit[audit.length - 1].operator_name || '';
+                }
             } else {
-                // Fallback wenn das Backend kein patient mitgeschickt hat:
-                // lokal patchen.
+                // Fallback
                 if (patients[pid] && Array.isArray(patients[pid].transcripts) && patients[pid].transcripts[idx]) {
                     patients[pid].transcripts[idx].text = newText;
                     patients[pid].transcripts[idx].edited = true;
                 }
             }
-            // patientTranscripts (live-Cache) muss auch aktualisiert sein,
-            // sonst wird der ALTE Text aus dem Cache gerendert (priorisiert
-            // ueber p.transcripts).
             if (patientTranscripts[pid] && patientTranscripts[pid][idx]) {
                 patientTranscripts[pid][idx].text = newText;
                 patientTranscripts[pid][idx].edited = true;
             }
             if (status) { status.textContent = 'Gespeichert'; status.style.color = 'var(--success)'; }
-            // SOFORT rendern statt 400ms warten — sonst zeigt die UI
-            // einen Moment den alten Text ohne edited-Badge.
+            // Globaler Toast als zusaetzlicher Beweis dass Audit-Log
+            // erfasst wurde (User-Beschwerde 2026-04-30: "Aenderung
+            // wird nicht getrackt"). Status-Text in der Edit-Card
+            // ist klein — Toast ist deutlich sichtbar.
+            if (auditOperator && typeof showToast === 'function') {
+                showToast(`Aenderung gespeichert + protokolliert (Operator: ${auditOperator})`, '&#9989;');
+            }
+            // SOFORT rendern damit edited-Badge + Audit-Counter sichtbar
             if (typeof renderPatientCards === 'function') renderPatientCards();
         } catch (e) {
             if (status) { status.textContent = 'Fehler: ' + e.message; status.style.color = 'var(--cgi-red)'; }
