@@ -7511,9 +7511,15 @@
                             ? `<span style="font-size:10px;color:var(--mil-tan,#c8b878);margin-left:6px" title="zuletzt editiert ${t.edited_at || ''} von ${t.edited_by || 'Unbekannt'}">&#9998; editiert</span>`
                             : '';
                         const txtEsc = (t.text || '').replace(/</g,'&lt;');
-                        // Edit-Button immer rendern (frueher nur isFz) — Edit
-                        // ist auch in Feld-Modus und Patient-DB sinnvoll.
-                        const editBtn = `<button onclick="event.stopPropagation();editTranscriptInline('${p.patient_id}',${idx})" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer" title="Transkript bearbeiten">&#9998; Bearbeiten</button>`;
+                        // Edit-Button NUR im Fahrzeug-Modus. Im Feld
+                        // (am Patienten) wird nur diktiert/aufgenommen,
+                        // nicht editiert — das ist Sanitaeter-Workflow:
+                        // erst aufnehmen, dann im Fahrzeug korrigieren.
+                        // Auf der Surface/Lagekarte ist die Bearbeitung
+                        // im Detail-View moeglich (s. role1ShowPatientDetail).
+                        const editBtn = isFz
+                            ? `<button onclick="event.stopPropagation();editTranscriptInline('${p.patient_id}',${idx})" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer" title="Transkript bearbeiten">&#9998; Bearbeiten</button>`
+                            : '';
                         return `<div class="pt-entry" id="pt-entry-${p.patient_id}-${idx}">
                             <div class="pt-time">${t.time || ''}${editedBadge}${editBtn}</div>
                             <div class="pt-text" id="pt-text-${p.patient_id}-${idx}">${txtEsc}</div>
