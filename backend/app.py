@@ -1664,6 +1664,84 @@ async def state_soft_reset(body: dict | None = None):
     }
 
 
+# ---------------------------------------------------------------------------
+# Standalone-HTML-Downloads — Vision + Handbuch fuer Kollegen
+# ---------------------------------------------------------------------------
+def _extract_standalone_page(template_filename: str, page_id: str | None,
+                             title: str) -> str:
+    """Extrahiert eine Page (oder das ganze Template) aus index.html /
+    handbook.html und wrapped sie als Standalone-HTML mit eingebettetem
+    CSS — einzelnes File zum Anschauen ohne Server.
+    """
+    import re
+    # Surface nutzt das gemeinsame templates/-Verzeichnis im ROOT_DIR
+    template_path = _tpl_dir / template_filename
+    if not template_path.exists():
+        return f"<!DOCTYPE html><html><body><h1>Template nicht gefunden: {template_filename}</h1></body></html>"
+    html = template_path.read_text(encoding="utf-8")
+
+    styles = re.findall(r"<style>(.*?)</style>", html, flags=re.DOTALL)
+    css = "\n".join(styles)
+
+    if page_id:
+        marker = f'<div class="page" id="{page_id}">'
+        start = html.find(marker)
+        if start < 0:
+            return f"<!DOCTYPE html><html><body><h1>Page nicht gefunden: {page_id}</h1></body></html>"
+        next_page = html.find('<div class="page" id="', start + len(marker))
+        body_end = html.find("</body>", start)
+        end = min(x for x in [next_page, body_end] if x > 0)
+        body = html[start:end]
+    else:
+        body_match = re.search(r"<body[^>]*>(.*?)</body>", html, flags=re.DOTALL)
+        body = body_match.group(1) if body_match else html
+
+    return f"""<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+{css}
+body {{ padding: 0; }}
+.page {{ display: block !important; padding: 32px; max-width: 1200px; margin: 0 auto; }}
+</style>
+</head>
+<body>
+{body}
+</body>
+</html>
+"""
+
+
+@app.get("/api/download/vision")
+async def download_vision_html():
+    """Standalone-HTML der Vision-Page zum Download."""
+    from fastapi.responses import Response
+    html = _extract_standalone_page("index.html", "page-vision", "SAFIR Vision")
+    return Response(
+        content=html,
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="safir-vision.html"'},
+    )
+
+
+@app.get("/api/download/handbook")
+async def download_handbook_html():
+    """Standalone-HTML des Handbuchs zum Download."""
+    from fastapi.responses import Response
+    html = _extract_standalone_page("handbook.html", None, "SAFIR Handbuch")
+    return Response(
+        content=html,
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="safir-handbuch.html"'},
+    )
+
+
 @app.post("/api/system/restart-service")
 async def system_restart_service(body: dict | None = None):
     """Hard-Reset: NICHT verfuegbar auf Surface (Windows).
