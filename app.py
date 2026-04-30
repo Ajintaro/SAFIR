@@ -5122,6 +5122,70 @@ async def get_patient_audit(patient_id: str):
     return {"patient_id": patient_id, "audit_log": list(reversed(audit))}
 
 
+@app.post("/api/patient/{patient_id}/transcript/{idx}/update")
+async def update_patient_transcript(patient_id: str, idx: int, body: dict):
+    """Editiert einen einzelnen Transkript-Eintrag des Patienten.
+
+    Use-Case: Sanitaeter sieht im Fahrzeug nach dass Whisper "Schussverletzung"
+    als "Schussvorletzung" transkribiert hat -> manuelle Korrektur. Audit-
+    Log haelt fest wer was geaendert hat.
+
+    Body: {"text": "korrigierter Text"}
+    """
+    if patient_id not in state.patients:
+        return {"error": "Patient nicht gefunden"}
+    patient = state.patients[patient_id]
+    transcripts = patient.get("transcripts") or []
+    if idx < 0 or idx >= len(transcripts):
+        return {"error": f"Transkript-Index {idx} ungueltig (max {len(transcripts)-1})"}
+    new_text = (body or {}).get("text", "")
+    if not isinstance(new_text, str):
+        return {"error": "text muss ein String sein"}
+    new_text = new_text.strip()
+    if not new_text:
+        return {"error": "Leerer Text nicht erlaubt — Patient loeschen statt Transkript leer machen."}
+    old_text = transcripts[idx].get("text", "")
+    if old_text == new_text:
+        return {"status": "ok", "message": "keine Aenderung"}
+    transcripts[idx]["text"] = new_text
+    transcripts[idx]["edited"] = True
+    transcripts[idx]["edited_at"] = datetime.now().isoformat(timespec="seconds")
+    op = getattr(state, "current_operator", None) or {}
+    transcripts[idx]["edited_by"] = (op.get("name", "") if op else "") or "Unbekannt"
+    # Audit-Log Eintrag — Werte truncated weil Transkripte lang sein koennen
+    old_short = old_text[:80] + "..." if len(old_text) > 80 else old_text
+    new_short = new_text[:80] + "..." if len(new_text) > 80 else new_text
+    _log_patient_change(patient, f"transcripts[{idx}].text",
+                        old_short, new_short, "manual_edit")
+    await broadcast({"type": "patient_update", "patient": patient})
+    return {"status": "ok", "patient": patient}
+
+
+@app.post("/api/patient/{patient_id}/injuries/update")
+async def update_patient_injuries(patient_id: str, body: dict):
+    """Editiert die injuries-Liste komplett (replace).
+
+    Body: {"injuries": ["Verletzung 1", "Verletzung 2", ...]}
+    Audit-Log haelt fest welche Verletzungen vorher/nachher gesetzt waren.
+    """
+    if patient_id not in state.patients:
+        return {"error": "Patient nicht gefunden"}
+    patient = state.patients[patient_id]
+    new_injuries = (body or {}).get("injuries", [])
+    if not isinstance(new_injuries, list):
+        return {"error": "injuries muss eine Liste sein"}
+    # Strings normalisieren
+    new_injuries = [str(x).strip() for x in new_injuries if str(x).strip()]
+    old_injuries = patient.get("injuries") or []
+    if old_injuries == new_injuries:
+        return {"status": "ok", "message": "keine Aenderung"}
+    patient["injuries"] = new_injuries
+    _log_patient_change(patient, "injuries",
+                        old_injuries, new_injuries, "manual_edit")
+    await broadcast({"type": "patient_update", "patient": patient})
+    return {"status": "ok", "patient": patient}
+
+
 @app.post("/api/rfid/clear-synthetic")
 async def rfid_clear_synthetic():
     """Einmaliges Cleanup: leert ``rfid_tag_id`` bei allen Patienten,

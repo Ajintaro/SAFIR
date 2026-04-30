@@ -6951,6 +6951,73 @@
         if (activePatient && activePatient.patient_id === pid) activePatient.vitals[field] = value;
     }
 
+    // Inline-Editor fuer Transkripte. Klick auf den Edit-Stift im Card-
+    // Header der Aufnahme -> Textarea + Save/Cancel-Buttons. Save geht an
+    // /api/patient/{id}/transcript/{idx}/update, Backend loggt audit.
+    function editTranscriptInline(pid, idx) {
+        const textEl = document.getElementById(`pt-text-${pid}-${idx}`);
+        if (!textEl) return;
+        const currentText = textEl.textContent;
+        // Alte Anzeige durch Editor ersetzen
+        const editor = document.createElement('div');
+        editor.style.cssText = 'margin-top:4px';
+        editor.innerHTML = `
+            <textarea id="pt-edit-${pid}-${idx}" rows="6" style="width:100%;font-size:var(--fs-body-sm);font-family:inherit;background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--info,#5DADE2);padding:6px;line-height:1.5;resize:vertical">${currentText.replace(/</g,'&lt;')}</textarea>
+            <div style="display:flex;gap:6px;margin-top:4px">
+                <button onclick="saveTranscriptEdit('${pid}',${idx})" style="background:var(--info,#5DADE2);color:#000;border:none;padding:4px 12px;font-size:var(--fs-body-sm);font-weight:700;cursor:pointer">Speichern</button>
+                <button onclick="cancelTranscriptEdit('${pid}',${idx},this)" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 12px;font-size:var(--fs-body-sm);cursor:pointer">Abbrechen</button>
+                <span id="pt-edit-status-${pid}-${idx}" style="font-size:var(--fs-body-sm);color:var(--text-dim);align-self:center"></span>
+            </div>
+        `;
+        editor.dataset.originalText = currentText;
+        textEl.style.display = 'none';
+        textEl.parentElement.appendChild(editor);
+        const ta = editor.querySelector('textarea');
+        ta.focus();
+        ta.setSelectionRange(currentText.length, currentText.length);
+    }
+
+    async function saveTranscriptEdit(pid, idx) {
+        const ta = document.getElementById(`pt-edit-${pid}-${idx}`);
+        const status = document.getElementById(`pt-edit-status-${pid}-${idx}`);
+        if (!ta) return;
+        const newText = ta.value.trim();
+        if (!newText) {
+            if (status) { status.textContent = 'Leer nicht erlaubt'; status.style.color = 'var(--cgi-red)'; }
+            return;
+        }
+        try {
+            const res = await api(`/api/patient/${pid}/transcript/${idx}/update`, 'POST', { text: newText });
+            if (res && res.error) {
+                if (status) { status.textContent = res.error; status.style.color = 'var(--cgi-red)'; }
+                return;
+            }
+            // State aktualisieren — patients und activePatient
+            if (patients[pid] && Array.isArray(patients[pid].transcripts) && patients[pid].transcripts[idx]) {
+                patients[pid].transcripts[idx].text = newText;
+                patients[pid].transcripts[idx].edited = true;
+            }
+            if (patientTranscripts[pid] && patientTranscripts[pid][idx]) {
+                patientTranscripts[pid][idx].text = newText;
+                patientTranscripts[pid][idx].edited = true;
+            }
+            if (status) { status.textContent = 'Gespeichert'; status.style.color = 'var(--success)'; }
+            // Editor weg, Patient-Liste neu rendern damit edited-Badge erscheint
+            setTimeout(() => {
+                if (typeof renderPatientCards === 'function') renderPatientCards();
+            }, 400);
+        } catch (e) {
+            if (status) { status.textContent = 'Fehler: ' + e.message; status.style.color = 'var(--cgi-red)'; }
+        }
+    }
+
+    function cancelTranscriptEdit(pid, idx, btn) {
+        const editor = btn.closest('div').parentElement;
+        const textEl = document.getElementById(`pt-text-${pid}-${idx}`);
+        if (textEl) textEl.style.display = '';
+        if (editor) editor.remove();
+    }
+
     async function setTriageFor(pid, level) {
         if (!patients[pid]) return;
         await api('/api/patient/' + pid + '/update', 'POST', {data: {triage: level}});
@@ -7405,7 +7472,19 @@
                 const isFz = containerId.includes('fz');
 
                 const transcriptsHtml = transcripts.length
-                    ? transcripts.map(t => `<div class="pt-entry"><div class="pt-time">${t.time || ''}</div><div class="pt-text">${(t.text || '').replace(/</g,'&lt;')}</div></div>`).join('')
+                    ? transcripts.map((t, idx) => {
+                        const editedBadge = t.edited
+                            ? `<span style="font-size:10px;color:var(--mil-tan,#c8b878);margin-left:6px" title="zuletzt editiert ${t.edited_at || ''} von ${t.edited_by || 'Unbekannt'}">&#9998; editiert</span>`
+                            : '';
+                        const txtEsc = (t.text || '').replace(/</g,'&lt;');
+                        const editBtn = isFz
+                            ? `<button onclick="event.stopPropagation();editTranscriptInline('${p.patient_id}',${idx})" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer" title="Transkript bearbeiten">&#9998;</button>`
+                            : '';
+                        return `<div class="pt-entry" id="pt-entry-${p.patient_id}-${idx}">
+                            <div class="pt-time">${t.time || ''}${editedBadge}${editBtn}</div>
+                            <div class="pt-text" id="pt-text-${p.patient_id}-${idx}">${txtEsc}</div>
+                        </div>`;
+                    }).join('')
                     : '<div style="font-size:var(--fs-body-sm);color:var(--text-dim);padding:4px 0">Keine Aufnahmen</div>';
 
                 // Confidence-Dicts aus Backend (Messe-Hardening B1).
@@ -7525,6 +7604,19 @@
                 const nameDot = p.name ? cfDot(cf.name, 'Name') : '';
                 const rankDot = p.rank ? cfDot(cf.rank, 'Dienstgrad') : '';
 
+                // Audit-Badge: zeigt manuelle Bearbeitungen (manual_edit)
+                // mit Operator-Name + Anzahl. Fuer forensische Sichtbarkeit
+                // dass dieser Patient nach der Erst-Erfassung manipuliert
+                // wurde — direkt auf der Card, nicht versteckt im Detail-View.
+                const manualEdits = (p.audit_log || []).filter(
+                    a => a.change_type === 'manual_edit'
+                );
+                const lastEdit = manualEdits.length ? manualEdits[manualEdits.length - 1] : null;
+                const auditBadge = manualEdits.length
+                    ? `<span class="badge-sm" style="background:rgba(200,184,120,0.2);color:#c8b878;cursor:help"
+                        title="${manualEdits.length} manuelle Bearbeitung${manualEdits.length===1?'':'en'} — zuletzt ${(lastEdit.timestamp||'').replace('T',' ').slice(0,16)} von ${lastEdit.operator_name||'Unbekannt'} (${lastEdit.field||'?'})">&#9998; ${manualEdits.length}&times; ed. ${(lastEdit.operator_name||'?').slice(0,12)}</span>`
+                    : '';
+
                 return `
                 <details class="patient-card-details ${isActive ? 'active-patient' : ''} ${analyzingPids.has(p.patient_id) ? 'analyzing' : ''}" data-pid="${p.patient_id}" ${isOpen ? 'open' : ''} onclick="if(event.target.closest('summary'))selectPatient('${p.patient_id}')">
                     <summary>
@@ -7533,6 +7625,7 @@
                         <div class="p-badges">
                             ${isNlPatient ? '<span class="badge-sm" style="background:rgba(93,173,226,0.2);color:#5DADE2">&#9992; 9-Liner</span>' : ''}
                             ${warningsBadge}
+                            ${auditBadge}
                             ${p.analyzed ? '<span class="badge-sm" style="background:rgba(93,173,226,0.15);color:#5DADE2">analysiert</span>' : ''}
                             ${hasRfidWritten ? '<span class="badge-sm" style="background:rgba(200,184,120,0.2);color:#c8b878" title="RFID-Karte geschrieben">&#128179; RFID</span>' : ''}
                             ${p.synced ? '<span class="badge-sm" style="background:rgba(46,204,113,0.15);color:#2ECC71">gemeldet</span>' : ''}
