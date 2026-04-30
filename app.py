@@ -4138,14 +4138,25 @@ async def discard_pending_transcript(body: dict):
 @app.post("/api/test/segment")
 async def test_segment(body: dict):
     """Proof-of-Concept-Endpoint: POST {"transcript": "..."} →
-    Qwen segmentiert das Transkript in Patienten-Blöcke.
-    Dient zum Testen des Prompts BEVOR wir den produktiven Flow umbauen."""
+    Gemma segmentiert das Transkript in Patienten-Blöcke.
+
+    GPU-Swap: Wenn swap_mode != coexist (Whisper im VRAM), erst swap
+    auf Analysis-Mode (Whisper raus, Gemma rein) — sonst OOM-Killer.
+    Nach dem Test wird Whisper wieder geladen.
+    """
     transcript = body.get("transcript", "")
     if not transcript:
         return {"error": "no transcript provided", "usage": {"transcript": "<langer text>"}}
+    swap_active = getattr(state, "swap_mode", "coexist") != "coexist"
+    if swap_active:
+        await _enter_analysis_mode(reason="test_segment")
     import time as _t
     t0 = _t.monotonic()
-    result = segment_transcript_to_patients(transcript)
+    try:
+        result = segment_transcript_to_patients(transcript)
+    finally:
+        if swap_active:
+            asyncio.create_task(_enter_recording_mode())
     elapsed = _t.monotonic() - t0
     result["_meta"] = {
         "elapsed_s": round(elapsed, 2),
