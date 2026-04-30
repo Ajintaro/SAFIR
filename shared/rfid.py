@@ -221,10 +221,39 @@ _PICC_ANTICOLL   = 0x93
 _PICC_SElECTTAG  = 0x93
 _PICC_AUTHENT1A  = 0x60
 _PICC_READ       = 0x30
-_PICC_WRITE      = 0xA0
+_PICC_WRITE      = 0xA0  # MIFARE Classic Write (16-Byte-Block)
 _PICC_HALT       = 0x50
 
+# NTAG / ISO 14443A Type 2 Befehle (NTAG213/215/216, MIFARE Ultralight)
+# NTAGs haben KEINEN Crypto1-Auth-Mechanismus wie MIFARE Classic.
+# READ = 0x30 ist identisch (liest 4 Pages = 16 Byte am Stueck).
+# WRITE = 0xA2 schreibt 1 Page = 4 Byte (kompakter als MIFARE Classic).
+_NTAG_WRITE      = 0xA2  # NTAG/Type2 Write (4-Byte-Page)
+
+# SAK-Werte zur Karten-Typ-Erkennung (nach ISO 14443-3 Anti-Collision):
+_SAK_MIFARE_1K   = 0x08
+_SAK_MIFARE_4K   = 0x18
+_SAK_NTAG        = 0x00  # NTAG21x liefert oft SAK=0x00 (Type 2, no compliance)
+_SAK_NTAG_VAR    = 0x04  # ... manche Cards/Reader reporten 0x04 (UID-Cascade)
+
 _MIFARE_DEFAULT_KEY = [0xFF] * 6
+
+# NTAG215 Memory-Layout:
+# Page 0..3   = Hersteller-UID + Lock-Bits + CC (read-only, NICHT anfassen!)
+# Page 4..129 = User Memory (504 Byte = 126 Pages × 4 Byte)
+# Page 130+  = Configuration (PWD-Hash, ACCESS, etc.) — nicht anfassen
+#
+# Wir mappen das MIFARE-Layout (Block 4..10) 1:1 auf NTAG-Pages,
+# Faktor 4 weil NTAG-Pages 4 Byte sind und MIFARE-Bloecke 16 Byte:
+#   MIFARE Block 4 -> NTAG Pages 4..7   (16 Byte Header)
+#   MIFARE Block 5 -> NTAG Pages 8..11  (16 Byte Patient-ID)
+#   MIFARE Block 6 -> NTAG Pages 12..15 (16 Byte Vitals)
+#   MIFARE Block 8 -> NTAG Pages 20..23 (16 Byte Name Teil 1)
+#   MIFARE Block 9 -> NTAG Pages 24..27 (16 Byte Name Teil 2)
+#   MIFARE Block 10 -> NTAG Pages 28..31 (16 Byte Mechanism)
+# Block 7/11 (MIFARE-Sektor-Trailer) wird auf NTAG ausgelassen — ist
+# dort nutzbar, aber wir bleiben kompatibel zur MIFARE-Datenstruktur.
+_NTAG_USER_MEM_START = 4   # erste beschreibbare Page
 
 
 def _rc522_calc_crc(data):
@@ -412,6 +441,81 @@ def _rc522_write_block(block_addr, data16):
 
 
 # ---------------------------------------------------------------------------
+# NTAG (ISO 14443A Type 2) — Read/Write ohne Crypto1-Auth
+# ---------------------------------------------------------------------------
+# Diese Funktionen werden nur fuer NTAG21x / MIFARE Ultralight aufgerufen
+# (SAK 0x00 oder 0x04). MIFARE Classic 1K/4K (SAK 0x08/0x18) nutzt
+# weiterhin _rc522_read_block / _rc522_write_block oben.
+
+def _ntag_read_pages(start_page: int) -> bytes | None:
+    """Liest 4 NTAG-Pages ab start_page (= 16 Byte). NTAGs antworten auf
+    READ (0x30) immer mit 4 Pages. Kein Auth noetig.
+
+    Gibt 16 Byte zurueck oder None bei Fehler.
+    """
+    buf = [_PICC_READ, start_page & 0xFF]
+    buf += _rc522_calc_crc(buf)
+    ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, buf)
+    if not ok or len(resp) != 16:
+        return None
+    return bytes(resp)
+
+
+def _ntag_write_page(page: int, data4: bytes) -> tuple[bool, str]:
+    """Schreibt 4 Byte in eine einzelne NTAG-Page.
+
+    Gibt (True, "") bei Erfolg zurueck. Schutz: Page < 4 darf NICHT
+    geschrieben werden (UID/Lock/CC sind ab Werk read-only oder
+    werden durch Lock-Bits irreversibel gemacht).
+    """
+    import time as _t
+    if len(data4) != 4:
+        raise ValueError("data4 muss genau 4 Bytes haben")
+    if page < _NTAG_USER_MEM_START:
+        return (False, f"Page {page} ist Hersteller-Bereich — Write blockiert")
+
+    # Phase 1: WRITE-Befehl + Page + 4 Datenbytes + CRC zusammen senden
+    # NTAG WRITE = 1-Phase Protokoll (anders als MIFARE 2-Phase).
+    buf = [_NTAG_WRITE, page & 0xFF] + list(data4)
+    buf += _rc522_calc_crc(buf)
+    ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, buf)
+    if not ok:
+        return (False, f"NTAG write to_card failed (err=0x{rc522_read(0x06):02X})")
+    # NTAG-Antwort: 4-Bit ACK (0x0A) bei Erfolg, 4-Bit NACK (0x00..0x09) bei Fehler
+    if bits != 4:
+        return (False, f"NTAG write wrong bit count {bits}")
+    if (resp[0] & 0x0F) != 0x0A:
+        return (False, f"NTAG write NACK 0x{resp[0]:02X}")
+
+    # NTAG Write-Cycle: ~5 ms bis EEPROM committet ist.
+    _t.sleep(0.006)
+    return (True, "")
+
+
+def _ntag_write_block16(start_page: int, data16: bytes) -> tuple[bool, str]:
+    """Schreibt 16 Byte = 4 NTAG-Pages konsekutiv.
+
+    Wird vom NTAG-Patient-Schreibe-Pfad verwendet um das gleiche Layout
+    wie MIFARE Classic abzubilden (16-Byte-Blocks → 4-Page-Gruppen).
+    Bricht bei erstem Fehler ab.
+    """
+    if len(data16) != 16:
+        raise ValueError("data16 muss genau 16 Bytes haben")
+    for i in range(4):
+        page = start_page + i
+        chunk = data16[i*4:(i+1)*4]
+        ok, err = _ntag_write_page(page, chunk)
+        if not ok:
+            return (False, f"NTAG Page {page}: {err}")
+    return (True, "")
+
+
+# Mapping MIFARE-Block → NTAG-Start-Page (×4, da 16/4 = 4 Pages pro Block)
+def _block_to_ntag_page(block_idx: int) -> int:
+    return block_idx * 4
+
+
+# ---------------------------------------------------------------------------
 # SAFIR-Patientendaten auf MIFARE-Karte schreiben
 # ---------------------------------------------------------------------------
 # Layout (MIFARE Classic 1K, Default Key A = FFFFFFFFFFFF):
@@ -515,6 +619,80 @@ def _split_bp(bp_str, index):
         return 0
 
 
+def _write_ntag_patient(uid_hex: str, payload: dict[int, bytes]) -> tuple[bool, str]:
+    """Schreibt SAFIR-Patient-Payload auf eine NTAG21x / Type-2-Karte.
+
+    Aufgerufen aus rc522_write_patient_to_card() wenn SAK == 0x00/0x04.
+    Karte ist bereits selektiert (Phase 1 abgeschlossen) — wir schreiben
+    direkt in die User-Memory-Pages.
+
+    Mapping: jeder MIFARE-Block (16 Byte) wird auf 4 NTAG-Pages (4 Byte)
+    aufgeteilt, gleicher logischer Index (Block 4 -> Pages 4-7 etc.).
+
+    Verify nach jedem Block durch Re-Read.
+    """
+    log.info(f"NTAG-Write: starte fuer UID {uid_hex} ({len(payload)} Bloecke)")
+    # Block-Reihenfolge wie bei MIFARE — Header zuerst, dann Patient-ID
+    # etc. Falls die Karte beim Schreiben verloren geht, hat man immerhin
+    # einen halb-konsistenten Zustand (kein Magic-Header bei Misserfolg
+    # = Card erscheint als "leer" beim Lesen statt mit Trash-Daten).
+    block_order = [4, 5, 6, 8, 9, 10]
+    for blk in block_order:
+        data16 = payload.get(blk)
+        if data16 is None:
+            continue
+        page = _block_to_ntag_page(blk)
+        ok, err = _ntag_write_block16(page, data16)
+        if not ok:
+            log.warning(f"NTAG-Write: Block {blk} (Pages {page}-{page+3}) "
+                        f"fehlgeschlagen: {err}")
+            return (False, f"NTAG Block {blk}: {err}")
+        # Verify-Read nach jedem 16-Byte-Block — kein Auth noetig.
+        verify = _ntag_read_pages(page)
+        if verify != data16:
+            log.warning(f"NTAG-Write: Block {blk} Verify-Mismatch — "
+                        f"erwartet {data16.hex()}, gelesen "
+                        f"{verify.hex() if verify else 'None'}")
+            return (False, f"NTAG Block {blk}: Verify-Mismatch")
+        log.info(f"NTAG-Write: Block {blk} OK ({len(data16)} Bytes ueber Pages {page}..{page+3})")
+
+    log.info(f"NTAG-Write erfolgreich (alle Bloecke): UID {uid_hex}")
+    return (True, uid_hex)
+
+
+def _read_ntag_patient(uid_bytes: bytes) -> tuple[dict | None, str]:
+    """Liest SAFIR-Patient-Header von einer NTAG-Karte.
+
+    Nur Block 4 (Header), 5 (Patient-ID), 6 (Triage) — analog zur
+    MIFARE-Read-Funktion. Reicht fuer Surface-Side Patient-Lookup
+    (Omnikey scant Karte -> patient_id -> DB-Query).
+    """
+    import struct
+    uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
+    # NTAG _ntag_read_pages liest 4 Pages = 16 Byte ab start_page
+    b4 = _ntag_read_pages(_block_to_ntag_page(4))   # Pages 4-7
+    if b4 is None or b4[:8] != SAFIR_CARD_MAGIC:
+        return (None, "Keine SAFIR-Karte (Magic fehlt)")
+    b5 = _ntag_read_pages(_block_to_ntag_page(5))   # Pages 8-11
+    b6 = _ntag_read_pages(_block_to_ntag_page(6))   # Pages 12-15
+    if b5 is None or b6 is None:
+        return (None, "NTAG-Read: Patient-ID/Triage fehlgeschlagen")
+    version = b4[8]
+    ts = struct.unpack_from("<I", b4, 12)[0]
+    patient_id = b5.rstrip(b"\x00").decode("ascii", errors="ignore")
+    triage_byte = b6[0]
+    triage_map = {1: "T1", 2: "T2", 3: "T3", 4: "T4"}
+    triage = triage_map.get(triage_byte, "")
+    return ({
+        "version": version,
+        "written_unix": ts,
+        "patient_id": patient_id,
+        "triage": triage,
+        "uid": uid_hex,
+        "card_type": "ntag",
+    }, uid_hex)
+
+
 def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[bool, str]:
     """
     Komplett-Flow: wartet auf Karte, selektiert, authentifiziert, schreibt
@@ -524,6 +702,11 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
 
     Hält den globalen SPI-Lock während des gesamten Flows — der RfidService-
     Poll-Loop pausiert solange und greift nicht auf den Bus zu.
+
+    SAK-Branching (2026-04-30):
+    - SAK 0x08/0x18 (MIFARE Classic 1K/4K) -> klassischer Crypto1-Pfad
+    - SAK 0x00/0x04 (NTAG21x / MIFARE Ultralight) -> _write_ntag_patient
+      (kein Auth, 4-Byte-Pages statt 16-Byte-Blocks)
     """
     import time as _t
 
@@ -562,6 +745,27 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
 
         # Phase 2: Payload bauen
         payload = _build_patient_payload(patient)
+
+        # Phase 2b: SAK-basierte Karten-Typ-Erkennung — NTAG vs MIFARE
+        # Classic. Default = MIFARE-Pfad (existing behavior). NTAG-Pfad
+        # nur wenn SAK eindeutig = 0x00 oder 0x04 (Type 2 / NTAG21x).
+        # Feature-Flag (config.json) kann NTAG-Pfad komplett ausschalten,
+        # falls Bug-Verdacht — dann faellt's zurueck auf MIFARE-Pfad
+        # der bei NTAG-Karten dann eben Auth-Fehler gibt (= alter Stand).
+        ntag_enabled = True
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            cfg_p = _Path(__file__).parent.parent / "config.json"
+            if cfg_p.exists():
+                _cfg = _json.loads(cfg_p.read_text(encoding="utf-8"))
+                ntag_enabled = bool((_cfg.get("rfid") or {}).get("ntag_enabled", True))
+        except Exception:
+            pass
+
+        if ntag_enabled and sak in (_SAK_NTAG, _SAK_NTAG_VAR):
+            log.info(f"RFID-Write: NTAG-Karte erkannt (SAK 0x{sak:02X}) — NTAG-Pfad")
+            return _write_ntag_patient(uid_hex, payload)
 
         # Phase 3: Schreiben (Sektor 1 = Blöcke 4-6, Sektor 2 = Blöcke 8-10)
         sector_blocks = {
@@ -905,6 +1109,26 @@ def rc522_read_patient_from_card(timeout: float = 5.0) -> tuple[dict | None, str
             return (None, "Timeout — keine Karte gefunden")
 
         uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
+
+        # SAK-basiertes Branching: NTAG-Karten werden ohne Crypto1-Auth
+        # gelesen (anderer Code-Pfad).
+        ntag_enabled = True
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            cfg_p = _Path(__file__).parent.parent / "config.json"
+            if cfg_p.exists():
+                _cfg = _json.loads(cfg_p.read_text(encoding="utf-8"))
+                ntag_enabled = bool((_cfg.get("rfid") or {}).get("ntag_enabled", True))
+        except Exception:
+            pass
+
+        if ntag_enabled and sak in (_SAK_NTAG, _SAK_NTAG_VAR):
+            try:
+                return _read_ntag_patient(uid_bytes)
+            finally:
+                _rc522_halt()
+
         try:
             if not _rc522_auth(4, uid_bytes):
                 return (None, "Auth fehlgeschlagen")
@@ -925,6 +1149,7 @@ def rc522_read_patient_from_card(timeout: float = 5.0) -> tuple[dict | None, str
                 "patient_id": patient_id,
                 "triage": triage,
                 "uid": uid_hex,
+                "card_type": "mifare_classic",
             }, uid_hex)
         finally:
             _rc522_stop_crypto()
