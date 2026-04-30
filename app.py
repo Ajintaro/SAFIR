@@ -3678,7 +3678,11 @@ _PROMPT_METADATA = {
         "description": "Zerlegt lange Sanitaeter-Diktate in einzelne "
                        "Patient-Bloecke. Gibt JSON mit den Satzindizes "
                        "zurueck wo ein neuer Patient anfaengt. "
-                       "Few-Shot-Beispiele eingebaut.",
+                       "Few-Shot-Beispiele eingebaut. "
+                       "WICHTIG: Der Prompt MUSS mit 'Saetze:' enden — "
+                       "danach werden zur Laufzeit die nummerierten "
+                       "Transkript-Saetze angehaengt ('[0] Maier hat "
+                       "Blutung\\n[1] ...') plus 'Antwort:' am Ende.",
         "placeholders": [],
         "rows": 18,
     },
@@ -3686,7 +3690,10 @@ _PROMPT_METADATA = {
         "label": "9-Liner MEDEVAC (GSG 07/2018)",
         "description": "Extrahiert die 9 NATO-Linien fuer MEDEVAC-Anforderung. "
                        "Bundeswehr-Schema (NICHT US-NATO ATP-3.7.2). "
-                       "Mit MGRS-Halluzinations-Schutz.",
+                       "Mit MGRS-Halluzinations-Schutz. "
+                       "WICHTIG: Der Prompt MUSS mit 'Transkript:' enden — "
+                       "danach wird zur Laufzeit das Diktat angehaengt "
+                       "plus 'Antwort:' am Ende.",
         "placeholders": [],
         "rows": 16,
     },
@@ -3695,7 +3702,9 @@ _PROMPT_METADATA = {
         "description": "Extrahiert Name, Dienstgrad, Verletzungen, Vitals, "
                        "Behandlungen aus einem Patient-Block. Hier sitzt "
                        "auch der Off-Topic-Filter (Pizza-Saetze nicht "
-                       "in Notes uebernehmen).",
+                       "in Notes uebernehmen). "
+                       "WICHTIG: {text}-Platzhalter muss erhalten bleiben — "
+                       "wird zur Laufzeit durch das Patient-Diktat ersetzt.",
         "placeholders": ["text"],
         "rows": 22,
     },
