@@ -217,8 +217,9 @@ _PCD_SOFTRESET   = 0x0F
 
 _PICC_REQIDL     = 0x26  # REQA — spricht nur Karten im IDLE-Zustand an
 _PICC_WUPA       = 0x52  # Wake-Up All — spricht ALLE Karten an, auch nach Auth
-_PICC_ANTICOLL   = 0x93
-_PICC_SElECTTAG  = 0x93
+_PICC_ANTICOLL   = 0x93  # Cascade Level 1 (4-Byte-UID-Karten + erste 3 Bytes von 7-UID)
+_PICC_SElECTTAG  = 0x93  # SELECT (gleicher Befehlscode CL1)
+_PICC_ANTICOLL_2 = 0x95  # Cascade Level 2 (Bytes 4-6 von 7-Byte-UID)
 _PICC_AUTHENT1A  = 0x60
 _PICC_READ       = 0x30
 _PICC_WRITE      = 0xA0  # MIFARE Classic Write (16-Byte-Block)
@@ -354,7 +355,15 @@ def _rc522_anticoll():
 
 
 def _rc522_select(uid5):
-    """PICC_SELECT — aktiviert die Karte, gibt SAK (1 Byte) zurück."""
+    """PICC_SELECT (Cascade Level 1) — aktiviert die Karte, gibt SAK (1 Byte) zurück.
+
+    SAK-Bedeutung:
+      Bit 2 (0x04) gesetzt -> UID nicht komplett, weiterer Cascade-Level erforderlich
+      Bit 3 (0x08) gesetzt -> MIFARE-kompatibel
+      Bit 5 (0x20) gesetzt -> ISO 14443-4 kompatibel
+    Bei NTAG215 (7-Byte-UID): erste SAK ist 0x04 (Cascade), nach CL2-Select
+    kommt die "echte" SAK = 0x00 (Type 2 Tag).
+    """
     buf = [_PICC_SElECTTAG, 0x70] + list(uid5)   # inkl. BCC
     buf += _rc522_calc_crc(buf)
     rc522_write(0x0D, 0x00)
@@ -362,6 +371,70 @@ def _rc522_select(uid5):
     if not ok or bits != 0x18:
         return None
     return resp[0]  # SAK
+
+
+def _rc522_anticoll_cl2():
+    """Anti-Collision Loop 2 — fuer 7-Byte-UID-Karten (NTAG, MIFARE Ultralight,
+    DESFire). Liefert die letzten 4 UID-Bytes + BCC (5 Byte total) oder None.
+
+    Wird NACH einem CL1-Select aufgerufen wenn dessen SAK Bit 2 (0x04)
+    gesetzt hat (= "Cascade not complete").
+    """
+    rc522_write(0x0D, 0x00)
+    data = [_PICC_ANTICOLL_2, 0x20]
+    ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, data)
+    if not ok or len(resp) != 5:
+        return None
+    bcc = resp[0] ^ resp[1] ^ resp[2] ^ resp[3]
+    if bcc != resp[4]:
+        return None
+    return resp
+
+
+def _rc522_select_cl2(uid5_cl2):
+    """SELECT Cascade Level 2 — aktiviert die voll-selektierte Karte."""
+    buf = [_PICC_ANTICOLL_2, 0x70] + list(uid5_cl2)
+    buf += _rc522_calc_crc(buf)
+    rc522_write(0x0D, 0x00)
+    ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, buf)
+    if not ok or bits != 0x18:
+        return None
+    return resp[0]  # finale SAK
+
+
+def _rc522_anticoll_full() -> tuple[bytes | None, int | None]:
+    """Vollstaendiges Anti-Collision + Select fuer 4-Byte- ODER 7-Byte-UID.
+
+    Macht CL1, dann CL2 falls SAK-Bit 0x04 (Cascade) gesetzt war.
+
+    Rueckgabe: (uid_bytes, final_sak)
+      uid_bytes:  4 Byte (CL1-only Karten) oder 7 Byte (CL2-Karten wie NTAG)
+      final_sak:  0x08 (MIFARE Classic 1K), 0x18 (MIFARE Classic 4K),
+                  0x00 (NTAG/Ultralight), oder andere
+
+    None falls Karte nicht reagiert. Karte ist nach erfolgreichem Lauf
+    'aktiv' (im Active-State, READ/WRITE-ready).
+    """
+    uid5_cl1 = _rc522_anticoll()
+    if uid5_cl1 is None:
+        return (None, None)
+    sak1 = _rc522_select(uid5_cl1)
+    if sak1 is None:
+        return (None, None)
+    if not (sak1 & 0x04):
+        # 4-Byte-UID-Karte (typisch MIFARE Classic). UID ist uid5_cl1[:4].
+        return (bytes(uid5_cl1[:4]), sak1)
+    # CL2 noetig — uid5_cl1 enthaelt [CT=88][UID0][UID1][UID2][BCC]
+    # Echte UID-Bytes 0-2 sind in uid5_cl1[1..4], CT muss man verwerfen.
+    uid5_cl2 = _rc522_anticoll_cl2()
+    if uid5_cl2 is None:
+        return (None, None)
+    sak2 = _rc522_select_cl2(uid5_cl2)
+    if sak2 is None:
+        return (None, None)
+    # Volle 7-Byte-UID: CL1[1..4] (3 echte UID-Bytes) + CL2[0..4] (4 weitere)
+    uid7 = bytes(uid5_cl1[1:4]) + bytes(uid5_cl2[:4])
+    return (uid7, sak2)
 
 
 def _rc522_auth(block_addr, uid4, key=_MIFARE_DEFAULT_KEY):
@@ -729,7 +802,7 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
     with _spi_lock:
         log.info("SPI-Lock erhalten, suche Karte …")
         start = _t.time()
-        # Phase 1: Karte finden (REQA + Anticoll + Select)
+        # Phase 1: Karte finden (REQA + Cascade-Level-1+2 falls noetig)
         uid_bytes = None
         sak = None
         while _t.time() - start < timeout:
@@ -737,15 +810,12 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
             if not ok:
                 _t.sleep(0.1)
                 continue
-            uid5 = _rc522_anticoll()
-            if uid5 is None:
+            uid_full, sak_full = _rc522_anticoll_full()
+            if uid_full is None or sak_full is None:
                 _t.sleep(0.1)
                 continue
-            sak = _rc522_select(uid5)
-            if sak is None:
-                _t.sleep(0.1)
-                continue
-            uid_bytes = uid5[:4]
+            uid_bytes = uid_full
+            sak = sak_full
             break
 
         if uid_bytes is None:
@@ -753,7 +823,7 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
             return (False, "Timeout — keine Karte gefunden")
 
         uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
-        log.info(f"Karte gefunden zum Schreiben: UID {uid_hex}, SAK 0x{sak:02X}")
+        log.info(f"Karte gefunden zum Schreiben: UID {uid_hex} ({len(uid_bytes)} Byte), SAK 0x{sak:02X}")
 
         # Phase 2: Payload bauen
         payload = _build_patient_payload(patient)
@@ -775,8 +845,15 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
         except Exception:
             pass
 
-        if ntag_enabled and sak in (_SAK_NTAG, _SAK_NTAG_VAR):
-            log.info(f"RFID-Write: NTAG-Karte erkannt (SAK 0x{sak:02X}) — NTAG-Pfad")
+        # NTAG-Detection: nach CL2-Select ist SAK = 0x00 (Type 2 Tag).
+        # 0x04 als finale SAK kommt eigentlich nicht vor — wenn doch, ist
+        # die Karte noch im Cascade-Mode (= Anti-Coll-Bug). Wir akzeptieren
+        # 0x00 als sicheren NTAG-Indikator. Plus Heuristik: 7-Byte-UID =
+        # Cascade wurde durchgemacht = sehr wahrscheinlich NTAG/Ultralight.
+        is_ntag_like = (sak == _SAK_NTAG) or (len(uid_bytes) == 7 and sak != _SAK_MIFARE_1K)
+        if ntag_enabled and is_ntag_like:
+            log.info(f"RFID-Write: NTAG-Karte erkannt (UID-Len {len(uid_bytes)}, "
+                     f"SAK 0x{sak:02X}) — NTAG-Pfad")
             return _write_ntag_patient(uid_hex, payload)
 
         # Phase 3: Schreiben (Sektor 1 = Blöcke 4-6, Sektor 2 = Blöcke 8-10)
@@ -1106,15 +1183,15 @@ def rc522_read_patient_from_card(timeout: float = 5.0) -> tuple[dict | None, str
     with _spi_lock:
         start = _t.time()
         uid_bytes = None
+        sak = None
         while _t.time() - start < timeout:
             ok, _ = _rc522_request(_PICC_REQIDL)
             if ok:
-                uid5 = _rc522_anticoll()
-                if uid5 is not None:
-                    sak = _rc522_select(uid5)
-                    if sak is not None:
-                        uid_bytes = uid5[:4]
-                        break
+                uid_full, sak_full = _rc522_anticoll_full()
+                if uid_full is not None and sak_full is not None:
+                    uid_bytes = uid_full
+                    sak = sak_full
+                    break
             _t.sleep(0.1)
 
         if uid_bytes is None:
@@ -1135,7 +1212,10 @@ def rc522_read_patient_from_card(timeout: float = 5.0) -> tuple[dict | None, str
         except Exception:
             pass
 
-        if ntag_enabled and sak in (_SAK_NTAG, _SAK_NTAG_VAR):
+        # Detection wie im Write-Pfad: 7-Byte-UID = NTAG/Type 2,
+        # final SAK = 0x00.
+        is_ntag_like = (sak == _SAK_NTAG) or (len(uid_bytes) == 7 and sak != _SAK_MIFARE_1K)
+        if ntag_enabled and is_ntag_like:
             try:
                 return _read_ntag_patient(uid_bytes)
             finally:
