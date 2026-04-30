@@ -5819,29 +5819,43 @@ async def rfid_ntag_diagnose():
         import time as _t
         result: dict = {"steps": []}
         with _rfid._spi_lock:
-            # Mehrere Versuche mit WUPA — die Karte ist evtl. nach
-            # Poll-Loop bereits im Active/Halt-State. WUPA spricht
-            # alle Karten im Feld an, REQA nur die im IDLE.
+            # RC522 + Karten-State frisch zuruecksetzen. Der Poll-Loop
+            # kann die Karte im Active/Halt-State hinterlassen haben —
+            # _rc522_halt + rc522_init macht alles sauber.
+            try:
+                _rfid._rc522_stop_crypto()
+                _rfid._rc522_halt()
+            except Exception:
+                pass
+            _t.sleep(0.05)
+            _rfid.rc522_init()
+            _t.sleep(0.1)
+
+            # Mehrere Versuche mit WUPA + REQA-Fallback.
             uid_full = None
             sak = None
             attempts = []
-            for attempt in range(8):
-                # Erst WUPA, dann REQA als Fallback
-                cmd_used = "WUPA" if attempt < 4 else "REQA"
-                cmd = _rfid._PICC_WUPA if attempt < 4 else _rfid._PICC_REQIDL
+            for attempt in range(10):
+                cmd_used = "WUPA" if attempt < 5 else "REQA"
+                cmd = _rfid._PICC_WUPA if attempt < 5 else _rfid._PICC_REQIDL
                 ok, atqa = _rfid._rc522_request(cmd)
                 if ok:
                     u, s = _rfid._rc522_anticoll_full()
                     if u is not None and s is not None:
                         uid_full = u
                         sak = s
+                        attempts.append({"attempt": attempt + 1, "cmd": cmd_used,
+                                         "request_ok": True, "atqa": f"0x{atqa:04X}",
+                                         "found": True})
                         break
                 attempts.append({"attempt": attempt + 1, "cmd": cmd_used,
                                  "request_ok": ok, "atqa": f"0x{atqa:04X}"})
-                _t.sleep(0.1)
+                _t.sleep(0.15)
             result["wakeup_attempts"] = attempts
             if uid_full is None:
-                result["error"] = "Karte nicht erreichbar (8 Versuche, REQA+WUPA)"
+                result["error"] = ("Karte nicht erreichbar nach RC522-Reset + 10 "
+                                   "REQA/WUPA-Versuchen. Karte aufgelegt? Antennen-"
+                                   "Distanz?")
                 return result
             result["uid"] = uid_full.hex().upper()
             result["uid_len"] = len(uid_full)
