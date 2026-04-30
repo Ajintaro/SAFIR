@@ -618,8 +618,18 @@ async def _oled_analyze_pending():
         for pt in todo:
             text = pt.get("full_text") or ""
             is_med, kw_count, _kws = is_medical_transcript(text)
-            if is_med:
+            # Bypass: 9-Liner und ATMIST sind keine klassischen "medizinischen"
+            # Diktate (MGRS-Koordinaten, Pickup-Site, Phonetic-Codes statt
+            # Puls/Blutung/Verletzung), wuerden aber sonst vom medical-content-
+            # filter gekippt. Wenn das Pending explizit als 9-Liner/ATMIST
+            # markiert ist ODER der Auto-Detect anschlaegt -> durchlassen.
+            is_template = (pt.get("is_nine_liner") or pt.get("is_atmist")
+                           or looks_like_nine_liner(text) or looks_like_atmist(text))
+            if is_med or is_template:
                 to_analyze.append(pt)
+                if is_template and not is_med:
+                    print(f"[VOICE-ANALYZE] Pending '{pt.get('id')}' als "
+                          f"9-Liner/ATMIST erkannt — Content-Filter umgangen", flush=True)
             else:
                 # Pending nicht discarden — bleibt sichtbar, Nutzer kann ihn
                 # manuell via GUI-Dialog forcieren oder verwerfen.
@@ -4165,7 +4175,13 @@ async def analyze_pending_transcript(body: dict):
         try:
             from shared.content_filter import is_medical_transcript
             is_med, kw_count, kw_preview = is_medical_transcript(full_text)
-            if not is_med:
+            # 9-Liner / ATMIST Bypass: enthalten keine klassischen Medic-
+            # Keywords (Puls, Blutung), aber sind trotzdem medizinisch
+            # relevante Funksprueche/Uebergaben.
+            is_template = (pt.get("is_nine_liner") or pt.get("is_atmist")
+                           or looks_like_nine_liner(full_text)
+                           or looks_like_atmist(full_text))
+            if not is_med and not is_template:
                 print(f"[CONTENT-FILTER] Transkript nicht-medizinisch "
                       f"(only {kw_count} kw, {kw_preview}): "
                       f"'{full_text[:120]}'", flush=True)
@@ -4185,6 +4201,10 @@ async def analyze_pending_transcript(body: dict):
                     "pending_id": pt["id"],
                     "preview": full_text[:200],
                 }
+            if is_template and not is_med:
+                print(f"[CONTENT-FILTER] Bypass — als 9-Liner/ATMIST erkannt "
+                      f"(is_nine_liner={pt.get('is_nine_liner')}, "
+                      f"is_atmist={pt.get('is_atmist')})", flush=True)
         except Exception as e:
             print(f"[CONTENT-FILTER] Fehler (lasse weiterlaufen): {e}", flush=True)
 
