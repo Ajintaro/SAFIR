@@ -1907,6 +1907,17 @@ async def voice_send_backend():
         _last_send_backend_failed = True
         oled_menu.show_status("FEHLER", f"{result['failed']} fehlgeschlagen")
         tts.speak(f"{result['failed']} Patienten nicht uebermittelt. Naechster Versuch in {int(SEND_BACKEND_COOLDOWN_FAIL)} Sekunden.")
+    # OLED-Status nach 3 s zuruecksetzen, sonst bleibt "GESENDET 2 Patient(en)"
+    # dauerhaft auf dem Display stehen (User-Bug 2026-04-30: "OLED resettet
+    # sich manchmal nicht"). Asyncio-Task im Hintergrund — blockiert den
+    # Voice-Handler nicht.
+    async def _clear_oled_after_delay(delay: float = 3.0):
+        try:
+            await asyncio.sleep(delay)
+            oled_menu.clear_status()
+        except Exception as e:
+            print(f"[OLED] clear_status Fehler: {e}", flush=True)
+    asyncio.create_task(_clear_oled_after_delay())
 
 
 async def voice_mic_test():

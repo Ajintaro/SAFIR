@@ -6049,6 +6049,29 @@
     }
     if (typeof window !== 'undefined') {
         window.addEventListener('DOMContentLoaded', loadPendingTranscripts);
+        // Event-Delegation fuer Edit-Transkript-Buttons. Robuster als
+        // onclick-Attribut weil:
+        //   - keine ID-Kollisionen zwischen patient-cards-feld und -fz
+        //   - kein Parsing/Escaping von patient-IDs in HTML-Attributen
+        //   - auch fuer dynamisch eingefuegte Buttons (renderPatientCards
+        //     baut die Karten neu — ein einzelner Listener auf document
+        //     reicht statt pro Button einer)
+        window.addEventListener('DOMContentLoaded', () => {
+            document.addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-action="edit-transcript"]');
+                if (!btn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const pid = btn.dataset.pid;
+                const idx = parseInt(btn.dataset.idx, 10);
+                console.log('[edit-delegation] click', { pid, idx, btn });
+                if (typeof editTranscriptInline === 'function') {
+                    editTranscriptInline(btn, pid, idx);
+                } else {
+                    console.error('[edit-delegation] editTranscriptInline ist nicht definiert');
+                }
+            });
+        });
     }
 
     function addTranscriptEntry(record, pid) {
@@ -7528,19 +7551,16 @@
                             ? `<span style="font-size:10px;color:var(--mil-tan,#c8b878);margin-left:6px" title="zuletzt editiert ${t.edited_at || ''} von ${t.edited_by || 'Unbekannt'}">&#9998; editiert</span>`
                             : '';
                         const txtEsc = (t.text || '').replace(/</g,'&lt;');
-                        // Edit-Button NUR im Fahrzeug-Modus. Im Feld
-                        // (am Patienten) wird nur diktiert/aufgenommen,
-                        // nicht editiert.
-                        // WICHTIG: editTranscriptInline kriegt 'this' (das
-                        // Button-Element) statt nur pid/idx — sonst findet
-                        // getElementById das pt-text-Element des FELD-
-                        // Container-Duplikats statt das hier im fz-Container
-                        // (gleicher patient_id rendert in beiden Containern,
-                        // ID-Kollision).
+                        // Edit-Button NUR im Fahrzeug-Modus. Im Feld nur
+                        // diktiert, nicht editiert.
+                        // Event-Delegation: Klick wird per data-action-Attribut
+                        // identifiziert (siehe document.addEventListener weiter
+                        // unten). Funktioniert robuster als onclick-Attribut
+                        // bei verschachtelten <details>-Toggles und ID-
+                        // Kollisionen zwischen den beiden Containern.
                         const editBtn = isFz
-                            ? `<button onclick="event.stopPropagation();editTranscriptInline(this,'${p.patient_id}',${idx})" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer" title="Transkript bearbeiten">&#9998; Bearbeiten</button>`
+                            ? `<button type="button" data-action="edit-transcript" data-pid="${p.patient_id}" data-idx="${idx}" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer" title="Transkript bearbeiten">&#9998; Bearbeiten</button>`
                             : '';
-                        // data-pid und data-idx fuer den Element-basierten Lookup
                         return `<div class="pt-entry" data-pid="${p.patient_id}" data-idx="${idx}">
                             <div class="pt-time">${t.time || ''}${editedBadge}${editBtn}</div>
                             <div class="pt-text">${txtEsc}</div>
@@ -8698,7 +8718,7 @@
                     return `<div class="pt-entry treatment-item" data-pid="${p.patient_id}" data-idx="${idx}" style="font-size:var(--fs-body-sm);position:relative">
                         <div class="pt-time" style="display:flex;justify-content:space-between;align-items:center;color:var(--text-dim);font-size:10px;margin-bottom:4px">
                             <span>${t.time || ''}${editedBadge}</span>
-                            <button onclick="event.stopPropagation();editTranscriptInline(this,'${p.patient_id}',${idx})" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer">&#9998; Bearbeiten</button>
+                            <button type="button" data-action="edit-transcript" data-pid="${p.patient_id}" data-idx="${idx}" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer">&#9998; Bearbeiten</button>
                         </div>
                         <div class="pt-text">${text}</div>
                     </div>`;
