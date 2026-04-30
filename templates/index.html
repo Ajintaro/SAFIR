@@ -6956,7 +6956,19 @@
     // /api/patient/{id}/transcript/{idx}/update, Backend loggt audit.
     function editTranscriptInline(pid, idx) {
         const textEl = document.getElementById(`pt-text-${pid}-${idx}`);
-        if (!textEl) return;
+        if (!textEl) {
+            // Diagnose: Card ist evtl. zugeklappt, Textarea-Element nicht
+            // im DOM, oder ID stimmt nicht. User-Toast statt Silent-Fail.
+            console.warn('[edit] pt-text-' + pid + '-' + idx + ' nicht gefunden — Card aufgeklappt?');
+            if (typeof showToast === 'function') {
+                showToast('Patient-Card erst aufklappen, dann Bearbeiten klicken', '&#9888;');
+            }
+            return;
+        }
+        // Falls schon ein Editor offen ist -> nichts tun
+        if (textEl.parentElement.querySelector('textarea[id^="pt-edit-"]')) {
+            return;
+        }
         const currentText = textEl.textContent;
         // Alte Anzeige durch Editor ersetzen
         const editor = document.createElement('div');
@@ -7016,6 +7028,28 @@
         const textEl = document.getElementById(`pt-text-${pid}-${idx}`);
         if (textEl) textEl.style.display = '';
         if (editor) editor.remove();
+    }
+
+    // Audit-Badge auf der Patient-Card -> Detail-View mit Audit-Section
+    // oeffnen. Faellt zurueck auf Card-aufklappen wenn keine Detail-View
+    // verfuegbar.
+    function openPatientDetailForAudit(pid) {
+        const p = patients[pid];
+        if (!p) return;
+        // role1ShowPatientDetail existiert auf Surface (Lagekarte)
+        if (typeof role1ShowPatientDetail === 'function') {
+            role1ShowPatientDetail(pid);
+            return;
+        }
+        // Fallback: Card aufklappen + Patient aktivieren
+        const detail = document.querySelector(`details[data-pid="${pid}"]`);
+        if (detail) {
+            detail.open = true;
+            detail.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (typeof selectPatient === 'function') {
+            selectPatient(pid);
+        }
     }
 
     async function setTriageFor(pid, level) {
@@ -7477,9 +7511,9 @@
                             ? `<span style="font-size:10px;color:var(--mil-tan,#c8b878);margin-left:6px" title="zuletzt editiert ${t.edited_at || ''} von ${t.edited_by || 'Unbekannt'}">&#9998; editiert</span>`
                             : '';
                         const txtEsc = (t.text || '').replace(/</g,'&lt;');
-                        const editBtn = isFz
-                            ? `<button onclick="event.stopPropagation();editTranscriptInline('${p.patient_id}',${idx})" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer" title="Transkript bearbeiten">&#9998;</button>`
-                            : '';
+                        // Edit-Button immer rendern (frueher nur isFz) — Edit
+                        // ist auch in Feld-Modus und Patient-DB sinnvoll.
+                        const editBtn = `<button onclick="event.stopPropagation();editTranscriptInline('${p.patient_id}',${idx})" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer" title="Transkript bearbeiten">&#9998; Bearbeiten</button>`;
                         return `<div class="pt-entry" id="pt-entry-${p.patient_id}-${idx}">
                             <div class="pt-time">${t.time || ''}${editedBadge}${editBtn}</div>
                             <div class="pt-text" id="pt-text-${p.patient_id}-${idx}">${txtEsc}</div>
@@ -7613,8 +7647,9 @@
                 );
                 const lastEdit = manualEdits.length ? manualEdits[manualEdits.length - 1] : null;
                 const auditBadge = manualEdits.length
-                    ? `<span class="badge-sm" style="background:rgba(200,184,120,0.2);color:#c8b878;cursor:help"
-                        title="${manualEdits.length} manuelle Bearbeitung${manualEdits.length===1?'':'en'} — zuletzt ${(lastEdit.timestamp||'').replace('T',' ').slice(0,16)} von ${lastEdit.operator_name||'Unbekannt'} (${lastEdit.field||'?'})">&#9998; ${manualEdits.length}&times; ed. ${(lastEdit.operator_name||'?').slice(0,12)}</span>`
+                    ? `<span class="badge-sm" style="background:rgba(200,184,120,0.2);color:#c8b878;cursor:pointer"
+                        onclick="event.stopPropagation();openPatientDetailForAudit('${p.patient_id}')"
+                        title="${manualEdits.length} manuelle Bearbeitung${manualEdits.length===1?'':'en'} — zuletzt ${(lastEdit.timestamp||'').replace('T',' ').slice(0,16)} von ${lastEdit.operator_name||'Unbekannt'} (${lastEdit.field||'?'}). Klick fuer Details.">&#9998; ${manualEdits.length}&times; ed. ${(lastEdit.operator_name||'?').slice(0,12)}</span>`
                     : '';
 
                 return `
@@ -8600,12 +8635,27 @@
 
         let transcriptsHtml = '';
         if (transcripts.length > 0) {
-            const last3 = transcripts.slice(-3);
+            // Im Detail-View ALLE Transcripts zeigen (nicht nur letzte 3)
+            // damit User editieren kann was er will. Pro Eintrag Edit-
+            // Stift-Button -> editTranscriptInline (gleiche Funktion wie
+            // im Card-Modus).
             transcriptsHtml = `<div class="r1-detail-section">
-                <div class="r1-detail-section-title">Letzte Transkripte</div>
-                <div class="r1-detail-treatments">${last3.map(t => {
-                    const text = typeof t === 'string' ? t : t.text || t.transcript || JSON.stringify(t);
-                    return `<div class="treatment-item" style="font-size:var(--fs-body-sm)">${text}</div>`;
+                <div class="r1-detail-section-title">Transkripte (${transcripts.length})</div>
+                <div class="r1-detail-treatments">${transcripts.map((t, idx) => {
+                    if (typeof t === 'string') {
+                        return `<div class="treatment-item" style="font-size:var(--fs-body-sm)">${t.replace(/</g,'&lt;')}</div>`;
+                    }
+                    const text = (t.text || t.transcript || '').replace(/</g,'&lt;');
+                    const editedBadge = t.edited
+                        ? `<span style="font-size:10px;color:var(--mil-tan,#c8b878);margin-left:6px" title="zuletzt editiert ${t.edited_at || ''} von ${t.edited_by || 'Unbekannt'}">&#9998; editiert</span>`
+                        : '';
+                    return `<div class="pt-entry treatment-item" id="pt-entry-${p.patient_id}-${idx}" style="font-size:var(--fs-body-sm);position:relative">
+                        <div class="pt-time" style="display:flex;justify-content:space-between;align-items:center;color:var(--text-dim);font-size:10px;margin-bottom:4px">
+                            <span>${t.time || ''}${editedBadge}</span>
+                            <button onclick="event.stopPropagation();editTranscriptInline('${p.patient_id}',${idx})" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer">&#9998; Bearbeiten</button>
+                        </div>
+                        <div class="pt-text" id="pt-text-${p.patient_id}-${idx}">${text}</div>
+                    </div>`;
                 }).join('')}</div>
             </div>`;
         }
