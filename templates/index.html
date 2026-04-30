@@ -7569,7 +7569,7 @@
                       (p.vitals.spo2  ? `<span>${cfDot(cfVitals.spo2, 'SpO2')}SpO2: ${p.vitals.spo2}</span>` : '') +
                       '</div>' : '';
 
-                // 9-Liner Kompakt-Anzeige — Bundeswehr GSG 07/2018 Schema.
+                // 9-Liner Kompakt-Anzeige — NATO ATP-3.7.2 Schema (deutsch).
                 // Aktiv wenn template_type=9liner ODER mindestens ein line-Feld
                 // bzw. remarks gefuellt ist. Jetson (Feld + Fahrzeug) zeigt die
                 // 9 Zeilen in einem schmalen Block, Monospace.
@@ -7584,6 +7584,23 @@
                             return `<div style="display:flex;gap:6px;${v?'':'opacity:0.35'}"><span style="color:var(--info,#5DADE2);min-width:22px">L${i}</span><span>${v || '—'}</span></div>`;
                         }).join('')}
                         ${nl.remarks ? `<div style="display:flex;gap:6px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--border)"><span style="color:var(--mil-tan,#c8b878);min-width:22px">RE</span><span>${nl.remarks}</span></div>` : ''}
+                    </div>`
+                    : '';
+
+                // ATMIST Kompakt-Anzeige — sechs-zeilige Patientenuebergabe.
+                // A-T-M-I-S-T mit Buchstaben-Labels statt Lx.
+                const atm = p.atmist || {};
+                const atmFilled = ['line1','line2','line3','line4','line5','line6'].filter(k => atm[k]).length;
+                const isAtmistPatient = p.template_type === 'atmist' || atmFilled > 0;
+                const ATMIST_LABELS = ['A','T','M','I','S','T'];
+                const atmistHtml = isAtmistPatient
+                    ? `<div style="margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-left:3px solid var(--mil-tan,#c8b878);font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm)">
+                        <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:4px;letter-spacing:0.1em;text-transform:uppercase">&#127973; ATMIST Uebergabe (${atmFilled}/6)</div>
+                        ${[1,2,3,4,5,6].map(i => {
+                            const v = atm[`line${i}`] || '';
+                            const lbl = ATMIST_LABELS[i-1];
+                            return `<div style="display:flex;gap:6px;${v?'':'opacity:0.35'}"><span style="color:var(--mil-tan,#c8b878);min-width:22px;font-weight:700">${lbl}</span><span>${v || '—'}</span></div>`;
+                        }).join('')}
                     </div>`
                     : '';
 
@@ -7686,6 +7703,7 @@
                         <span class="p-name">${nameDot}${p.name || 'Unbekannt'}${p.rank ? ' ' + rankDot + '(' + p.rank + ')' : ''}</span>
                         <div class="p-badges">
                             ${isNlPatient ? '<span class="badge-sm" style="background:rgba(93,173,226,0.2);color:#5DADE2">&#9992; 9-Liner</span>' : ''}
+                            ${isAtmistPatient ? '<span class="badge-sm" style="background:rgba(200,184,120,0.2);color:#c8b878">&#127973; ATMIST</span>' : ''}
                             ${warningsBadge}
                             ${auditBadge}
                             ${p.analyzed ? '<span class="badge-sm" style="background:rgba(93,173,226,0.15);color:#5DADE2">analysiert</span>' : ''}
@@ -7699,6 +7717,7 @@
                     <div class="patient-card-body">
                         <div class="patient-transcripts" data-pid="${p.patient_id}">${transcriptsHtml}</div>
                         ${nineLinerHtml}
+                        ${atmistHtml}
                         ${warnings.length ? `<div style="margin-top:8px;padding:6px 8px;background:rgba(212,135,26,0.1);border-left:3px solid var(--mil-amber,#d4871a);font-size:var(--fs-body-sm);color:var(--mil-amber,#d4871a)"><strong>&#9888; Plausibility-Warnungen (${warnings.length}):</strong><ul style="margin:4px 0 0 16px;padding:0">${warnings.map(w => `<li>${(w||'').replace(/</g,'&lt;')}</li>`).join('')}</ul></div>` : ''}
                         ${injuriesHtml}${vitalsHtml}
                         ${fzEditHtml}
@@ -8687,20 +8706,19 @@
             </div>`;
         }
 
-        // 9-Liner MEDEVAC — Bundeswehr GSG 07/2018 Schema. Labels und Codes
-        // nach offiziellem Bundeswehr-Standard (NICHT NATO ATP-3.7.2 — siehe
-        // docs/nine-liner-template.md). Plus Remarks-Feld als 10. Feld.
+        // 9-Liner MEDEVAC — NATO ATP-3.7.2 Schema (deutsche Bezeichnungen).
+        // Labels mit Code-Hints fuer Demo-Besucher.
         let nineLinerHtml = '';
         const nineLinerLabels = {
-            line1: 'L1 Koordinaten / Landezone',
-            line2: 'L2 Anprechpartner vor Ort',
-            line3: 'L3 Anzahl + Priorität',
-            line4: 'L4 Besondere Ausrüstung',
-            line5: 'L5 Anzahl + Transportart',
-            line6: 'L6 Militärische Sicherheit',
-            line7: 'L7 Markierung Landezone',
-            line8: 'L8 Anzahl + Nationalitäten',
-            line9: 'L9 Hinweise zur Landezone',
+            line1: 'L1 Pickup-Site / Aufnahmestelle',
+            line2: 'L2 Funkkanal + Rufname',
+            line3: 'L3 Anzahl + Priorität (A/B/C/D/E)',
+            line4: 'L4 Sonderausrüstung (A/B/C/D)',
+            line5: 'L5 Transportart (L/A)',
+            line6: 'L6 Sicherheit (N/P/E/X)',
+            line7: 'L7 Markierung (A/B/C/D/E)',
+            line8: 'L8 Nationalität (A/B/C/D/E)',
+            line9: 'L9 CBRN (C/B/R/N)',
         };
         const filledLines = Object.keys(nineLinerLabels).filter(k => nineLiner[k]);
         const hasRemarks = !!nineLiner.remarks;
@@ -8720,9 +8738,37 @@
                     <div class="field-value" style="font-size:var(--fs-body)">${nineLiner.remarks}</div>
                 </div>` : '';
             nineLinerHtml = `<div class="r1-detail-section" style="border-left:3px solid var(--info,#5DADE2);padding-left:10px">
-                <div class="r1-detail-section-title">&#9992; 9-Liner MEDEVAC <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(${filledLines.length}/9 Felder · GSG 07/2018)</span></div>
+                <div class="r1-detail-section-title">&#9992; 9-Liner MEDEVAC <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(${filledLines.length}/9 Felder · NATO ATP-3.7.2)</span></div>
                 <div class="r1-detail-grid">${rows}</div>
                 ${remarksHtml}
+            </div>`;
+        }
+
+        // ATMIST Detail-View — sechs-zeilige Patientenuebergabe.
+        const atmistData = p.atmist || {};
+        const atmistDetailLabels = {
+            line1: 'A — Angaben / Alter',
+            line2: 'T — Time (Zeitpunkt)',
+            line3: 'M — Mechanismus',
+            line4: 'I — Injury (Verletzungen)',
+            line5: 'S — Signs (Vitals)',
+            line6: 'T — Treatment (Massnahmen)',
+        };
+        const filledAtmist = Object.keys(atmistDetailLabels).filter(k => atmistData[k]);
+        const isAtmist = p.template_type === 'atmist' || filledAtmist.length > 0;
+        let atmistDetailHtml = '';
+        if (isAtmist) {
+            const rows = Object.keys(atmistDetailLabels).map(k => {
+                const val = atmistData[k] || '—';
+                const filled = !!atmistData[k];
+                return `<div class="r1-detail-field" style="${filled ? '' : 'opacity:0.4'}">
+                    <div class="field-label" style="font-size:var(--fs-body-sm)">${atmistDetailLabels[k]}</div>
+                    <div class="field-value" style="font-size:var(--fs-body);line-height:1.5">${(val || '').replace(/</g,'&lt;')}</div>
+                </div>`;
+            }).join('');
+            atmistDetailHtml = `<div class="r1-detail-section" style="border-left:3px solid var(--mil-tan,#c8b878);padding-left:10px">
+                <div class="r1-detail-section-title">&#127973; ATMIST Patientenuebergabe <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(${filledAtmist.length}/6 Zeilen)</span></div>
+                <div class="r1-detail-grid">${rows}</div>
             </div>`;
         }
 
@@ -8798,6 +8844,7 @@
                         </div>
                     </div>
                     ${nineLinerHtml}
+                    ${atmistDetailHtml}
                     ${injuriesHtml}
                     ${vitalsHtml}
                     ${treatmentsHtml}

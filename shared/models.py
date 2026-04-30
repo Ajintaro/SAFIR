@@ -89,18 +89,35 @@ PATIENT_SCHEMA = {
     # welcher LLM-Extraction-Prompt verwendet wird.
     "template_type": "",
 
-    # 9-Liner MEDEVAC (Bundeswehr GSG 07/2018) — Phase 0 / Role 1
+    # 9-Liner MEDEVAC (NATO ATP-3.7.2 mit deutschen Bezeichnungen, 2026-04-30)
+    # Schema-Update: Phonetisches Alphabet als Codes (Alfa=A, Bravo=B, etc.)
+    # Sprechtext-Konvention: "Zeile eins ...", "Zeile zwei ...", optional
+    # "naechste Zeile" als Pre-Trigger fuer die naechste Zeile.
     "nine_liner": {
-        "line1": "",   # Koordinaten / Landezone (Ortsangabe, UTM/MGRS)
-        "line2": "",   # Anprechpartner vor Ort (Funkrufname / Frequenz für MIST)
-        "line3": "",   # Anzahl + Priorität (A=30Min, B=60Min, C=90Min, D=24h, E=Bei Gelegenheit)
-        "line4": "",   # Besondere Ausrüstung (A=Keine, B=Defi, C=Drahtschneider, D=San-Rucksack, E=Sonstiges)
-        "line5": "",   # Anzahl + Transportart (L=Liegend, A=Gehfähig, E=Eskorte)
-        "line6": "",   # Militärische Sicherheit (N=NO ENEMY, P=Possible/Gelb, E=Enemy/Rot, X=Eskorte)
-        "line7": "",   # Markierung Landezone (A=Rauchsignal, B=Pyro, C=Keine, D=Andere)
-        "line8": "",   # Anzahl + Nationalitäten (A=Eigene, B=Verbündete, D=Zivilisten, E=POW)
-        "line9": "",   # Hinweise zur Landezone (Anflugrichtung, Hindernisse)
-        "remarks": "", # Anmerkungen nach Readback (RE-Feld, GSG 07/2018)
+        "line1": "",   # Pickup-Site / Aufnahmestelle (frei: MGRS + Pickup-Zone-Name)
+        "line2": "",   # Funkkanal + Rufname + Suffix (frei)
+        "line3": "",   # Anzahl + Prioritaet  (A=URGENT, B=URGENT-SURG, C=PRIORITY, D=ROUTINE, E=CONVENIENCE)
+        "line4": "",   # Sonderausruestung    (A=None, B=Hoist/Winde, C=Extraction, D=Ventilator)
+        "line5": "",   # Patienten-Transport  (L=Litter/liegend, A=Ambulatory/gehfaehig)
+        "line6": "",   # Sicherheit Pickup    (N=No Enemy, P=Possible, E=Enemy, X=Enemy+Eskorte)
+        "line7": "",   # Markierung Pickup    (A=Panels, B=Pyro, C=Smoke, D=None, E=Other)
+        "line8": "",   # Nationalitaet+Status (A=US-Mil, B=US-Civ, C=Non-US-Mil, D=Non-US-Civ, E=POW)
+        "line9": "",   # CBRN-Kontamination   (C=Chemical, B=Biological, R=Radiological, N=Nuclear)
+        "remarks": "", # Anmerkungen / Readback / sonstige Hinweise
+    },
+
+    # ATMIST Patientenuebergabe (sechs-zeiliges militaer-medizinisches
+    # Uebergabe-Schema, 2026-04-30). Sprechtext: "A, Angaben: ...",
+    # "T, Time: ...", "M, Mechanismus: ...", "I, Injury: ...",
+    # "S, Signs: ...", "T, Treatment: ...". Pro Buchstabe ein
+    # Freitext-Feld — keine Codes wie beim 9-Liner.
+    "atmist": {
+        "line1": "",   # A — Angaben/Alter (Name, Geschlecht, Alter, Gewicht)
+        "line2": "",   # T — Time (Verletzungs-/Uebergabezeit, Verlauf)
+        "line3": "",   # M — Mechanismus (Wie ist die Verletzung passiert)
+        "line4": "",   # I — Injury (Verletzungen, Lokalisation, Kontrolliert/Akut)
+        "line5": "",   # S — Signs (Vitals, Bewusstsein, Schmerz)
+        "line6": "",   # T — Treatment (Massnahmen, Tourniquet, Medikation)
     },
 
     # Medizinische Daten

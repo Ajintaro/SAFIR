@@ -365,6 +365,10 @@ class AppState:
         # Command "neun liner" gesetzt und beim Recording-Stop auf
         # das pending_transcript uebertragen + wieder zurueckgesetzt.
         self.next_recording_is_nine_liner: bool = False
+        # ATMIST-Flag fuer die NAECHSTE Aufnahme. Voice-Command "atmist".
+        # Mutual-exclusive zu nine_liner — wenn beides aktiv, gewinnt
+        # der zuletzt gesetzte Trigger (siehe handler).
+        self.next_recording_is_atmist: bool = False
 
     def available_models(self):
         models = []
@@ -1673,9 +1677,20 @@ async def process_vosk_commands():
                     # Naechste Aufnahme als 9-Liner MEDEVAC analysieren
                     # statt als Multi-Patient-Diktat. Flag wird beim
                     # Recording-Stop ans pending_transcript vererbt.
+                    # Mutual-exclusive zu ATMIST: aktivieren impliziert
+                    # ATMIST-Flag zuruecksetzen.
                     state.next_recording_is_nine_liner = True
+                    state.next_recording_is_atmist = False
                     tts.speak("Neun Liner Modus aktiv. Aufnahme starten.")
                     oled_menu.show_status("9-LINER", "Modus aktiv", 0)
+                elif action == "atmist_mode":
+                    # Naechste Aufnahme als ATMIST-Patientenuebergabe
+                    # analysieren statt als Multi-Patient-Diktat.
+                    # Mutual-exclusive zu 9-Liner.
+                    state.next_recording_is_atmist = True
+                    state.next_recording_is_nine_liner = False
+                    tts.speak("ATMIST Modus aktiv. Aufnahme starten.")
+                    oled_menu.show_status("ATMIST", "Modus aktiv", 0)
             except Exception as e:
                 print(f"Vosk Befehl Fehler: {e}")
                 tts.announce_error()
@@ -3624,33 +3639,135 @@ def segment_transcript_to_patients(transcript: str) -> dict:
 # ("zeile eins", "zeile zwei", "medevac", "MGRS", "Funkfrequenz"),
 # wird der 9-Liner-Pfad auch ohne Voice-Command aktiviert.
 
-NINE_LINER_PROMPT = """Extrahiere MEDEVAC 9-Liner (Bundeswehr GSG 07/2018) aus dem Transkript.
+NINE_LINER_PROMPT = """Extrahiere MEDEVAC 9-Liner (NATO ATP-3.7.2) aus dem deutschen Transkript.
 Gib NUR JSON zurueck mit Feldern line1..line9 + remarks.
 
-Felder:
-line1: Koordinaten/Landezone (Ortsangabe, UTM/MGRS)
-line2: Anprechpartner (Frequenz, Rufzeichen)
-line3: <Zahl> + <A=30Min B=60Min C=90Min D=24h E=Bei Gelegenheit>
-line4: <A=Keine B=Defi C=Drahtschneider D=San-Rucksack E=Sonstiges>
-line5: <Zahl><L=Liegend|A=Gehfaehig|E=Eskorte>, z.B. "A1 E1"
-line6: <N=NO_ENEMY P=Possible E=Enemy X=Eskorte_erforderlich>
-line7: <A=Rauch B=Pyro C=Keine D=Andere>  (NICHT Panels!)
-line8: <Zahl> + <A=Eigene B=Verbuendete D=Zivil E=POW>  (KEIN C!)
-line9: Hinweise zur Landezone (Anflug, Hindernisse) — KEIN ABC/NBC
-remarks: Alles was nicht in line1-9 passt (CBRN-Status, Feindlage, etc.)
+SCHEMA + CODES (Phonetisches Alphabet -> Buchstaben-Codes):
+
+line1 — Pickup-Site / Aufnahmestelle (FREITEXT)
+  MGRS + Pickup-Zone-Name. Beispiel: "32U MV 123 456 ADLER"
+  Phonetik: "Mike Victor" -> "MV", "Uniform" -> "U", "Alfa" -> "A".
+
+line2 — Funkkanal + Rufname (FREITEXT)
+  z.B. "MEDEVAC DEMO, MESSE SAN EINS"
+
+line3 — Anzahl Patienten + Prioritaet (CODES):
+  ALFA=URGENT          BRAVO=URGENT-SURG    CHARLIE=PRIORITY
+  DELTA=ROUTINE        ECHO=CONVENIENCE
+  Format: "<Zahl> <Buchstabe>" pro Gruppe, mit "BREAK" als Trenner.
+  z.B. "BRAVO eins, BREAK, CHARLIE eins" -> "B1 C1" oder "1B 1C".
+
+line4 — Sonderausruestung (CODES):
+  ALFA=None/keine      BRAVO=Hoist/Winde
+  CHARLIE=Extraction   DELTA=Ventilator/Beatmungsgeraet
+  Nur EIN Buchstabe (A/B/C/D).
+
+line5 — Anzahl Patienten + Transportart (CODES):
+  LIMA=Litter/liegend           ALFA=Ambulatory/gehfaehig
+  Format: "<Buchstabe><Zahl>" mit BREAK z.B. "L1 A2".
+
+line6 — Sicherheit Pickup-Site (CODES):
+  NOVEMBER=No Enemy             PAPA=Possible Enemy
+  ECHO=Enemy in Area            XRAY=Enemy + bewaffnete Eskorte erforderlich
+  Nur EIN Buchstabe (N/P/E/X).
+
+line7 — Markierung Pickup (CODES):
+  ALFA=Panels                   BRAVO=Pyrotechnic
+  CHARLIE=Smoke                 DELTA=None
+  ECHO=Other
+  Nur EIN Buchstabe (A/B/C/D/E).
+
+line8 — Nationalitaet + Status (CODES):
+  ALFA=US-Military              BRAVO=US-Civilian
+  CHARLIE=Non-US-Military       DELTA=Non-US-Civilian
+  ECHO=Enemy POW
+  Nur EIN Buchstabe (A/B/C/D/E). Bundeswehr-Soldat = CHARLIE.
+
+line9 — CBRN-Kontamination (CODES):
+  CHARLIE=Chemical              BRAVO=Biological
+  ROMEO=Radiological            NOVEMBER=Nuclear
+  Nur EIN Buchstabe (C/B/R/N) ODER leerer String falls keine CBRN.
+
+remarks — Sonstige Anmerkungen (Readback, Demo-SOP-Bemerkungen).
+
+SPRECHTEXT-KONVENTIONEN:
+- "Zeile X" oder "Linie X" leitet die Zeile ein (X = eins...neun).
+- "Naechste Zeile" / "Naechste Linie" = die unmittelbar folgende Zeile.
+- Reihenfolge ist STRENG: 1, 2, 3, 4, 5, 6, 7, 8, 9. Keine Sprünge.
+- "BREAK" zwischen Code-Paaren = Separator (line3, line5).
+- Phonetisches Alphabet IMMER zu Buchstaben-Codes normalisieren:
+  Alfa->A  Bravo->B  Charlie->C  Delta->D  Echo->E
+  Foxtrot->F  Golf->G  Hotel->H  India->I  Juliett->J
+  Kilo->K  Lima->L  Mike->M  November->N  Oscar->O
+  Papa->P  Quebec->Q  Romeo->R  Sierra->S  Tango->T
+  Uniform->U  Victor->V  Whiskey->W  XRay->X  Yankee->Y  Zulu->Z
 
 KRITISCHE REGELN:
-1. Wenn ein Feld nicht im Transkript genannt: leerer String ""
-2. KOORDINATEN EXAKT: Niemals Quadrant-IDs (MC,PB) erfinden wenn nicht genannt.
-   Niemals Stellen kuerzen. "32 U, 12345, 67890" -> "32U 12345 67890" (10 Stellen!)
-3. Phonetik normalisieren: alpha->A bravo->B charlie->C, "zwei"->2
-4. "eigener Soldat"/"Bundeswehr" -> line8=<Zahl> A
-5. CBRN/Feindlage gehoert in remarks, NICHT line9
+1. Felder ohne Info im Transkript: leerer String "".
+2. KOORDINATEN EXAKT uebernehmen — keine Stellen kuerzen oder erfinden.
+3. Bei Code-Zeilen (3,4,5,6,7,8,9) NUR die Codes als Wert, KEIN langer
+   Freitext. Beispiel falsch: line4="ALFA, keine Sonderausruestung erforderlich".
+   Richtig: line4="A".
 
-Beispiel-Antwort fuer Diktat ueber 1 Bundeswehr-Soldat, Routine, gehfaehig+Eskorte,
-Frequenz Alpha 1 Rufzeichen Sandtrop 1, MGRS 32U 12345 67890, Einweiser-Markierung,
-keine Feindlage, keine CBRN:
-{"line1":"32U 12345 67890","line2":"Alpha 1, Sandtrop 1","line3":"1 D","line4":"A","line5":"A1 E1","line6":"N","line7":"D","line8":"1 A","line9":"","remarks":"Patient wach/ansprechbar, Markierung durch Einweiser, keine CBRN, keine Feindlage"}
+BEISPIEL-DIKTAT (Option A aus User-Doku):
+"Zeile eins: Die Aufnahmestelle befindet sich bei MGRS drei zwei Uniform Mike
+Victor eins zwei drei, vier fuenf sechs. Pickup Zone ist ADLER.
+Zeile zwei: Erreichbar auf Kanal MEDEVAC DEMO. Rufname an der Pickup Site
+ist MESSE SAN EINS.
+Zeile drei: ALFA eins, also ein Patient mit Prioritaet URGENT.
+Zeile vier: ALFA, keine Sonderausruestung erforderlich.
+Zeile fuenf: LIMA eins, ein Tragenpatient.
+Zeile sechs: NOVEMBER, keine feindlichen Kraefte im Bereich der Pickup Site.
+Zeile sieben: ALFA, die Pickup Site ist mit Panel markiert.
+Zeile acht: CHARLIE, Non-U.S. military.
+Zeile neun: CHARLIE, Chemical."
+
+ERWARTETE ANTWORT:
+{"line1":"32U MV 123 456 ADLER","line2":"MEDEVAC DEMO, MESSE SAN EINS","line3":"1 A","line4":"A","line5":"L1","line6":"N","line7":"A","line8":"C","line9":"C","remarks":""}
+
+Transkript:
+"""
+
+
+# ATMIST-Prompt (Patient-Uebergabe in 6 Buchstaben A-T-M-I-S-T)
+# Sechs Freitext-Felder, kein Code-Mapping wie beim 9-Liner.
+ATMIST_PROMPT = """Extrahiere ATMIST-Patientenuebergabe aus dem deutschen Transkript.
+Gib NUR JSON zurueck mit Feldern line1..line6.
+
+ATMIST = sechszeilige militaer-medizinische Patientenuebergabe:
+  line1 — A — Angaben/Alter (Patientenname, Geschlecht, Alter, Gewicht)
+  line2 — T — Time (Verletzungszeit, Uebergabezeit, Verlauf)
+  line3 — M — Mechanismus (Wie ist die Verletzung passiert)
+  line4 — I — Injury (Verletzungen, Lokalisation, Blutung etc.)
+  line5 — S — Signs (Vitals: Atmung, Puls, Blutdruck, SpO2, Bewusstsein, Schmerz)
+  line6 — T — Treatment (Massnahmen: Tourniquet, Verband, Medikation, Sauerstoff)
+
+SPRECHTEXT-KONVENTIONEN:
+- Jede Zeile beginnt mit dem Buchstaben + Bezeichnung:
+  "A, Angaben: ...", "T, Time: ...", "M, Mechanismus: ...",
+  "I, Verletzungen: ...", "S, Signs: ...", "T, Treatment: ..."
+- Reihenfolge ist STRENG: A, T, M, I, S, T (genau diese Sequenz).
+- Achtung: "T" kommt 2x im Schema. Erstes T = Time (line2), zweites T = Treatment (line6).
+  Mappe basierend auf der POSITION (zweites Auftreten = Treatment).
+
+KRITISCHE REGELN:
+1. Felder ohne Info im Transkript: leerer String "".
+2. Werte sind FREITEXT — keine Codes wie beim 9-Liner.
+3. Bei Vitalwerten Zahlen normalisieren: "vierundzwanzig" -> "24",
+   "einhundertzwanzig zu siebzig" -> "120/70".
+4. Zeitangaben uebernehmen wie gesprochen: "eins null eins sieben Zulu"
+   -> "1017 Zulu".
+
+BEISPIEL-DIKTAT (Option A aus User-Doku):
+"A, Angaben: Patient Schmidt, maennlich, neunundzwanzig Jahre, ungefaehr achtzig Kilogramm.
+T, Time: Verletzungszeit eins null eins sieben Zulu. Uebergabezeit eins null zwei null Zulu. Zustand seit Anlage des Tourniquets stabilisiert.
+M, Mechanismus: Explosion mit Splitterwirkung in unmittelbarer Naehe. Zusaetzlich Verdacht auf chemische Kontamination der Umgebung.
+I, Verletzungen: Penetrierende Verletzung rechter Oberschenkel. Initial starke Blutung, aktuell kontrolliert.
+S, Signs: Patient wach und ansprechbar. Atemfrequenz 24. Puls 120. Blutdruck 100/70. SpO2 94%. Schmerz 7/10.
+T, Treatment: Tourniquet rechter Oberschenkel angelegt um 1012 Zulu. Druckverband angelegt. Waermeerhalt eingeleitet."
+
+ERWARTETE ANTWORT:
+{"line1":"Schmidt, maennlich, 29J, ~80kg","line2":"Verletzung 1017Z, Uebergabe 1020Z, stabilisiert seit Tourniquet","line3":"Explosion mit Splitterwirkung, Verdacht chem. Kontamination","line4":"Penetrierende Verletzung re. Oberschenkel, Blutung kontrolliert","line5":"wach, ansprechbar, AF 24, P 120, BD 100/70, SpO2 94%, Schmerz 7/10","line6":"Tourniquet re. Oberschenkel 1012Z, Druckverband, Waermeerhalt"}
 
 Transkript:
 """
@@ -3658,7 +3775,7 @@ Transkript:
 
 def extract_nine_liner(transcript: str) -> dict:
     """Extrahiert 9-Liner-Felder aus einem Transkript via LLM.
-    Schema nach Bundeswehr GSG 07/2018 — line1..line9 + remarks (10. Feld).
+    Schema nach NATO ATP-3.7.2 (deutsch, ab 2026-04-30) — line1..line9 + remarks.
     Gibt ein Dict mit allen Feldern zurueck, fehlende Felder als "".
     """
     empty = {f"line{i}": "" for i in range(1, 10)}
@@ -3669,7 +3786,6 @@ def extract_nine_liner(transcript: str) -> dict:
     result = _call_ollama(prompt, "9-Liner")
     if not isinstance(result, dict):
         return empty
-    # Alle 9 Felder + remarks sicherstellen (auch wenn das LLM eines ausgelassen hat)
     out = {}
     for i in range(1, 10):
         key = f"line{i}"
@@ -3677,6 +3793,35 @@ def extract_nine_liner(transcript: str) -> dict:
         out[key] = str(val).strip() if val else ""
     rem = result.get("remarks", "")
     out["remarks"] = str(rem).strip() if rem else ""
+    return out
+
+
+def extract_atmist(transcript: str) -> dict:
+    """Extrahiert ATMIST-Felder aus einem Transkript via LLM.
+
+    ATMIST = Patientenuebergabe-Schema mit 6 Buchstaben:
+      A — Angaben/Alter (Name, Geschlecht, Alter, Gewicht)
+      T — Time (Verletzungs-/Uebergabezeit, Verlauf)
+      M — Mechanismus (Wie ist die Verletzung passiert)
+      I — Injury (Verletzungen, Lokalisation, Status)
+      S — Signs (Vitals, Bewusstsein, Schmerz)
+      T — Treatment (Massnahmen, Tourniquet, Medikation)
+
+    Gibt Dict mit line1..line6 zurueck — analog 9-Liner Memory-Layout
+    aber semantisch andere Bedeutung.
+    """
+    empty = {f"line{i}": "" for i in range(1, 7)}
+    if not transcript or not transcript.strip():
+        return empty
+    prompt = get_prompt("atmist") + transcript.strip() + "\n\nAntwort:"
+    result = _call_ollama(prompt, "ATMIST")
+    if not isinstance(result, dict):
+        return empty
+    out = {}
+    for i in range(1, 7):
+        key = f"line{i}"
+        val = result.get(key, "")
+        out[key] = str(val).strip() if val else ""
     return out
 
 
@@ -3736,6 +3881,7 @@ _DEFAULT_PROMPTS = {
     "defense_preamble": PROMPT_DEFENSE_PREAMBLE,
     "boundary": BOUNDARY_PROMPT,
     "nine_liner": NINE_LINER_PROMPT,
+    "atmist": ATMIST_PROMPT,
     "enrichment": _ENRICHMENT_PROMPT_TEMPLATE,
 }
 
@@ -3774,6 +3920,18 @@ _PROMPT_METADATA = {
         "placeholders": [],
         "rows": 16,
     },
+    "atmist": {
+        "label": "ATMIST Patientenuebergabe",
+        "description": "Sechs-zeiliges Uebergabe-Schema A-T-M-I-S-T: "
+                       "Angaben/Alter, Time, Mechanismus, Injury, Signs, "
+                       "Treatment. Freitext pro Zeile (kein Code-Mapping "
+                       "wie beim 9-Liner). "
+                       "WICHTIG: Der Prompt MUSS mit 'Transkript:' enden — "
+                       "danach wird zur Laufzeit das Diktat angehaengt "
+                       "plus 'Antwort:' am Ende.",
+        "placeholders": [],
+        "rows": 16,
+    },
     "enrichment": {
         "label": "Patient-Feld-Extraktion",
         "description": "Extrahiert Name, Dienstgrad, Verletzungen, Vitals, "
@@ -3793,7 +3951,12 @@ _NINE_LINER_KEYWORDS = (
     "zeile eins", "zeile zwei", "zeile drei", "zeile vier",
     "zeile fuenf", "zeile fünf", "zeile sechs", "zeile sieben",
     "zeile acht", "zeile neun",
+    "linie eins", "linie zwei", "linie drei", "linie vier",
+    "linie fuenf", "linie fünf", "linie sechs", "linie sieben",
+    "linie acht", "linie neun",
+    "naechste zeile", "nächste zeile", "naechste linie", "nächste linie",
     "mgrs", "landezone", "funkfrequenz", "rufzeichen",
+    "pickup site", "pickup zone",
     "dringlichkeit", "liegend", "gehfaehig", "gehfähig",
     "kontamination", "landeplatz",
 )
@@ -3808,6 +3971,31 @@ def looks_like_nine_liner(transcript: str) -> bool:
         return False
     low = transcript.lower()
     hits = sum(1 for kw in _NINE_LINER_KEYWORDS if kw in low)
+    return hits >= 2
+
+
+# ATMIST-Keywords fuer Auto-Detect. Eindeutige Marker sind die A/T/M/I/S/T-
+# Zeilen-Einleitungen, plus typische Treatment- und Vital-Phrasen die in
+# einer Patient-Uebergabe vorkommen. Heuristik: 2+ Treffer.
+_ATMIST_KEYWORDS = (
+    "atmist", "ad mist", "at mist",
+    "a, angaben", "a angaben", "angaben:",
+    "t, time", "t time", "time:",
+    "m, mechanismus", "mechanismus:",
+    "i, verletzungen", "i, injury", "verletzungen:", "injury:",
+    "s, signs", "signs:",
+    "t, treatment", "treatment:",
+    "uebergabezeit", "übergabezeit", "verletzungszeit",
+    "tourniquet", "druckverband",
+)
+
+
+def looks_like_atmist(transcript: str) -> bool:
+    """Heuristischer Auto-Detect ob ein Transkript eine ATMIST-Uebergabe ist."""
+    if not transcript:
+        return False
+    low = transcript.lower()
+    hits = sum(1 for kw in _ATMIST_KEYWORDS if kw in low)
     return hits >= 2
 
 
@@ -3957,9 +4145,10 @@ async def analyze_pending_transcript(body: dict):
 
     pt["analyzing"] = True
     record_time = pt.get("time") or datetime.now().strftime("%H:%M:%S")
-    # 9-Liner Flag vom pending_transcript durchschleifen. body.force_nine_liner
+    # Template-Flags vom pending_transcript durchschleifen. body.force_*
     # erlaubt manuellen UI-Override ohne dass der Flag im pending stehen muss.
     is_nine_liner = bool(pt.get("is_nine_liner")) or bool((body or {}).get("force_nine_liner"))
+    is_atmist = bool(pt.get("is_atmist")) or bool((body or {}).get("force_atmist"))
     await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
     session_started = time.monotonic()
     # B3 Auto-Recovery: Wenn die Segmentierung mit einer Exception crashed
@@ -3969,7 +4158,9 @@ async def analyze_pending_transcript(body: dict):
     # Error-String, und broadcasten ein analysis_failed-Event damit das
     # Frontend einen Retry-Button anzeigen kann statt eines toten Spinners.
     try:
-        created = await _segment_and_create_patients(full_text, record_time, is_nine_liner=is_nine_liner)
+        created = await _segment_and_create_patients(
+            full_text, record_time,
+            is_nine_liner=is_nine_liner, is_atmist=is_atmist)
     except Exception as e:
         pt["analyzing"] = False
         pt["analyzed"] = False
@@ -4195,6 +4386,38 @@ async def test_segment(body: dict):
         "input_chars": len(transcript),
     }
     return result
+
+
+@app.post("/api/test/atmist")
+async def test_atmist(body: dict):
+    """Proof-of-Concept-Endpoint: POST {"transcript": "..."} →
+    Gemma extrahiert die 6 ATMIST-Zeilen. GPU-Swap analog test/nine-liner.
+    """
+    transcript = body.get("transcript", "")
+    if not transcript:
+        return {"error": "no transcript provided"}
+    swap_active = getattr(state, "swap_mode", "coexist") != "coexist"
+    if swap_active:
+        await _enter_analysis_mode(reason="test_atmist")
+    import time as _t
+    t0 = _t.monotonic()
+    try:
+        atmist = extract_atmist(transcript)
+    finally:
+        if swap_active:
+            asyncio.create_task(_enter_recording_mode())
+    elapsed = _t.monotonic() - t0
+    filled = sum(1 for v in atmist.values() if v)
+    return {
+        "atmist": atmist,
+        "filled_count": filled,
+        "auto_detected_as_atmist": looks_like_atmist(transcript),
+        "_meta": {
+            "elapsed_s": round(elapsed, 2),
+            "model": OLLAMA_MODEL,
+            "input_chars": len(transcript),
+        },
+    }
 
 
 @app.post("/api/test/nine-liner")
@@ -5936,6 +6159,9 @@ async def state_soft_reset(body: dict | None = None):
     if state.next_recording_is_nine_liner:
         state.next_recording_is_nine_liner = False
         cleared.append("nine_liner_mode")
+    if state.next_recording_is_atmist:
+        state.next_recording_is_atmist = False
+        cleared.append("atmist_mode")
     if state.recording:
         state.recording = False
         cleared.append("recording_flag")
@@ -7013,12 +7239,17 @@ async def stop_recording():
     # landet ausschliesslich in pending_transcripts und wird vom User
     # explizit analysiert oder verworfen.
     import uuid
-    # 9-Liner-Flag vom Voice-Command-Vorlauf ans pending_transcript
+    # Template-Flags vom Voice-Command-Vorlauf ans pending_transcript
     # transferieren, dann State-Flag zuruecksetzen. Wenn der User vorher
-    # "neun liner" gesagt hat, wird diese Aufnahme als MEDEVAC-9-Liner
-    # statt als Multi-Patient-Diktat analysiert.
+    # "neun liner" oder "atmist" gesagt hat, wird diese Aufnahme als
+    # MEDEVAC-9-Liner bzw. ATMIST-Uebergabe analysiert statt als
+    # Multi-Patient-Diktat. Mutual-exclusive: ATMIST hat Vorrang wenn
+    # beide gesetzt waren (zuletzt gewinnt aber, weil der Voice-Handler
+    # den jeweils anderen Flag zurueck-setzt).
     is_nine_liner = bool(state.next_recording_is_nine_liner)
+    is_atmist = bool(state.next_recording_is_atmist)
     state.next_recording_is_nine_liner = False
+    state.next_recording_is_atmist = False
     pending_entry = {
         "id": uuid.uuid4().hex[:10],
         "full_text": full_text,
@@ -7030,6 +7261,7 @@ async def stop_recording():
         "analyzing": False,
         "created_patient_ids": [],
         "is_nine_liner": is_nine_liner,
+        "is_atmist": is_atmist,
     }
     state.pending_transcripts.append(pending_entry)
 
@@ -7055,29 +7287,75 @@ async def stop_recording():
     return {"status": "ok", "result": record_entry}
 
 
-async def _segment_and_create_patients(full_text: str, record_time: str, is_nine_liner: bool = False) -> list[str]:
-    """Ruft Qwen für die Segmentierung auf und legt pro erkanntem Patient
+async def _segment_and_create_patients(full_text: str, record_time: str,
+                                        is_nine_liner: bool = False,
+                                        is_atmist: bool = False) -> list[str]:
+    """Ruft das LLM für die Segmentierung auf und legt pro erkanntem Patient
     einen Draft-Record an. Gibt die Liste der erzeugten patient_ids zurück.
 
-    Zwei Pfade:
-      A) **Standard-Patient-Diktat** (is_nine_liner=False und Auto-Detect
-         negativ): Segmentierung + pro Segment Enrichment wie bisher.
-      B) **9-Liner MEDEVAC** (is_nine_liner=True oder Auto-Detect positiv):
-         Kein Segmenter — extract_nine_liner() baut ein Dict line1..line9,
+    Drei Pfade:
+      A) **Standard-Patient-Diktat** (Default): Segmentierung + pro Segment
+         Enrichment wie bisher.
+      B) **9-Liner MEDEVAC** (is_nine_liner=True oder Auto-Detect): Kein
+         Segmenter — extract_nine_liner() baut Dict line1..line9 + remarks,
          daraus wird EIN Patient mit template_type="9liner" erzeugt.
-
-    Ablauf Standard:
-      1. Segmentierung (Qwen mit BOUNDARY_PROMPT)
-      2. Pro Segment: create_patient_record + Feld-Extraktion
-      3. WebSocket-Broadcast patient_registered pro Patient
-      4. Der ZULETZT erzeugte Patient wird active_patient
+      C) **ATMIST Patientenuebergabe** (is_atmist=True oder Auto-Detect):
+         Analog 9-Liner, aber extract_atmist() baut Dict line1..line6
+         (A/T/M/I/S/T), Patient-Record bekommt template_type="atmist".
     """
     loop = asyncio.get_event_loop()
 
-    # 9-Liner-Auto-Detect falls nicht explizit geflaggt
-    if not is_nine_liner and looks_like_nine_liner(full_text):
-        print(f"[SEGMENT] 9-Liner Auto-Detect angeschlagen — schalte um auf 9-Liner-Pfad", flush=True)
+    # ATMIST-Auto-Detect (vor 9-Liner gepruft, da ATMIST-Marker spezifischer)
+    if not is_atmist and not is_nine_liner and looks_like_atmist(full_text):
+        print(f"[SEGMENT] ATMIST Auto-Detect angeschlagen — schalte um", flush=True)
+        is_atmist = True
+
+    # 9-Liner-Auto-Detect (nur wenn nicht ATMIST)
+    if not is_atmist and not is_nine_liner and looks_like_nine_liner(full_text):
+        print(f"[SEGMENT] 9-Liner Auto-Detect angeschlagen — schalte um", flush=True)
         is_nine_liner = True
+
+    # Pfad C: ATMIST
+    if is_atmist:
+        print(f"[ATMIST] Extrahiere Felder aus {len(full_text)} chars ...", flush=True)
+        oled_menu.show_status("ATMIST", "Extrahiere Felder", 30)
+        try:
+            atmist = await loop.run_in_executor(None, extract_atmist, full_text)
+        except Exception as e:
+            print(f"[ATMIST] Fehler: {e}", flush=True)
+            atmist = {f"line{i}": "" for i in range(1, 7)}
+        cfg = load_config()
+        patient = create_patient_record(
+            name="ATMIST Uebergabe",
+            triage="",
+            device_id=cfg.get("device_id", "jetson-01"),
+            created_by=cfg.get("default_medic", ""),
+        )
+        patient["unit"] = cfg.get("unit_name", "")
+        patient["template_type"] = "atmist"
+        patient["atmist"] = atmist
+        patient["analyzed"] = True
+        pid = patient["patient_id"]
+        patient["transcripts"].append({
+            "time": record_time,
+            "text": full_text,
+            "speaker": "sanitaeter",
+            "role_level": patient["current_role"],
+        })
+        filled = sum(1 for v in atmist.values() if v)
+        patient["timeline"].append({
+            "time": datetime.now().isoformat(),
+            "role": patient["current_role"],
+            "event": "atmist_extracted",
+            "details": f"{filled}/6 Zeilen erkannt",
+        })
+        state.patients[pid] = patient
+        state.rfid_map[patient["rfid_tag_id"]] = pid
+        state.active_patient = pid
+        await broadcast({"type": "patient_registered", "patient": patient})
+        oled_menu.show_status("ATMIST", f"{filled}/6 Zeilen erkannt")
+        tts.speak(f"ATMIST angelegt, {filled} von 6 Zeilen erkannt")
+        return [pid]
 
     # Pfad B: 9-Liner
     if is_nine_liner:

@@ -567,7 +567,52 @@
                     Aufnahme beenden."
                 </div>
 
-                <h2>4.5 Aufnahme stoppen</h2>
+                <h2>4.5 ATMIST-Modus — Patientenübergabe in 6 Buchstaben</h2>
+                <p>
+                    ATMIST ist das militär-medizinische Übergabe-Schema mit
+                    sechs Zeilen, jede beginnt mit einem Buchstaben:
+                    <strong>A</strong>ngaben, <strong>T</strong>ime,
+                    <strong>M</strong>echanismus, <strong>I</strong>njury,
+                    <strong>S</strong>igns, <strong>T</strong>reatment.
+                    Wird vom Sanitäter beim Übergabegespräch an den Arzt
+                    diktiert.
+                </p>
+
+                <h3>Aktivieren</h3>
+                <ol>
+                    <li><strong>Voice:</strong> <code>"ATMIST"</code> oder <code>"ATMIST starten"</code></li>
+                    <li><strong>Direkt-Diktat:</strong> Aufnahme starten und mit "A, Angaben:" einleiten — Auto-Detect schaltet auf ATMIST-Pfad</li>
+                </ol>
+
+                <h3>Was sage ich? Die 6 Zeilen</h3>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:8%">Letter</th><th style="width:32%">Inhalt</th><th>Beispiel-Wortlaut</th></tr></thead>
+                    <tbody>
+                        <tr><td><strong>A</strong></td><td>Angaben / Alter</td><td>"A, Angaben: Schmidt, männlich, 29 Jahre, ungefähr 80 kg"</td></tr>
+                        <tr><td><strong>T</strong></td><td>Time (Zeitpunkt)</td><td>"T, Time: Verletzungszeit 1017 Zulu, Übergabe 1020 Zulu, stabilisiert seit Tourniquet"</td></tr>
+                        <tr><td><strong>M</strong></td><td>Mechanismus</td><td>"M, Mechanismus: Explosion mit Splitterwirkung, Verdacht auf chemische Kontamination"</td></tr>
+                        <tr><td><strong>I</strong></td><td>Injury / Verletzungen</td><td>"I, Verletzungen: Penetrierende Verletzung re. Oberschenkel, Blutung kontrolliert"</td></tr>
+                        <tr><td><strong>S</strong></td><td>Signs (Vitals)</td><td>"S, Signs: wach, ansprechbar, AF 24, P 120, BD 100/70, SpO2 94%, Schmerz 7/10"</td></tr>
+                        <tr><td><strong>T</strong></td><td>Treatment (Maßnahmen)</td><td>"T, Treatment: Tourniquet re. Oberschenkel 1012 Zulu, Druckverband, Wärmeerhalt"</td></tr>
+                    </tbody>
+                </table>
+                <p style="background:#1a1612;border-left:3px solid var(--mil-amber,#d4871a);padding:10px 12px;font-size:0.95em">
+                    <strong>Achtung:</strong> "T" kommt zweimal vor — als 2. Zeile (Time) und als 6. Zeile (Treatment). Reihenfolge muss strikt eingehalten werden, sonst weiß die KI nicht welches T gemeint ist.
+                </p>
+
+                <h3>Beispiel-Diktat (Schmidt, Explosionsverletzung)</h3>
+                <div class="hb-note" style="background:#0f1a14;border-left:3px solid var(--mil-tan,#c8b878);font-style:italic;line-height:1.7">
+                    "ATMIST starten.<br>
+                    A, Angaben: Patient Schmidt, männlich, neunundzwanzig Jahre, ungefähr achtzig Kilogramm.<br>
+                    T, Time: Verletzungszeit eins null eins sieben Zulu. Übergabezeit eins null zwei null Zulu. Zustand stabilisiert seit Tourniquet.<br>
+                    M, Mechanismus: Explosion mit Splitterwirkung in unmittelbarer Nähe, Verdacht auf chemische Kontamination.<br>
+                    I, Verletzungen: Penetrierende Verletzung rechter Oberschenkel, Blutung initial stark, aktuell kontrolliert.<br>
+                    S, Signs: Patient wach, Atemweg frei, Atemfrequenz vierundzwanzig, Puls einhundertzwanzig, Blutdruck einhundert zu siebzig, Sauerstoffsättigung vierundneunzig Prozent, Schmerz sieben von zehn.<br>
+                    T, Treatment: Tourniquet rechter Oberschenkel um eins null eins zwei Zulu angelegt, Druckverband, Wärmeerhalt.<br>
+                    Aufnahme beenden."
+                </div>
+
+                <h2>4.6 Aufnahme stoppen</h2>
                 <p>Spiegelsymmetrisch zum Start — drei gleichwertige Wege:</p>
                 <ul>
                     <li><strong>Voice:</strong> <code>"Patient fertig"</code> oder <code>"Aufnahme stoppen"</code></li>
@@ -581,7 +626,7 @@
                     auf dem Dashboard.
                 </p>
 
-                <h2>4.6 Transkript-Review — bevor die KI ranschickt</h2>
+                <h2>4.7 Transkript-Review — bevor die KI ranschickt</h2>
                 <p>
                     Die UNANALYSIERT-Karte zeigt das rohe Whisper-Transkript. Aufgabe des
                     Sanitäters:
@@ -596,7 +641,7 @@
                     sie alle in einem Rutsch.
                 </p>
 
-                <h2>4.7 KI-Analyse triggern</h2>
+                <h2>4.8 KI-Analyse triggern</h2>
                 <p>Die Analyse macht zwei Dinge gleichzeitig:</p>
                 <ol>
                     <li><strong>Segmentierung:</strong> Trennt Multi-Patient-Diktate an Satzgrenzen + Trigger-Phrasen in einzelne Patienten</li>
@@ -614,7 +659,7 @@
                     siehst du sie nacheinander aufploppen. System ist danach wieder frei.
                 </p>
 
-                <h2>4.8 Patientenkarten verifizieren</h2>
+                <h2>4.9 Patientenkarten verifizieren</h2>
                 <p>
                     Jeder analysierte Patient bekommt eine eigene Karte mit Status
                     <strong>ANALYSIERT</strong>. Empfohlene Sicht-Prüfung pro Patient:
@@ -630,7 +675,7 @@
                     Halluzinationen.
                 </p>
 
-                <h2>4.9 RFID-Karte schreiben (optional, vor dem Transport)</h2>
+                <h2>4.10 RFID-Karte schreiben (optional, vor dem Transport)</h2>
                 <p>
                     Jeder Patient bekommt eine MIFARE-Classic-Karte mit seiner Patient-ID
                     und den Kerndaten. Die Karte begleitet den Patienten entlang der
@@ -661,7 +706,7 @@
                 </p>
                 <p>Volle Details siehe <a href="#hb-rfid">Sektion 6 — RFID-Karten</a>.</p>
 
-                <h2>4.10 An Leitstelle melden — Übergabe</h2>
+                <h2>4.11 An Leitstelle melden — Übergabe</h2>
                 <p>
                     Sobald alle Patienten analysiert (und ggf. auf Karten geschrieben) sind,
                     werden sie in einem Rutsch an die Rettungsstation übermittelt.
@@ -683,7 +728,7 @@
                     keine Doppelübertragung dank Idempotenz-Check über Patient-ID.
                 </p>
 
-                <h2>4.11 Was sieht die Rettungsstation?</h2>
+                <h2>4.12 Was sieht die Rettungsstation?</h2>
                 <p>
                     Auf dem Surface in der Leitstelle erscheint sofort (WebSocket-Push):
                 </p>
