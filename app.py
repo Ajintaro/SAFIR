@@ -5819,14 +5819,29 @@ async def rfid_ntag_diagnose():
         import time as _t
         result: dict = {"steps": []}
         with _rfid._spi_lock:
-            # Anti-Coll
-            ok, _ = _rfid._rc522_request(_rfid._PICC_REQIDL)
-            if not ok:
-                result["error"] = "Keine Karte gefunden"
-                return result
-            uid_full, sak = _rfid._rc522_anticoll_full()
+            # Mehrere Versuche mit WUPA — die Karte ist evtl. nach
+            # Poll-Loop bereits im Active/Halt-State. WUPA spricht
+            # alle Karten im Feld an, REQA nur die im IDLE.
+            uid_full = None
+            sak = None
+            attempts = []
+            for attempt in range(8):
+                # Erst WUPA, dann REQA als Fallback
+                cmd_used = "WUPA" if attempt < 4 else "REQA"
+                cmd = _rfid._PICC_WUPA if attempt < 4 else _rfid._PICC_REQIDL
+                ok, atqa = _rfid._rc522_request(cmd)
+                if ok:
+                    u, s = _rfid._rc522_anticoll_full()
+                    if u is not None and s is not None:
+                        uid_full = u
+                        sak = s
+                        break
+                attempts.append({"attempt": attempt + 1, "cmd": cmd_used,
+                                 "request_ok": ok, "atqa": f"0x{atqa:04X}"})
+                _t.sleep(0.1)
+            result["wakeup_attempts"] = attempts
             if uid_full is None:
-                result["error"] = "Anti-Coll fehlgeschlagen"
+                result["error"] = "Karte nicht erreichbar (8 Versuche, REQA+WUPA)"
                 return result
             result["uid"] = uid_full.hex().upper()
             result["uid_len"] = len(uid_full)
