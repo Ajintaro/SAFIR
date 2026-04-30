@@ -538,8 +538,13 @@ def _ntag_write_page(page: int, data4: bytes) -> tuple[bool, str]:
     """Schreibt 4 Byte in eine einzelne NTAG-Page.
 
     Gibt (True, "") bei Erfolg zurueck. Schutz: Page < 4 darf NICHT
-    geschrieben werden (UID/Lock/CC sind ab Werk read-only oder
-    werden durch Lock-Bits irreversibel gemacht).
+    geschrieben werden (UID/Lock/CC sind ab Werk read-only).
+
+    Diagnose-Erkenntnis 2026-04-30: Manche NTAG-Karten antworten beim
+    ersten Write nach Anti-Coll mit komischen Bit-Counts (1 statt 4)
+    obwohl der EEPROM-Write tatsaechlich erfolgreich war. Wir sind
+    daher entspannt mit dem ACK-Check und vertrauen auf den Verify-
+    Read im Caller (_ntag_write_block16).
     """
     import time as _t
     if len(data4) != 4:
@@ -547,31 +552,41 @@ def _ntag_write_page(page: int, data4: bytes) -> tuple[bool, str]:
     if page < _NTAG_USER_MEM_START:
         return (False, f"Page {page} ist Hersteller-Bereich — Write blockiert")
 
-    # Phase 1: WRITE-Befehl + Page + 4 Datenbytes + CRC zusammen senden
-    # NTAG WRITE = 1-Phase Protokoll (anders als MIFARE 2-Phase).
+    # NTAG WRITE = 1-Phase: A2 + Page + 4 Daten-Bytes + CRC = 8 Bytes total
     buf = [_NTAG_WRITE, page & 0xFF] + list(data4)
     buf += _rc522_calc_crc(buf)
     ok, resp, bits = _rc522_to_card(_PCD_TRANSCEIVE, buf)
+
+    # NTAG Write-Cycle: ~5-10 ms bis EEPROM committet ist. WICHTIG vor
+    # dem Verify-Read im Caller — manche Karten antworten erst nach
+    # dem EEPROM-Brand mit ihrem ACK/NACK.
+    _t.sleep(0.012)
+
     if not ok:
         return (False, f"NTAG write to_card failed (err=0x{rc522_read(0x06):02X})")
-    # NTAG-Antwort: 4-Bit ACK (0x0A) bei Erfolg, 4-Bit NACK (0x00..0x09) bei Fehler
-    if bits != 4:
-        return (False, f"NTAG write wrong bit count {bits}")
-    if (resp[0] & 0x0F) != 0x0A:
-        return (False, f"NTAG write NACK 0x{resp[0]:02X}")
-
-    # NTAG Write-Cycle: ~5 ms bis EEPROM committet ist.
-    _t.sleep(0.006)
-    return (True, "")
+    # Klassischer ACK-Check (4-Bit ACK = 0x0A). Wenn das passt -> sicher OK.
+    if bits == 4 and (resp[0] & 0x0F) == 0x0A:
+        return (True, "")
+    # Sonst: Karten-Antwort hat unerwartetes Format. Statt sofort
+    # Fehler zu melden geben wir dem Caller die Chance via Verify-Read
+    # zu pruefen ob der Write trotzdem geklappt hat. Caller _ntag_write_block16
+    # macht den Verify ohnehin — bei Match wird's als Erfolg gewertet.
+    resp_hex = f"{resp[0]:02X}" if resp else "??"
+    detail = f"unklare ACK-Antwort (bits={bits}, resp={resp_hex})"
+    return (True, f"DUBIOUS:{detail}")  # True = "weiterversuchen, aber Verify pflicht"
 
 
 def _ntag_write_block16(start_page: int, data16: bytes) -> tuple[bool, str]:
     """Schreibt 16 Byte = 4 NTAG-Pages konsekutiv.
 
-    Wird vom NTAG-Patient-Schreibe-Pfad verwendet um das gleiche Layout
-    wie MIFARE Classic abzubilden (16-Byte-Blocks → 4-Page-Gruppen).
-    Bricht bei erstem Fehler ab.
+    Pages werden einzeln geschrieben + nach jeder Page Verify-Read
+    durchgefuehrt. So ist garantiert dass Daten WIRKLICH auf der Karte
+    sind — auch wenn die ACK-Antwort der Karte unerwartetes Format hatte
+    (DUBIOUS-Fall, siehe _ntag_write_page).
+
+    Bricht bei erstem echten Verify-Fehler ab (Page nicht beschrieben).
     """
+    import time as _t
     if len(data16) != 16:
         raise ValueError("data16 muss genau 16 Bytes haben")
     for i in range(4):
@@ -580,6 +595,20 @@ def _ntag_write_block16(start_page: int, data16: bytes) -> tuple[bool, str]:
         ok, err = _ntag_write_page(page, chunk)
         if not ok:
             return (False, f"NTAG Page {page}: {err}")
+        if err and err.startswith("DUBIOUS:"):
+            log.info(f"NTAG-Write Page {page}: ACK unklar ({err}) — verifiziere via Read")
+        # Per-Page Verify-Read. Read holt 4 Pages am Stueck — wir nutzen
+        # nur die erste Page (Index 0..3) zum Vergleich.
+        verify_block = _ntag_read_pages(page)
+        if verify_block is None:
+            return (False, f"NTAG Page {page}: Verify-Read fehlgeschlagen")
+        verify_page = verify_block[:4]
+        if verify_page != chunk:
+            return (False,
+                    f"NTAG Page {page}: Verify-Mismatch — "
+                    f"erwartet {chunk.hex()}, gelesen {verify_page.hex()}")
+        # Zwischen Pages kurz warten (EEPROM-Write-Cycle puffer).
+        _t.sleep(0.005)
     return (True, "")
 
 
