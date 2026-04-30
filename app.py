@@ -1701,6 +1701,24 @@ async def process_vosk_commands():
                     state.next_recording_is_nine_liner = False
                     tts.speak("ATMIST Modus aktiv. Aufnahme starten.")
                     oled_menu.show_status("ATMIST", "Modus aktiv", 0)
+                elif action == "template_mode_off":
+                    # 9-Liner / ATMIST Modus deaktivieren -> naechste
+                    # Aufnahme wird als normales Multi-Patient-Diktat
+                    # analysiert. User-Wunsch 2026-04-30 weil sonst der
+                    # Modus haengen bleibt wenn man's versehentlich
+                    # aktiviert hat oder doch lieber Freitext diktieren
+                    # moechte.
+                    was_nine = state.next_recording_is_nine_liner
+                    was_atmist = state.next_recording_is_atmist
+                    state.next_recording_is_nine_liner = False
+                    state.next_recording_is_atmist = False
+                    if was_nine or was_atmist:
+                        which = "Neun Liner" if was_nine else "ATMIST"
+                        tts.speak(f"{which} Modus deaktiviert. Naechste Aufnahme normal.")
+                        oled_menu.show_status("MODUS AUS", "Diktat normal", 0)
+                    else:
+                        tts.speak("Kein Template-Modus aktiv")
+                        oled_menu.show_status("MODUS", "Bereits aus", 0)
             except Exception as e:
                 print(f"Vosk Befehl Fehler: {e}")
                 tts.announce_error()
