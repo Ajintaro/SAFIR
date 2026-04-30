@@ -7057,20 +7057,33 @@
                 if (status) { status.textContent = res.error; status.style.color = 'var(--cgi-red)'; }
                 return;
             }
-            // State aktualisieren — patients und patientTranscripts
-            if (patients[pid] && Array.isArray(patients[pid].transcripts) && patients[pid].transcripts[idx]) {
-                patients[pid].transcripts[idx].text = newText;
-                patients[pid].transcripts[idx].edited = true;
+            // KOMPLETT-Sync: Backend-Response enthaelt das aktualisierte
+            // Patient-Object inkl. audit_log und transcripts[idx].edited.
+            // Wir nutzen das direkt — kein Warten auf WS-Broadcast.
+            if (res && res.patient && res.patient.patient_id) {
+                patients[res.patient.patient_id] = res.patient;
+                if (activePatient && activePatient.patient_id === res.patient.patient_id) {
+                    activePatient = res.patient;
+                }
+            } else {
+                // Fallback wenn das Backend kein patient mitgeschickt hat:
+                // lokal patchen.
+                if (patients[pid] && Array.isArray(patients[pid].transcripts) && patients[pid].transcripts[idx]) {
+                    patients[pid].transcripts[idx].text = newText;
+                    patients[pid].transcripts[idx].edited = true;
+                }
             }
+            // patientTranscripts (live-Cache) muss auch aktualisiert sein,
+            // sonst wird der ALTE Text aus dem Cache gerendert (priorisiert
+            // ueber p.transcripts).
             if (patientTranscripts[pid] && patientTranscripts[pid][idx]) {
                 patientTranscripts[pid][idx].text = newText;
                 patientTranscripts[pid][idx].edited = true;
             }
             if (status) { status.textContent = 'Gespeichert'; status.style.color = 'var(--success)'; }
-            // Editor weg, Patient-Liste neu rendern damit edited-Badge erscheint
-            setTimeout(() => {
-                if (typeof renderPatientCards === 'function') renderPatientCards();
-            }, 400);
+            // SOFORT rendern statt 400ms warten — sonst zeigt die UI
+            // einen Moment den alten Text ohne edited-Badge.
+            if (typeof renderPatientCards === 'function') renderPatientCards();
         } catch (e) {
             if (status) { status.textContent = 'Fehler: ' + e.message; status.style.color = 'var(--cgi-red)'; }
         }
