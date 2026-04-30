@@ -7401,13 +7401,22 @@
             if (p.analyzed) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(93,173,226,0.15);color:#5DADE2;border-radius:3px;margin-right:3px">analysiert</span>');
             if (p.synced) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(46,204,113,0.15);color:#2ECC71;border-radius:3px;margin-right:3px">gemeldet</span>');
             if (!p.analyzed && !p.synced) statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(200,184,120,0.15);color:var(--mil-tan,#c8b878);border-radius:3px;margin-right:3px">Entwurf</span>');
+            // Template-Type-Badge (9-Liner / ATMIST) damit es in der Liste
+            // klar als Dokument bzw. Uebergabe erkennbar ist.
+            if (p.template_type === '9liner') statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(93,173,226,0.2);color:#5DADE2;border-radius:3px;margin-right:3px" title="9-Liner MEDEVAC-Dokument (kein klassischer Patient)">&#9992; 9-Liner</span>');
+            if (p.template_type === 'atmist') statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(200,184,120,0.2);color:#c8b878;border-radius:3px;margin-right:3px" title="ATMIST-Patientenuebergabe">&#127973; ATMIST</span>');
 
             const rfidShort = (p.rfid_tag_id || '').slice(0, 10) || '—';
+            // Display-Name: 9-Liner bekommen "MEDEVAC-Anforderung",
+            // ATMIST den extrahierten Namen (oder Fallback)
+            const displayName = p.template_type === '9liner'
+                ? '<em style="color:var(--info,#5DADE2)">&#9992; MEDEVAC-Anforderung (9-Liner)</em>'
+                : (p.name || 'Unbekannt') + (p.rank ? ' <span style="color:var(--text-dim);font-size:var(--fs-body-sm)">('+p.rank+')</span>' : '');
             return `
                 <tr id="admin-row-${p.patient_id}" data-pid="${p.patient_id}" style="border-bottom:1px solid var(--border);transition:background-color 0.3s">
                     <td style="padding:7px 10px;font-family:monospace;color:var(--text-dim)">${fmtTime(p.timestamp_created)}</td>
                     <td style="padding:7px 10px;font-family:monospace;font-size:var(--fs-body-sm)">${p.patient_id || ''}</td>
-                    <td style="padding:7px 10px">${p.name || 'Unbekannt'}${p.rank ? ' <span style="color:var(--text-dim);font-size:var(--fs-body-sm)">('+p.rank+')</span>' : ''}</td>
+                    <td style="padding:7px 10px">${displayName}</td>
                     <td style="padding:7px 10px"><span style="display:inline-block;min-width:26px;padding:2px 6px;background:${triageColor};color:#fff;font-weight:700;text-align:center;border-radius:3px;font-size:var(--fs-body-sm)">${p.triage || '--'}</span></td>
                     <td style="padding:7px 10px">${statusBadges.join('')}</td>
                     <td style="padding:7px 10px;font-family:monospace;color:var(--text-dim);font-size:var(--fs-body-sm)">${rfidShort}</td>

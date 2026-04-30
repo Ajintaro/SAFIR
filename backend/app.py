@@ -515,6 +515,10 @@ async def _do_ingest(body: dict) -> dict:
                     existing.setdefault("vitals", {})[k] = v
         if patient.get("nine_liner"):
             existing["nine_liner"] = patient["nine_liner"]
+        if patient.get("atmist"):
+            existing["atmist"] = patient["atmist"]
+        if patient.get("template_type"):
+            existing["template_type"] = patient["template_type"]
         existing["synced"] = True
         existing["current_role"] = patient.get("current_role", existing.get("current_role", "phase0"))
     else:

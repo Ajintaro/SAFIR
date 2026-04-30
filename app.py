@@ -3821,18 +3821,24 @@ SPRECHTEXT-KONVENTIONEN:
   "A, Angaben: ...", "T, Time: ...", "M, Mechanismus: ...",
   "I, Verletzungen: ...", "S, Signs: ...", "T, Treatment: ..."
 - Reihenfolge ist STRENG: A, T, M, I, S, T (genau diese Sequenz).
-- Achtung: "T" kommt 2x im Schema. Erstes T = Time (line2), zweites T = Treatment (line6).
-  Mappe basierend auf der POSITION (zweites Auftreten = Treatment).
+- Achtung: "T" kommt 2x im Schema. Erstes T = Time (line2),
+  zweites T = Treatment (line6). Mappe basierend auf der POSITION.
 
 KRITISCHE REGELN:
-1. Felder ohne Info im Transkript: leerer String "".
-2. Werte sind FREITEXT — keine Codes wie beim 9-Liner.
-3. Bei Vitalwerten Zahlen normalisieren: "vierundzwanzig" -> "24",
-   "einhundertzwanzig zu siebzig" -> "120/70".
-4. Zeitangaben uebernehmen wie gesprochen: "eins null eins sieben Zulu"
-   -> "1017 Zulu".
+1. WORTLAUT VOLLSTAENDIG UEBERNEHMEN — KEIN Komprimieren, KEIN
+   Abkuerzen, KEINE Zusammenfassungen. Schreib jeden Satz wie er
+   im Transkript steht (nur die Buchstaben-Einleitung 'A, Angaben:'
+   wegfiltern). Wenn der Sprecher 'neunundzwanzig Jahre, ungefaehr
+   achtzig Kilogramm' sagt, schreib es so — NICHT '29J, ~80kg'.
+2. Felder ohne Info im Transkript: leerer String "".
+3. Werte sind FREITEXT — keine Codes wie beim 9-Liner.
+4. Zahlwoerter zu Ziffern normalisieren ist OK fuer Vitals
+   ('vierundzwanzig' -> '24', 'einhundertzwanzig zu siebzig'
+   -> '120/70'), aber Wortlaut-Saetze drumherum erhalten.
+5. Zeitangaben: 'eins null eins sieben Zulu' kann 1017 Zulu werden,
+   aber den Satz drumherum (z.B. 'Verletzungszeit ...') erhalten.
 
-BEISPIEL-DIKTAT (Option A aus User-Doku):
+BEISPIEL-DIKTAT:
 "A, Angaben: Patient Schmidt, maennlich, neunundzwanzig Jahre, ungefaehr achtzig Kilogramm.
 T, Time: Verletzungszeit eins null eins sieben Zulu. Uebergabezeit eins null zwei null Zulu. Zustand seit Anlage des Tourniquets stabilisiert.
 M, Mechanismus: Explosion mit Splitterwirkung in unmittelbarer Naehe. Zusaetzlich Verdacht auf chemische Kontamination der Umgebung.
@@ -3840,8 +3846,8 @@ I, Verletzungen: Penetrierende Verletzung rechter Oberschenkel. Initial starke B
 S, Signs: Patient wach und ansprechbar. Atemfrequenz 24. Puls 120. Blutdruck 100/70. SpO2 94%. Schmerz 7/10.
 T, Treatment: Tourniquet rechter Oberschenkel angelegt um 1012 Zulu. Druckverband angelegt. Waermeerhalt eingeleitet."
 
-ERWARTETE ANTWORT:
-{"line1":"Schmidt, maennlich, 29J, ~80kg","line2":"Verletzung 1017Z, Uebergabe 1020Z, stabilisiert seit Tourniquet","line3":"Explosion mit Splitterwirkung, Verdacht chem. Kontamination","line4":"Penetrierende Verletzung re. Oberschenkel, Blutung kontrolliert","line5":"wach, ansprechbar, AF 24, P 120, BD 100/70, SpO2 94%, Schmerz 7/10","line6":"Tourniquet re. Oberschenkel 1012Z, Druckverband, Waermeerhalt"}
+ERWARTETE ANTWORT (vollstaendiger Wortlaut, KEINE Kuerzungen):
+{"line1":"Patient Schmidt, maennlich, 29 Jahre, ungefaehr 80 Kilogramm.","line2":"Verletzungszeit 1017 Zulu. Uebergabezeit 1020 Zulu. Zustand seit Anlage des Tourniquets stabilisiert.","line3":"Explosion mit Splitterwirkung in unmittelbarer Naehe. Zusaetzlich Verdacht auf chemische Kontamination der Umgebung.","line4":"Penetrierende Verletzung rechter Oberschenkel. Initial starke Blutung, aktuell kontrolliert.","line5":"Patient wach und ansprechbar. Atemfrequenz 24. Puls 120. Blutdruck 100/70. SpO2 94%. Schmerz 7/10.","line6":"Tourniquet rechter Oberschenkel angelegt um 1012 Zulu. Druckverband angelegt. Waermeerhalt eingeleitet."}
 
 Transkript:
 """
@@ -7611,8 +7617,29 @@ async def _segment_and_create_patients(full_text: str, record_time: str,
             print(f"[ATMIST] Fehler: {e}", flush=True)
             atmist = {f"line{i}": "" for i in range(1, 7)}
         cfg = load_config()
+        # Aus ATMIST-Daten Patient-Standardfelder extrahieren via
+        # Enrichment-Prompt. ATMIST-Inhalt enthaelt Name (Line A),
+        # Verletzungen (Line I), Vitals (Line S), Behandlungen (Line T).
+        # Damit ATMIST-Patienten in der normalen Patientenliste mit
+        # sinnvollem Namen, Vitals etc. erscheinen, nicht nur als
+        # "ATMIST Uebergabe".
+        enrich = {}
+        try:
+            atmist_text_for_enrich = (
+                "Patient: " + atmist.get("line1", "") + ". "
+                "Verletzungen: " + atmist.get("line4", "") + ". "
+                "Befunde: " + atmist.get("line5", "") + ". "
+                "Behandlung: " + atmist.get("line6", "") + "."
+            )
+            enrich = await loop.run_in_executor(
+                None, run_patient_enrichment, atmist_text_for_enrich
+            ) or {}
+        except Exception as e:
+            print(f"[ATMIST] Enrichment fehlgeschlagen: {e}", flush=True)
+
+        patient_name = enrich.get("name") or "ATMIST Uebergabe"
         patient = create_patient_record(
-            name="ATMIST Uebergabe",
+            name=patient_name,
             triage="",
             device_id=cfg.get("device_id", "jetson-01"),
             created_by=cfg.get("default_medic", ""),
@@ -7621,6 +7648,25 @@ async def _segment_and_create_patients(full_text: str, record_time: str,
         patient["template_type"] = "atmist"
         patient["atmist"] = atmist
         patient["analyzed"] = True
+        # Zusaetzliche Felder aus ATMIST-Enrichment (Name oben schon gesetzt)
+        if enrich.get("rank"):
+            patient["rank"] = enrich["rank"]
+        if enrich.get("injuries"):
+            patient["injuries"] = enrich["injuries"]
+        if enrich.get("mechanism"):
+            patient["mechanism"] = enrich["mechanism"]
+        if enrich.get("treatments"):
+            patient["treatments"] = enrich["treatments"]
+        if enrich.get("medications"):
+            patient["medications"] = enrich["medications"]
+        for src in ("pulse", "bp", "resp_rate", "spo2"):
+            if enrich.get(src):
+                patient.setdefault("vitals", {})[src] = enrich[src]
+        if enrich.get("warnings"):
+            patient["warnings"] = list(enrich["warnings"])
+        if enrich.get("confidences"):
+            patient["confidences"] = enrich["confidences"]
+
         pid = patient["patient_id"]
         patient["transcripts"].append({
             "time": record_time,
@@ -7633,14 +7679,14 @@ async def _segment_and_create_patients(full_text: str, record_time: str,
             "time": datetime.now().isoformat(),
             "role": patient["current_role"],
             "event": "atmist_extracted",
-            "details": f"{filled}/6 Zeilen erkannt",
+            "details": f"{filled}/6 Zeilen erkannt, Name={patient_name}",
         })
         state.patients[pid] = patient
         state.rfid_map[patient["rfid_tag_id"]] = pid
         state.active_patient = pid
         await broadcast({"type": "patient_registered", "patient": patient})
         oled_menu.show_status("ATMIST", f"{filled}/6 Zeilen erkannt")
-        tts.speak(f"ATMIST angelegt, {filled} von 6 Zeilen erkannt")
+        tts.speak(f"ATMIST Patient angelegt: {patient_name}, {filled} von 6 Zeilen")
         return [pid]
 
     # Pfad B: 9-Liner
