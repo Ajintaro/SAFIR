@@ -490,6 +490,25 @@ async def _do_ingest(body: dict) -> dict:
                 for item in new_items:
                     if item not in existing_list:
                         existing_list.append(item)
+        # Audit-Log mergen: Eintraege haben einen timestamp + change_type +
+        # operator_uid + field — Identitaet ueber alle 4 zusammen. Surface
+        # und Jetson koennen parallel editieren, beide wollen ihre Eintraege
+        # behalten. Append-only -> Konflikt unmoeglich, nur Duplikate.
+        new_audit = patient.get("audit_log", []) or []
+        if new_audit:
+            existing_audit = existing.setdefault("audit_log", [])
+            existing_keys = {(e.get("timestamp"), e.get("field"),
+                              e.get("operator_uid"), e.get("change_type"))
+                             for e in existing_audit}
+            for e in new_audit:
+                key = (e.get("timestamp"), e.get("field"),
+                       e.get("operator_uid"), e.get("change_type"))
+                if key not in existing_keys:
+                    existing_audit.append(e)
+                    existing_keys.add(key)
+            # Sortiert nach timestamp, sonst kommen Surface-Eintraege evtl.
+            # zwischen Jetson-Eintraegen unsortiert vor
+            existing_audit.sort(key=lambda x: x.get("timestamp", ""))
         if patient.get("vitals"):
             for k, v in patient["vitals"].items():
                 if v:
@@ -1474,17 +1493,95 @@ async def select_patient(patient_id: str):
     return {"status": "ok"}
 
 
+def _truncate_value(v, max_len: int = 200) -> str:
+    """Macht einen beliebigen Wert printbar fuer's Audit-Log."""
+    if v is None:
+        return ""
+    if isinstance(v, list):
+        s = ", ".join(str(x) for x in v) if v else "—"
+    elif isinstance(v, dict):
+        s = ", ".join(f"{k}={_truncate_value(val, 50)}" for k, val in v.items())
+    else:
+        s = str(v) if v != "" else "—"
+    if len(s) > max_len:
+        return s[:max_len].rstrip() + "…"
+    return s
+
+
+def _log_patient_change(patient: dict, field: str, old_value, new_value,
+                        change_type: str = "manual_edit") -> None:
+    """Audit-Eintrag in patient['audit_log'] anhaengen.
+
+    Append-only, no-op wenn old==new. Gleiche Implementierung wie auf
+    Jetson — Eintraege wandern via Patient-Sync zwischen den Geraeten.
+    """
+    if old_value == new_value:
+        return
+    op = getattr(state, "current_operator", None) or {}
+    cfg = _config or {}
+    entry = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "operator_uid": op.get("uid", "") if op else "",
+        "operator_name": (op.get("name", "") if op else "") or "Unbekannt",
+        "operator_role": op.get("role", "") if op else "",
+        "field": field,
+        "old_value": _truncate_value(old_value),
+        "new_value": _truncate_value(new_value),
+        "change_type": change_type,
+        "device": cfg.get("device_id", "surface-01"),
+    }
+    audit = patient.setdefault("audit_log", [])
+    audit.append(entry)
+    print(f"[AUDIT] {patient.get('patient_id', '?')} | {field}: "
+          f"{entry['old_value']!r} -> {entry['new_value']!r} "
+          f"by {entry['operator_name']} ({change_type})", flush=True)
+
+
 @app.post("/api/patient/{patient_id}/update")
 async def update_patient(patient_id: str, body: dict):
+    """Patient-Update mit Audit-Log.
+
+    body kann beliebige Felder direkt enthalten (Top-Level, alte
+    Konvention) oder unter "data" wrapped (neue Konvention vom Jetson-
+    Frontend). Beide werden akzeptiert. body.change_type kann
+    "voice_command" o.ae. setzen, sonst Default "manual_edit".
+    """
     if patient_id not in state.patients:
         return {"error": "Patient nicht gefunden"}
     patient = state.patients[patient_id]
-    for key, val in body.items():
-        if key != "patient_id" and val is not None:
-            patient[key] = val
+    change_type = body.get("change_type", "manual_edit")
+    # Daten-Wrapper unterstuetzen (Jetson-Konvention) + flache Top-Level
+    flat_data = body.get("data") if isinstance(body.get("data"), dict) else None
+    nested_vitals = body.get("vitals") if isinstance(body.get("vitals"), dict) else None
+    if flat_data is None:
+        # Top-Level-Felder als data behandeln (Surface-Original-API)
+        flat_data = {k: v for k, v in body.items()
+                     if k not in ("patient_id", "vitals", "data", "change_type") and v is not None}
+    for key, value in (flat_data or {}).items():
+        if key in patient:
+            old_value = patient[key]
+            if old_value != value:
+                patient[key] = value
+                _log_patient_change(patient, key, old_value, value, change_type)
+    if nested_vitals:
+        v_dict = patient.setdefault("vitals", {})
+        for vk, vv in nested_vitals.items():
+            old_v = v_dict.get(vk, "")
+            if old_v != vv:
+                v_dict[vk] = vv
+                _log_patient_change(patient, f"vitals.{vk}", old_v, vv, change_type)
     save_patient(patient)
     await broadcast({"type": "patient_update", "patient": patient})
     return {"status": "ok"}
+
+
+@app.get("/api/patient/{patient_id}/audit")
+async def get_patient_audit(patient_id: str):
+    """Audit-Log eines Patienten zurueckgeben (neueste zuerst)."""
+    if patient_id not in state.patients:
+        return {"error": "Patient nicht gefunden"}
+    audit = state.patients[patient_id].get("audit_log", []) or []
+    return {"patient_id": patient_id, "audit_log": list(reversed(audit))}
 
 
 # ---------------------------------------------------------------------------

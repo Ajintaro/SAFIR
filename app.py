@@ -4960,28 +4960,108 @@ async def select_patient(patient_id: str):
     return {"status": "ok"}
 
 
+# ---------------------------------------------------------------------------
+# Audit-Log: Wer hat wann was geaendert
+# ---------------------------------------------------------------------------
+# Append-only-Liste pro Patient. Wird bei manuellen Edits, Voice-Commands
+# und LLM-Extraktionen befuellt. Synchronisiert via TRANSFER_SCHEMA mit
+# dem Surface (audit_log ist Teil des Patient-Records, wird bei /api/ingest
+# automatisch mitgeschickt). KEINE Loeschfunktion — die Wahrheit ueber
+# wer was wann manipuliert hat ist forensisch wichtig.
+
+def _truncate_value(v, max_len: int = 200) -> str:
+    """Macht einen beliebigen Wert printbar fuer's Audit-Log.
+    Begrenzt Laenge weil Listen oder Notes lang werden koennen."""
+    if v is None:
+        return ""
+    if isinstance(v, list):
+        s = ", ".join(str(x) for x in v) if v else "—"
+    elif isinstance(v, dict):
+        s = ", ".join(f"{k}={_truncate_value(val, 50)}" for k, val in v.items())
+    else:
+        s = str(v) if v != "" else "—"
+    if len(s) > max_len:
+        return s[:max_len].rstrip() + "…"
+    return s
+
+
+def _log_patient_change(patient: dict, field: str, old_value, new_value,
+                        change_type: str = "manual_edit") -> None:
+    """Audit-Eintrag in patient['audit_log'] anhaengen.
+
+    Args:
+        patient: Patient-Dict (wird in-place modifiziert)
+        field: Punktnotation, z.B. "name", "vitals.pulse", "triage"
+        old_value: Wert vorher
+        new_value: Wert nachher
+        change_type: manual_edit | voice_command | llm_extraction |
+                     sync_inbound | rfid_scan | reset | system
+
+    No-op wenn old == new (verhindert Spam-Eintraege bei "Save" ohne
+    echter Aenderung).
+    """
+    # Skip wenn keine echte Aenderung
+    if old_value == new_value:
+        return
+    # current_operator ist {uid,label,name,role} oder None
+    op = getattr(state, "current_operator", None) or {}
+    cfg = _config or {}
+    entry = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "operator_uid": op.get("uid", "") if op else "",
+        "operator_name": (op.get("name", "") if op else "") or "Unbekannt",
+        "operator_role": op.get("role", "") if op else "",
+        "field": field,
+        "old_value": _truncate_value(old_value),
+        "new_value": _truncate_value(new_value),
+        "change_type": change_type,
+        "device": cfg.get("device_id", "jetson-01"),
+    }
+    audit = patient.setdefault("audit_log", [])
+    audit.append(entry)
+    # Logging fuer Forensik im journalctl
+    op_name = entry["operator_name"]
+    print(f"[AUDIT] {patient.get('patient_id', '?')} | {field}: "
+          f"{entry['old_value']!r} -> {entry['new_value']!r} "
+          f"by {op_name} ({change_type})", flush=True)
+
+
 @app.post("/api/patient/{patient_id}/update")
 async def update_patient(patient_id: str, body: dict):
     """Patientendaten aktualisieren (Felder mergen).
 
     Triage-Feld wird in Phase 0 (BAT) bewusst ignoriert — sie wird erst
     in der Rettungsstation (Role 1+) gesetzt. Siehe voice_set_triage()
-    für die Begründung."""
+    für die Begründung.
+
+    Audit-Log: Jede echte Aenderung (old != new) wird in
+    patient.audit_log protokolliert mit aktuellem Operator,
+    Timestamp und alt/neu-Werten. body.change_type kann "voice_command"
+    o.ae. mitliefern, sonst Default "manual_edit".
+    """
     if patient_id not in state.patients:
         return {"error": "Patient nicht gefunden"}
     patient = state.patients[patient_id]
     data = body.get("data", {})
+    change_type = (body or {}).get("change_type", "manual_edit")
     is_phase0 = patient.get("current_role", "phase0") == "phase0"
     for key, value in data.items():
         if key == "triage" and is_phase0:
             # Triage darf in Phase 0 nicht gesetzt werden
             continue
         if key in patient:
-            patient[key] = value
-    # Vitals separat mergen
+            old_value = patient[key]
+            if old_value != value:
+                patient[key] = value
+                _log_patient_change(patient, key, old_value, value, change_type)
+    # Vitals separat mergen — pro Vital-Feld einen eigenen Audit-Eintrag
     vitals = body.get("vitals", {})
     if vitals:
-        patient["vitals"].update(vitals)
+        for vk, vv in vitals.items():
+            old_v = patient["vitals"].get(vk, "")
+            if old_v != vv:
+                patient["vitals"][vk] = vv
+                _log_patient_change(patient, f"vitals.{vk}", old_v, vv, change_type)
     await broadcast({"type": "patient_update", "patient": patient})
     return {"status": "ok", "patient": patient}
 
@@ -5006,7 +5086,7 @@ async def delete_patient(patient_id: str):
 
 @app.post("/api/patient/{patient_id}/status")
 async def update_patient_status(patient_id: str, body: dict):
-    """Flow-Status ändern."""
+    """Flow-Status ändern (mit Audit-Log)."""
     if patient_id not in state.patients:
         return {"error": "Patient nicht gefunden"}
     new_status = body.get("flow_status", "")
@@ -5021,8 +5101,25 @@ async def update_patient_status(patient_id: str, body: dict):
         "event": "status_change",
         "details": f"{FLOW_STATUS_LABELS.get(old_status, old_status)} -> {FLOW_STATUS_LABELS.get(new_status, new_status)}",
     })
+    _log_patient_change(patient, "flow_status", old_status, new_status, "manual_edit")
     await broadcast({"type": "patient_update", "patient": patient})
     return {"status": "ok", "patient": patient}
+
+
+@app.get("/api/patient/{patient_id}/audit")
+async def get_patient_audit(patient_id: str):
+    """Audit-Log eines Patienten zurueckgeben (sortiert von neu nach alt).
+
+    Frontend nutzt das fuer die "Aenderungs-Historie"-Anzeige im
+    Patient-Detail-View. Eintraege haben:
+      timestamp, operator_name/uid/role, field, old_value, new_value,
+      change_type, device.
+    """
+    if patient_id not in state.patients:
+        return {"error": "Patient nicht gefunden"}
+    audit = state.patients[patient_id].get("audit_log", []) or []
+    # Neueste zuerst — fuer UI-Anzeige
+    return {"patient_id": patient_id, "audit_log": list(reversed(audit))}
 
 
 @app.post("/api/rfid/clear-synthetic")

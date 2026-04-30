@@ -141,6 +141,25 @@ PATIENT_SCHEMA = {
     # Frontend rendert kleine farbige Punkte neben jedem Feld im Patient-
     # Card, damit Messe-Besucher sofort sehen wo das System unsicher ist.
     "confidences": {},
+
+    # Audit-Log: Wer hat wann was geaendert.
+    # Eintrags-Format:
+    #   {
+    #     "timestamp": "2026-04-29T16:45:00",
+    #     "operator_uid": "9CF13904",      # leer bei Voice/RFID-Auto-Aktionen
+    #     "operator_name": "Bediener 1",   # leer wenn kein Operator eingeloggt
+    #     "operator_role": "arzt",         # arzt|sani|bat_soldat etc.
+    #     "field": "vitals.pulse",         # punktnotiert
+    #     "old_value": "—",                # alter Wert (truncated wenn lang)
+    #     "new_value": "120",              # neuer Wert
+    #     "change_type": "manual_edit",    # manual_edit|voice_command|llm_extraction|sync_inbound
+    #     "device": "jetson-01",           # welches Geraet hat es geaendert
+    #   }
+    # Wird von log_patient_change() in app.py befuellt. Wird mit-synced
+    # zwischen Jetson und Surface (TRANSFER_SCHEMA), damit beide Seiten
+    # die gleiche Wahrheit haben. Append-only — keine Loeschung,
+    # keine Rueckgaengig-Funktion.
+    "audit_log": [],
 }
 
 

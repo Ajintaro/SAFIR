@@ -8556,6 +8556,55 @@
             </div>`;
         }
 
+        // Audit-Log-Section (Aenderungs-Historie)
+        const auditEntries = (p.audit_log || []).slice().reverse();  // neueste zuerst
+        const auditCount = auditEntries.length;
+        const auditRowsHtml = auditEntries.slice(0, 30).map(ev => {
+            const op = ev.operator_name || 'Unbekannt';
+            const opRole = ev.operator_role ? ` (${ev.operator_role})` : '';
+            const t = (ev.timestamp || '').replace('T', ' ').slice(0, 19);
+            const ct = ev.change_type || 'edit';
+            const ctColor = {
+                'manual_edit': 'var(--mil-tan,#c8b878)',
+                'voice_command': 'var(--info,#5DADE2)',
+                'llm_extraction': 'var(--mil-green,#5a9e3a)',
+                'sync_inbound': 'var(--text-dim)',
+                'rfid_scan': 'var(--mil-amber,#d4871a)',
+            }[ct] || 'var(--text-dim)';
+            const oldEsc = (ev.old_value || '—').toString().replace(/</g,'&lt;');
+            const newEsc = (ev.new_value || '—').toString().replace(/</g,'&lt;');
+            const fieldEsc = (ev.field || '?').replace(/</g,'&lt;');
+            return `<tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:4px 8px;color:var(--text-dim);font-size:var(--fs-body-sm);font-family:'Share Tech Mono',monospace;white-space:nowrap">${t}</td>
+                <td style="padding:4px 8px;font-size:var(--fs-body-sm)"><strong>${op}</strong>${opRole}</td>
+                <td style="padding:4px 8px;font-size:var(--fs-body-sm)"><code>${fieldEsc}</code></td>
+                <td style="padding:4px 8px;font-size:var(--fs-body-sm);color:var(--text-dim)">${oldEsc}</td>
+                <td style="padding:4px 8px;font-size:var(--fs-body-sm);color:var(--mil-tan,#c8b878);font-weight:600">${newEsc}</td>
+                <td style="padding:4px 8px"><span style="font-size:var(--fs-body-sm);color:${ctColor};text-transform:uppercase;letter-spacing:0.06em">${ct}</span></td>
+            </tr>`;
+        }).join('');
+        const auditHtml = auditCount === 0 ? '' : `
+            <div class="r1-detail-section" style="border-left:3px solid var(--mil-tan,#c8b878);padding-left:10px">
+                <div class="r1-detail-section-title">&#128221; Aenderungs-Historie <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(${auditCount} Eintrag${auditCount===1?'':'e'})</span></div>
+                <div style="max-height:300px;overflow:auto;background:var(--bg-elevated);border:1px solid var(--border)">
+                    <table style="width:100%;border-collapse:collapse">
+                        <thead style="position:sticky;top:0;background:var(--bg-surface);z-index:1">
+                            <tr style="border-bottom:2px solid var(--border)">
+                                <th style="text-align:left;padding:6px 8px;font-size:var(--fs-body-sm);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Zeitstempel</th>
+                                <th style="text-align:left;padding:6px 8px;font-size:var(--fs-body-sm);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Wer</th>
+                                <th style="text-align:left;padding:6px 8px;font-size:var(--fs-body-sm);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Feld</th>
+                                <th style="text-align:left;padding:6px 8px;font-size:var(--fs-body-sm);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Vorher</th>
+                                <th style="text-align:left;padding:6px 8px;font-size:var(--fs-body-sm);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Nachher</th>
+                                <th style="text-align:left;padding:6px 8px;font-size:var(--fs-body-sm);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Typ</th>
+                            </tr>
+                        </thead>
+                        <tbody>${auditRowsHtml}</tbody>
+                    </table>
+                </div>
+                ${auditCount > 30 ? `<div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:6px;font-style:italic">Nur die neuesten 30 von ${auditCount} Eintraegen werden angezeigt.</div>` : ''}
+            </div>
+        `;
+
         const overlay = document.createElement('div');
         overlay.className = 'r1-detail-overlay';
         overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
@@ -8583,6 +8632,7 @@
                     ${vitalsHtml}
                     ${treatmentsHtml}
                     ${transcriptsHtml}
+                    ${auditHtml}
                     <div class="r1-llm-hints loading" id="r1-llm-hints-${p.patient_id}">
                         <div class="hints-title">&#9881; KI-Vorbereitungshinweise</div>
                         <div class="hints-content">Analyse wird erstellt...</div>
