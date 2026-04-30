@@ -3116,10 +3116,11 @@ TRANSKRIPT:
 
 BOUNDARY_PROMPT = PROMPT_DEFENSE_PREAMBLE + """Zerlege Sanitäts-Transkripte in Patienten. Gib die Satzindizes zurück an denen ein NEUER Patient startet.
 
-WICHTIGSTE REGEL: Ein Satz der "Der nächste Patient ist ..." oder "Zweiter Patient ..." oder "Weiter mit ..." enthält, IST SELBST der Start des neuen Patienten. Er gehört NICHT zum vorherigen.
+WICHTIGSTE REGEL: Ein Satz der "Neuer Patient", "Der nächste Patient ist ...", "Zweiter Patient ..." oder "Weiter mit ..." enthält, IST SELBST der Start des neuen Patienten. Er gehört NICHT zum vorherigen.
 
 WEITERE REGELN:
-- Patient-Start-Signale: "erster/zweiter/dritter Patient", "nächster Verwundeter/Patient", "weiter mit dem nächsten", "jetzt zum anderen", "dann noch ein", "jetzt eine Frau", "es folgt", "als nächstes ist", "eine weitere Verletzte".
+- Patient-Start-Signale: "neuer Patient", "neue Patientin", "erster/zweiter/dritter Patient", "nächster Verwundeter/Patient", "nächste Patientin", "weiter mit dem nächsten", "jetzt zum anderen", "dann noch ein", "jetzt eine Frau", "es folgt", "als nächstes ist", "eine weitere Verletzte", "wir haben noch".
+- AUCH wenn der Patient-Start-Satz KURZ ist (z.B. nur "Neuer Patient." ohne Name dahinter), zählt er als Boundary — der Name kommt evtl. erst im nächsten Satz oder fehlt ganz.
 - KEIN Start-Signal: Sätze die nur Verletzungen, Vitals oder Behandlung eines bereits genannten Patienten beschreiben ("Er hat...", "Sie hat...", "Puls...", "Atmung...", "Maßnahmen...").
 - KEIN Start-Signal: Einleitungssätze ohne Patient-Info ("Hier spricht...", "Ich bin am Ort", "Ich habe drei Verwundete") — sie gehören zum ersten echten Patient-Satz.
 - "und", "außerdem", "zusätzlich", "auch" = SELBER Patient.
@@ -3157,6 +3158,16 @@ BEISPIEL 4 — 2 Patienten, zweiter mit "Wir haben noch":
 [3] Sie hat nur leichten Husten
 {"starts":[1,2]}
 
+BEISPIEL 5 — 2 Patienten, "Neuer Patient." als kurzer Satz OHNE Name:
+[0] Hier spricht Oberinspektor Gadget
+[1] Ich untersuche die Frau Hauptgefreite Erika Mueller
+[2] Sie leidet unter extremen Bauchschmerzen
+[3] Ausserdem beklagt sie sich ueber Nasenbluten und eine gebrochene Rippe
+[4] Neuer Patient.
+[5] 44 Jahre hat eine Harnwegsinfektion
+{"starts":[1,4]}
+(Index 4 ist der Boundary obwohl der Satz nur "Neuer Patient." ist — der zweite Patient hat keinen Namen genannt, der Satz [5] gehoert trotzdem zu Patient 2.)
+
 Sätze:
 """
 
@@ -3168,22 +3179,57 @@ def _split_sentences(text: str) -> list[str]:
     (< 15 chars wie 'Aufnahme' oder 'Ende') werden auch dann angehängt,
     wenn das vorherige Segment bereits voll ist — sonst entstehen
     Mini-Segmente, die der Boundary-Segmenter als eigenen Patient
-    interpretiert."""
+    interpretiert.
+
+    AUSNAHME (Bug-Fix 2026-04-30): Kurze Fragmente die ein Patient-
+    Start-Signal enthalten (z.B. "Neuer Patient.") DUERFEN NICHT
+    gemerged werden — sonst landet der Boundary-Marker im vorherigen
+    Patient-Block und der Segmenter sieht den Start des neuen
+    Patienten nicht mehr.
+    """
     import re
     # Split bei . ! ? gefolgt von Space/Newline oder Ende
     raw = re.split(r"(?<=[.!?])\s+", text.strip())
-    # Zu kurze Fragmente zusammenführen
+
+    # Patient-Start-Marker: wenn so ein Phrase im Fragment vorkommt,
+    # ist es ein Boundary-Marker und MUSS als eigener Satz erhalten
+    # bleiben — Lower-Case-Substring-Match.
+    _PATIENT_BOUNDARY_MARKERS = (
+        "neuer patient", "neue patientin", "neue patient",
+        "naechster patient", "nächster patient",
+        "naechste patientin", "nächste patientin",
+        "naechster verwundeter", "nächster verwundeter",
+        "naechste verwundete", "nächste verwundete",
+        "zweiter patient", "dritter patient", "vierter patient",
+        "fuenfter patient", "fünfter patient",
+        "weiter mit dem naechsten", "weiter mit dem nächsten",
+        "als naechstes", "als nächstes",
+        "es folgt", "eine weitere verletzte", "ein weiterer verwundeter",
+        "wir haben noch",
+    )
+
+    def _is_boundary_marker(s: str) -> bool:
+        low = s.lower()
+        return any(m in low for m in _PATIENT_BOUNDARY_MARKERS)
+
+    # Zu kurze Fragmente zusammenführen — aber NICHT wenn sie einen
+    # Patient-Start-Marker enthalten.
     merged: list[str] = []
     for seg in raw:
         seg = seg.strip()
         if not seg:
             continue
-        if merged and len(merged[-1]) < 30:
+        seg_is_boundary = _is_boundary_marker(seg)
+        if merged and len(merged[-1]) < 30 and not seg_is_boundary:
             # Vorheriges Segment ist zu kurz → an dieses anhängen
+            # (außer wenn aktuelles ein Boundary-Marker ist)
             merged[-1] = merged[-1] + " " + seg
-        elif merged and len(seg) < 15:
+        elif merged and len(seg) < 15 and not seg_is_boundary:
             # Aktuelles Fragment ist zu kurz (z.B. "Aufnahme" 8 chars) →
             # an das vorherige hängen, damit es kein eigenes Segment wird
+            # (außer wenn es ein Boundary-Marker ist — den wollen wir
+            # als eigenen Satz behalten, sonst sieht der Segmenter den
+            # Start des neuen Patienten nicht)
             merged[-1] = merged[-1] + " " + seg
         else:
             merged.append(seg)
