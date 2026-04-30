@@ -6951,49 +6951,59 @@
         if (activePatient && activePatient.patient_id === pid) activePatient.vitals[field] = value;
     }
 
-    // Inline-Editor fuer Transkripte. Klick auf den Edit-Stift im Card-
-    // Header der Aufnahme -> Textarea + Save/Cancel-Buttons. Save geht an
+    // Inline-Editor fuer Transkripte. Click auf "Bearbeiten" -> Textarea
+    // direkt im Patient-Card-Body. Save geht an
     // /api/patient/{id}/transcript/{idx}/update, Backend loggt audit.
-    function editTranscriptInline(pid, idx) {
-        const textEl = document.getElementById(`pt-text-${pid}-${idx}`);
-        if (!textEl) {
-            // Diagnose: Card ist evtl. zugeklappt, Textarea-Element nicht
-            // im DOM, oder ID stimmt nicht. User-Toast statt Silent-Fail.
-            console.warn('[edit] pt-text-' + pid + '-' + idx + ' nicht gefunden — Card aufgeklappt?');
+    //
+    // WICHTIG: Element-basiert (statt getElementById) damit ID-Kollisionen
+    // vermieden werden. Der gleiche Patient kann in mehreren Containern
+    // gleichzeitig gerendert sein (patient-cards-feld + patient-cards-fz),
+    // jeder mit denselben pt-entry-IDs. btn.closest('.pt-entry') findet
+    // das richtige Element relativ zum geklickten Button.
+    function editTranscriptInline(btn, pid, idx) {
+        const entry = btn.closest('.pt-entry');
+        if (!entry) {
+            console.warn('[edit] kein .pt-entry parent gefunden');
             if (typeof showToast === 'function') {
-                showToast('Patient-Card erst aufklappen, dann Bearbeiten klicken', '&#9888;');
+                showToast('Edit-Element nicht gefunden — Browser-Reload?', '&#9888;');
             }
             return;
         }
+        const textEl = entry.querySelector('.pt-text');
+        if (!textEl) {
+            console.warn('[edit] kein .pt-text in .pt-entry');
+            return;
+        }
         // Falls schon ein Editor offen ist -> nichts tun
-        if (textEl.parentElement.querySelector('textarea[id^="pt-edit-"]')) {
+        if (entry.querySelector('.pt-editor')) {
             return;
         }
         const currentText = textEl.textContent;
-        // Alte Anzeige durch Editor ersetzen
         const editor = document.createElement('div');
+        editor.className = 'pt-editor';
         editor.style.cssText = 'margin-top:4px';
         editor.innerHTML = `
-            <textarea id="pt-edit-${pid}-${idx}" rows="6" style="width:100%;font-size:var(--fs-body-sm);font-family:inherit;background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--info,#5DADE2);padding:6px;line-height:1.5;resize:vertical">${currentText.replace(/</g,'&lt;')}</textarea>
+            <textarea class="pt-edit-textarea" rows="6" style="width:100%;font-size:var(--fs-body-sm);font-family:inherit;background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--info,#5DADE2);padding:6px;line-height:1.5;resize:vertical"></textarea>
             <div style="display:flex;gap:6px;margin-top:4px">
-                <button onclick="saveTranscriptEdit('${pid}',${idx})" style="background:var(--info,#5DADE2);color:#000;border:none;padding:4px 12px;font-size:var(--fs-body-sm);font-weight:700;cursor:pointer">Speichern</button>
-                <button onclick="cancelTranscriptEdit('${pid}',${idx},this)" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 12px;font-size:var(--fs-body-sm);cursor:pointer">Abbrechen</button>
-                <span id="pt-edit-status-${pid}-${idx}" style="font-size:var(--fs-body-sm);color:var(--text-dim);align-self:center"></span>
+                <button class="pt-save-btn" onclick="saveTranscriptEdit(this,'${pid}',${idx})" style="background:var(--info,#5DADE2);color:#000;border:none;padding:4px 12px;font-size:var(--fs-body-sm);font-weight:700;cursor:pointer">Speichern</button>
+                <button class="pt-cancel-btn" onclick="cancelTranscriptEdit(this)" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 12px;font-size:var(--fs-body-sm);cursor:pointer">Abbrechen</button>
+                <span class="pt-edit-status" style="font-size:var(--fs-body-sm);color:var(--text-dim);align-self:center"></span>
             </div>
         `;
-        editor.dataset.originalText = currentText;
         textEl.style.display = 'none';
         textEl.parentElement.appendChild(editor);
         const ta = editor.querySelector('textarea');
+        ta.value = currentText;
         ta.focus();
         ta.setSelectionRange(currentText.length, currentText.length);
     }
 
-    async function saveTranscriptEdit(pid, idx) {
-        const ta = document.getElementById(`pt-edit-${pid}-${idx}`);
-        const status = document.getElementById(`pt-edit-status-${pid}-${idx}`);
-        if (!ta) return;
-        const newText = ta.value.trim();
+    async function saveTranscriptEdit(btn, pid, idx) {
+        const editor = btn.closest('.pt-editor');
+        if (!editor) return;
+        const ta = editor.querySelector('textarea');
+        const status = editor.querySelector('.pt-edit-status');
+        const newText = (ta?.value || '').trim();
         if (!newText) {
             if (status) { status.textContent = 'Leer nicht erlaubt'; status.style.color = 'var(--cgi-red)'; }
             return;
@@ -7004,7 +7014,7 @@
                 if (status) { status.textContent = res.error; status.style.color = 'var(--cgi-red)'; }
                 return;
             }
-            // State aktualisieren — patients und activePatient
+            // State aktualisieren — patients und patientTranscripts
             if (patients[pid] && Array.isArray(patients[pid].transcripts) && patients[pid].transcripts[idx]) {
                 patients[pid].transcripts[idx].text = newText;
                 patients[pid].transcripts[idx].edited = true;
@@ -7023,9 +7033,10 @@
         }
     }
 
-    function cancelTranscriptEdit(pid, idx, btn) {
-        const editor = btn.closest('div').parentElement;
-        const textEl = document.getElementById(`pt-text-${pid}-${idx}`);
+    function cancelTranscriptEdit(btn) {
+        const editor = btn.closest('.pt-editor');
+        const entry = btn.closest('.pt-entry');
+        const textEl = entry?.querySelector('.pt-text');
         if (textEl) textEl.style.display = '';
         if (editor) editor.remove();
     }
@@ -7513,16 +7524,20 @@
                         const txtEsc = (t.text || '').replace(/</g,'&lt;');
                         // Edit-Button NUR im Fahrzeug-Modus. Im Feld
                         // (am Patienten) wird nur diktiert/aufgenommen,
-                        // nicht editiert — das ist Sanitaeter-Workflow:
-                        // erst aufnehmen, dann im Fahrzeug korrigieren.
-                        // Auf der Surface/Lagekarte ist die Bearbeitung
-                        // im Detail-View moeglich (s. role1ShowPatientDetail).
+                        // nicht editiert.
+                        // WICHTIG: editTranscriptInline kriegt 'this' (das
+                        // Button-Element) statt nur pid/idx — sonst findet
+                        // getElementById das pt-text-Element des FELD-
+                        // Container-Duplikats statt das hier im fz-Container
+                        // (gleicher patient_id rendert in beiden Containern,
+                        // ID-Kollision).
                         const editBtn = isFz
-                            ? `<button onclick="event.stopPropagation();editTranscriptInline('${p.patient_id}',${idx})" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer" title="Transkript bearbeiten">&#9998; Bearbeiten</button>`
+                            ? `<button onclick="event.stopPropagation();editTranscriptInline(this,'${p.patient_id}',${idx})" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer" title="Transkript bearbeiten">&#9998; Bearbeiten</button>`
                             : '';
-                        return `<div class="pt-entry" id="pt-entry-${p.patient_id}-${idx}">
+                        // data-pid und data-idx fuer den Element-basierten Lookup
+                        return `<div class="pt-entry" data-pid="${p.patient_id}" data-idx="${idx}">
                             <div class="pt-time">${t.time || ''}${editedBadge}${editBtn}</div>
-                            <div class="pt-text" id="pt-text-${p.patient_id}-${idx}">${txtEsc}</div>
+                            <div class="pt-text">${txtEsc}</div>
                         </div>`;
                     }).join('')
                     : '<div style="font-size:var(--fs-body-sm);color:var(--text-dim);padding:4px 0">Keine Aufnahmen</div>';
@@ -8655,12 +8670,12 @@
                     const editedBadge = t.edited
                         ? `<span style="font-size:10px;color:var(--mil-tan,#c8b878);margin-left:6px" title="zuletzt editiert ${t.edited_at || ''} von ${t.edited_by || 'Unbekannt'}">&#9998; editiert</span>`
                         : '';
-                    return `<div class="pt-entry treatment-item" id="pt-entry-${p.patient_id}-${idx}" style="font-size:var(--fs-body-sm);position:relative">
+                    return `<div class="pt-entry treatment-item" data-pid="${p.patient_id}" data-idx="${idx}" style="font-size:var(--fs-body-sm);position:relative">
                         <div class="pt-time" style="display:flex;justify-content:space-between;align-items:center;color:var(--text-dim);font-size:10px;margin-bottom:4px">
                             <span>${t.time || ''}${editedBadge}</span>
-                            <button onclick="event.stopPropagation();editTranscriptInline('${p.patient_id}',${idx})" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer">&#9998; Bearbeiten</button>
+                            <button onclick="event.stopPropagation();editTranscriptInline(this,'${p.patient_id}',${idx})" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 7px;font-size:10px;cursor:pointer">&#9998; Bearbeiten</button>
                         </div>
-                        <div class="pt-text" id="pt-text-${p.patient_id}-${idx}">${text}</div>
+                        <div class="pt-text">${text}</div>
                     </div>`;
                 }).join('')}</div>
             </div>`;
