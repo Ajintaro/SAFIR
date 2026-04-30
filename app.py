@@ -6334,6 +6334,58 @@ async def download_handbook_html():
     )
 
 
+@app.get("/api/download/vision-package")
+async def download_vision_package():
+    """ZIP-Paket: Vision-Page + alle Use-Case-Mocks zum Verteilen.
+
+    Die Standalone-Vision verlinkt auf /vision-mocks/*.html (Feuerwehr,
+    Polizei, THW etc). Diese Mocks sind im docs/vision-mocks/ Ordner
+    abgelegt. Damit der Empfaenger das Paket lokal oeffnen und alle
+    Links navigieren kann, packen wir HTML + Mocks ins ZIP.
+    """
+    import io, zipfile
+    from fastapi.responses import Response
+    buf = io.BytesIO()
+    vision_html = _extract_standalone_page("index.html", "page-vision", "SAFIR Vision")
+    # Vision-Mocks anpassen: <link rel="stylesheet" href="_shared.css">
+    # bleibt — aber die Vision-Page muss die Links so umstellen dass sie
+    # auf "vision-mocks/feuerwehr.html" statt "/vision-mocks/feuerwehr.html"
+    # zeigen (relative statt absolute Pfade).
+    vision_html = vision_html.replace('href="/vision-mocks/', 'href="vision-mocks/')
+
+    mocks_dir = PROJECT_DIR / "docs" / "vision-mocks"
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("safir-vision.html", vision_html)
+        if mocks_dir.exists():
+            for mock_file in mocks_dir.glob("*"):
+                if mock_file.is_file():
+                    zf.write(mock_file, arcname=f"vision-mocks/{mock_file.name}")
+        # README mit Hinweis fuer Empfaenger
+        readme = """SAFIR Vision-Paket
+====================
+
+Inhalt:
+- safir-vision.html       (Hauptseite, Doppelklick oeffnet sie im Browser)
+- vision-mocks/           (Use-Case-Mockups Feuerwehr, Polizei, THW, ...)
+
+Bedienung:
+1. ZIP komplett entpacken (alle Files in einen Ordner).
+2. Doppelklick auf 'safir-vision.html'.
+3. Mit Klick auf die Use-Case-Karten oeffnen die jeweiligen Mockups.
+
+Funktioniert offline ohne SAFIR-Server.
+
+SAFIR · CGI Deutschland · AFCEA 2026
+"""
+        zf.writestr("README.txt", readme)
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="safir-vision-paket.zip"'},
+    )
+
+
 @app.post("/api/system/restart-service")
 async def system_restart_service(body: dict | None = None):
     """Hard-Reset: SAFIR-Dienst via systemd neu starten. ~30-60 s Downtime

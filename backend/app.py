@@ -1742,6 +1742,47 @@ async def download_handbook_html():
     )
 
 
+@app.get("/api/download/vision-package")
+async def download_vision_package():
+    """ZIP-Paket: Vision-Page + alle Use-Case-Mocks zum Verteilen."""
+    import io, zipfile
+    from fastapi.responses import Response
+    buf = io.BytesIO()
+    vision_html = _extract_standalone_page("index.html", "page-vision", "SAFIR Vision")
+    vision_html = vision_html.replace('href="/vision-mocks/', 'href="vision-mocks/')
+
+    mocks_dir = ROOT_DIR / "docs" / "vision-mocks"
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("safir-vision.html", vision_html)
+        if mocks_dir.exists():
+            for mock_file in mocks_dir.glob("*"):
+                if mock_file.is_file():
+                    zf.write(mock_file, arcname=f"vision-mocks/{mock_file.name}")
+        readme = """SAFIR Vision-Paket
+====================
+
+Inhalt:
+- safir-vision.html       (Hauptseite, Doppelklick oeffnet sie im Browser)
+- vision-mocks/           (Use-Case-Mockups Feuerwehr, Polizei, THW, ...)
+
+Bedienung:
+1. ZIP komplett entpacken (alle Files in einen Ordner).
+2. Doppelklick auf 'safir-vision.html'.
+3. Mit Klick auf die Use-Case-Karten oeffnen die jeweiligen Mockups.
+
+Funktioniert offline ohne SAFIR-Server.
+
+SAFIR · CGI Deutschland · AFCEA 2026
+"""
+        zf.writestr("README.txt", readme)
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="safir-vision-paket.zip"'},
+    )
+
+
 @app.post("/api/system/restart-service")
 async def system_restart_service(body: dict | None = None):
     """Hard-Reset: NICHT verfuegbar auf Surface (Windows).
