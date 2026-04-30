@@ -6961,24 +6961,30 @@
     // jeder mit denselben pt-entry-IDs. btn.closest('.pt-entry') findet
     // das richtige Element relativ zum geklickten Button.
     function editTranscriptInline(btn, pid, idx) {
+        console.log('[edit] click', { pid, idx, btn });
         const entry = btn.closest('.pt-entry');
         if (!entry) {
             console.warn('[edit] kein .pt-entry parent gefunden');
             if (typeof showToast === 'function') {
-                showToast('Edit-Element nicht gefunden — Browser-Reload?', '&#9888;');
+                showToast('Edit-Element nicht gefunden (.pt-entry) — Hard-Reload mit Ctrl+Shift+R?', '&#9888;');
             }
             return;
         }
         const textEl = entry.querySelector('.pt-text');
         if (!textEl) {
             console.warn('[edit] kein .pt-text in .pt-entry');
+            if (typeof showToast === 'function') {
+                showToast('Edit-Element nicht gefunden (.pt-text)', '&#9888;');
+            }
             return;
         }
         // Falls schon ein Editor offen ist -> nichts tun
         if (entry.querySelector('.pt-editor')) {
+            console.log('[edit] editor already open');
             return;
         }
         const currentText = textEl.textContent;
+        console.log('[edit] opening editor for text:', currentText.substring(0, 60));
         const editor = document.createElement('div');
         editor.className = 'pt-editor';
         editor.style.cssText = 'margin-top:4px';
