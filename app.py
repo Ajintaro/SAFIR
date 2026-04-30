@@ -1842,15 +1842,49 @@ def _find_session_for_patient(patient_id: str) -> str | None:
     return None
 
 
+# Cool-Down fuer voice_send_backend — verhindert dass jeder Vosk-Match
+# auf "melden" sofort einen neuen Send-Versuch ausloest. Besonders
+# wichtig wenn die Leitstelle gerade nicht erreichbar ist — sonst
+# Dauerschleife (User redet ueber das Problem -> Vosk hoert "melden" ->
+# erneuter Versuch -> erneut "Leitstelle nicht erreichbar" -> ...).
+_last_send_backend_ts: float = 0.0
+_last_send_backend_failed: bool = False
+SEND_BACKEND_COOLDOWN_OK = 5.0      # Min-Abstand nach Erfolg (Doppelklick-Schutz)
+SEND_BACKEND_COOLDOWN_FAIL = 60.0   # Min-Abstand nach Fehler (Anti-Schleife)
+
+
 async def voice_send_backend():
-    """Sprachbefehl: Alle analysierten, nicht-übermittelten Patienten an Leitstelle senden."""
+    """Sprachbefehl: Alle analysierten, nicht-übermittelten Patienten an Leitstelle senden.
+
+    Cool-Down: Nach einem fehlgeschlagenen Send mindestens 60 s warten
+    bevor wieder gesendet wird. Sonst landet der User in einer
+    Endlosschleife wenn er ueber das Problem spricht und Vosk seinen
+    Frust-Satz wieder als "melden"-Trigger interpretiert.
+    """
+    global _last_send_backend_ts, _last_send_backend_failed
+    now = time.monotonic()
+    elapsed = now - _last_send_backend_ts
+    cooldown = SEND_BACKEND_COOLDOWN_FAIL if _last_send_backend_failed else SEND_BACKEND_COOLDOWN_OK
+    if _last_send_backend_ts > 0 and elapsed < cooldown:
+        wait = round(cooldown - elapsed)
+        print(f"[SYNC] voice_send_backend Cool-Down aktiv "
+              f"(letzter {'Fehler' if _last_send_backend_failed else 'Erfolg'} vor "
+              f"{round(elapsed)}s, noch {wait}s) — Trigger ignoriert", flush=True)
+        # Kein TTS-Spam — nur Logs. Sonst hoert der User "Bitte warten"
+        # bei jedem Vosk-Treffer waehrend der Schleife.
+        return
+
     if not state.patients:
+        _last_send_backend_ts = now
+        _last_send_backend_failed = False
         tts.speak("Keine Patienten vorhanden")
         return
 
     # Nur analysierte, nicht-gesyncte Patienten senden
     sendable = [p for p in state.patients.values() if p.get("analyzed") and not p.get("synced")]
     if not sendable:
+        _last_send_backend_ts = now
+        _last_send_backend_failed = False
         not_analyzed = [p for p in state.patients.values() if not p.get("analyzed")]
         if not_analyzed:
             tts.speak(f"{len(not_analyzed)} Patienten noch nicht analysiert")
@@ -1859,16 +1893,20 @@ async def voice_send_backend():
         return
 
     oled_menu.show_status("SENDEN", "An Leitstelle...", 50)
+    _last_send_backend_ts = now  # auch bei Fehler timestamp setzen
     result = await sync_all_patients()
     if result["sent"] > 0:
+        _last_send_backend_failed = False
         oled_menu.show_status("GESENDET", f"{result['sent']} Patient(en)")
         tts.speak(f"{result['sent']} Patienten übermittelt")
     elif result.get("error"):
+        _last_send_backend_failed = True
         oled_menu.show_status("FEHLER", "Keine Verbindung")
-        tts.speak("Leitstelle nicht erreichbar")
+        tts.speak(f"Leitstelle nicht erreichbar. Naechster Versuch in {int(SEND_BACKEND_COOLDOWN_FAIL)} Sekunden.")
     elif result["failed"] > 0:
+        _last_send_backend_failed = True
         oled_menu.show_status("FEHLER", f"{result['failed']} fehlgeschlagen")
-        tts.speak(f"{result['failed']} Patienten nicht übermittelt. Leitstelle nicht erreichbar.")
+        tts.speak(f"{result['failed']} Patienten nicht uebermittelt. Naechster Versuch in {int(SEND_BACKEND_COOLDOWN_FAIL)} Sekunden.")
 
 
 async def voice_mic_test():
