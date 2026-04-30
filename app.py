@@ -3419,7 +3419,13 @@ def segment_transcript_to_patients(transcript: str) -> dict:
     INTRO_PREFIXES = (
         "hier spricht", "ich spreche", "ich bin der", "ich bin die",
         "ich bin am ", "ich bin vor ort", "ich bin am ort", "ich bin am einsatzort",
-        "hier ist ", "am apparat ", "es spricht ", "ich untersuche",
+        "hier ist ", "am apparat ", "es spricht ",
+        # "ich untersuche" wurde 2026-04-30 entfernt — der ist KEIN reines
+        # Intro sondern Patient-Identifikation ("Ich untersuche die
+        # Hauptgefreite Mueller. Sie hat ..."). Frueher landete der Satz
+        # im "Intro-Merge" und Patient ging verloren wenn die Verletzung
+        # nicht in der vital_markers-Liste stand (z.B. Bauchschmerzen,
+        # Harnwegsinfektion etc).
         "ich habe hier ", "ich bin oberfeldarzt", "ich bin stabsarzt",
         "ich bin sanitaeter", "ich bin sanitäter", "ich bin notarzt",
         "wir sind am ort", "wir sind am unfallort", "wir sind am einsatzort",
@@ -3431,10 +3437,35 @@ def segment_transcript_to_patients(transcript: str) -> dict:
     # beschrieben), mergen ins naechste. Vital-/Verletzungs-Hinweise im
     # Segment zaehlen als "es beschreibt schon einen Patient" und wir
     # mergen nicht.
-    vital_markers = ("puls ", "puls:", "puls=", "blutdruck", "sauerstoff",
-                     "spo2", "atmung", "gcs ", "bewusstsein",
-                     "schuss", "splitter", "verletzung", "wunde", "fraktur",
-                     "blutung", "verbrennung", "prellung", "distorsion")
+    # Erweiterte Liste 2026-04-30 — Defense in Depth gegen False-Merges
+    # weil INTRO-Detection fehlschlaegt (z.B. der "Mueller-Bug": Patient
+    # mit Bauchschmerzen + Nasenbluten + Rippe wurde gemerged weil keine
+    # der alten Markers gegriffen hat).
+    vital_markers = (
+        # Klassische Vitals
+        "puls ", "puls:", "puls=", "blutdruck", "sauerstoff",
+        "spo2", "atmung", "gcs ", "bewusstsein",
+        # Verletzungstypen
+        "schuss", "splitter", "verletzung", "wunde", "fraktur", "blutung",
+        "verbrennung", "prellung", "distorsion", "platzwunde", "schnittwunde",
+        # Symptome / Beschwerden
+        "schmerzen", "bluten", "blutet", "leidet", "beklagt", "klagt",
+        # Anatomische Marker (oft Verletzungen drumherum)
+        "rippe", "kopf", "bein", "arm", "thorax", "abdomen",
+        "schulter", "huefte", "knie",
+        # Krankheitsbilder
+        "infektion", "ohnmacht", "kollaps", "anaphyla", "schock",
+        # Behandlungs-Indikatoren
+        "tourniquet", "verband", "infusion", "spritze", "morphium",
+        "schmerzmittel", "behandelt", "versorgt",
+        # Patient-Status
+        "ansprechbar", "bewusstlos", "stabil", "kritisch", "bewusst klar",
+        # Identifikation (Dienstgrad/Alter) -> klar Patient nicht Intro
+        "hauptgefreit", "feldwebel", "stabsgefreit", "oberstabsgefreit",
+        "obergefreit", "soldat", "soldatin", "oberst", "hauptmann",
+        "leutnant", "stabsarzt", "oberstleutnant", "general",
+        " jahre", " jahren",  # "44 Jahre" / "44 Jahren"
+    )
     merged4: list[dict] = []
     pending_intro = ""
     for p in merged3:
