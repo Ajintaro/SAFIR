@@ -510,9 +510,21 @@ def _ntag_write_block16(start_page: int, data16: bytes) -> tuple[bool, str]:
     return (True, "")
 
 
-# Mapping MIFARE-Block → NTAG-Start-Page (×4, da 16/4 = 4 Pages pro Block)
+# Mapping MIFARE-Block → NTAG-Start-Page.
+# WICHTIG: Block_idx * 4 wuerde Block 4 auf Page 16 mappen (zu spaet).
+# Korrektes Mapping: Block 4 startet bei Page 4 (erste user-memory page),
+# jeder weitere Block belegt 4 Pages. Block 7 ist MIFARE-Sektor-Trailer
+# und wird uebersprungen (= Pages 16-19 bleiben leer).
+#
+#   Block 4  (Header)     -> Pages 4-7
+#   Block 5  (Patient-ID) -> Pages 8-11
+#   Block 6  (Vitals)     -> Pages 12-15
+#   Block 7  (Trailer)    -> Pages 16-19 (LUECKE, nicht beschrieben)
+#   Block 8  (Name 1)     -> Pages 20-23
+#   Block 9  (Name 2)     -> Pages 24-27
+#   Block 10 (Mechanism)  -> Pages 28-31
 def _block_to_ntag_page(block_idx: int) -> int:
-    return block_idx * 4
+    return (block_idx - 4) * 4 + 4
 
 
 # ---------------------------------------------------------------------------

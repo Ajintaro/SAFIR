@@ -341,6 +341,10 @@ class AppState:
         self.vosk_command_queue = []  # thread-safe command queue
         # Hardware-Integration (Phase 6+)
         self.current_operator: dict | None = None  # None oder {uid, label, name, role, since}
+        # Letzter eingeloggter Operator (bleibt nach Logout erhalten).
+        # Audit-Log fallback: wenn aktuell niemand eingeloggt, nutze
+        # last_operator mit Marker '(letzter Login)' im Operator-Namen.
+        self.last_operator: dict | None = None
         self.last_rfid_uid: str = "---"
         # Security-Lock: System startet gesperrt WENN operators-Liste
         # nicht leer ist (siehe startup handler). Bei Ersteinrichtung ohne
@@ -1099,6 +1103,11 @@ async def _handle_operator_scan(uid: str, op: dict):
         "role": op.get("role", ""),
         "since": now_iso,
     }
+    # Last-Operator mitsetzen — bleibt auch nach Logout erhalten als
+    # Fallback fuer Audit-Log-Operator-Name. Forensik-Hinweis: wenn
+    # current_operator None aber last_operator gesetzt, hat irgendwer
+    # nach dem Logout weitergearbeitet ohne sich neu einzuloggen.
+    state.last_operator = dict(state.current_operator)
     # Entsperren — umgekehrte Reihenfolge zum Logout: erst entsperren, dann OLED
     await _unlock_system(reason="operator_login")
     oled_menu.show_status(
@@ -5399,6 +5408,14 @@ def _log_patient_change(patient: dict, field: str, old_value, new_value,
                         change_type: str = "manual_edit") -> None:
     """Audit-Eintrag in patient['audit_log'] anhaengen.
 
+    Operator-Lookup-Reihenfolge:
+      1. state.current_operator (aktiv eingeloggt) -> exakt wer es war
+      2. state.last_operator (zuletzt eingeloggt, dann ausgeloggt) ->
+         markiert mit '(letzter Login)' damit forensisch klar ist
+      3. config.default_medic (in config.json gesetzt) -> markiert
+         '(Default)' weil System keine Login-Information hatte
+      4. 'Unbekannt' als ultima ratio
+
     Args:
         patient: Patient-Dict (wird in-place modifiziert)
         field: Punktnotation, z.B. "name", "vitals.pulse", "triage"
@@ -5413,14 +5430,41 @@ def _log_patient_change(patient: dict, field: str, old_value, new_value,
     # Skip wenn keine echte Aenderung
     if old_value == new_value:
         return
-    # current_operator ist {uid,label,name,role} oder None
-    op = getattr(state, "current_operator", None) or {}
     cfg = _config or {}
+    # 1. Aktiv eingeloggter Operator
+    cur = getattr(state, "current_operator", None)
+    last = getattr(state, "last_operator", None)
+    if cur:
+        op_uid = cur.get("uid", "")
+        op_name = cur.get("name", "") or "Unbekannt"
+        op_role = cur.get("role", "")
+        op_source = "active"
+    elif last:
+        # Letzter Login (System wurde danach ausgeloggt aber blieb unlocked)
+        op_uid = last.get("uid", "")
+        op_name = (last.get("name", "") or "Unbekannt") + " (letzter Login)"
+        op_role = last.get("role", "")
+        op_source = "last_login"
+    else:
+        # Default-Medic aus Config (z.B. 'OstFw Mueller')
+        default_medic = (cfg.get("default_medic") or "").strip()
+        if default_medic:
+            op_uid = ""
+            op_name = default_medic + " (Default)"
+            op_role = ""
+            op_source = "default"
+        else:
+            op_uid = ""
+            op_name = "Unbekannt"
+            op_role = ""
+            op_source = "unknown"
+
     entry = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "operator_uid": op.get("uid", "") if op else "",
-        "operator_name": (op.get("name", "") if op else "") or "Unbekannt",
-        "operator_role": op.get("role", "") if op else "",
+        "operator_uid": op_uid,
+        "operator_name": op_name,
+        "operator_role": op_role,
+        "operator_source": op_source,
         "field": field,
         "old_value": _truncate_value(old_value),
         "new_value": _truncate_value(new_value),
@@ -5430,10 +5474,9 @@ def _log_patient_change(patient: dict, field: str, old_value, new_value,
     audit = patient.setdefault("audit_log", [])
     audit.append(entry)
     # Logging fuer Forensik im journalctl
-    op_name = entry["operator_name"]
     print(f"[AUDIT] {patient.get('patient_id', '?')} | {field}: "
           f"{entry['old_value']!r} -> {entry['new_value']!r} "
-          f"by {op_name} ({change_type})", flush=True)
+          f"by {op_name} ({change_type}, src={op_source})", flush=True)
 
 
 @app.post("/api/patient/{patient_id}/update")
