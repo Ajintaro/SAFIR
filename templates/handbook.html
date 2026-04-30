@@ -499,24 +499,25 @@
                     </ul>
                 </div>
 
-                <h2>4.4 9-Liner-MEDEVAC-Modus — geführter Funkspruch</h2>
+                <h2>4.4 9-Liner-MEDEVAC-Modus — geführter Funkspruch (NATO ATP-3.7.2)</h2>
                 <p>
                     Statt Freitext kann der Sanitäter den 9-Liner als <em>strukturierten
-                    Funkspruch</em> diktieren. Die KI parst dann genau die 9 Linien (statt
-                    Freitext-Felder) und füllt das MEDEVAC-Template aus. Das Ergebnis ist 1:1
-                    der Funkspruch, den die Rettungsstation für die Anforderung braucht.
+                    Funkspruch</em> diktieren. Die KI parst dann genau die 9 Linien und füllt
+                    das MEDEVAC-Template aus. Das Ergebnis ist 1:1 der Funkspruch, den die
+                    Rettungsstation für die Anforderung braucht.
                 </p>
-                <p style="background:#1a1612;border-left:3px solid var(--mil-amber,#d4871a);padding:10px 12px;font-size:0.95em">
-                    <strong>Wichtig:</strong> SAFIR verwendet das <strong>Bundeswehr-Schema GSG 07/2018</strong>,
-                    nicht den US-NATO-Standard ATP-3.7.2. Die Codes für Dringlichkeit, Ausrüstung,
-                    Markierung und Nationalität unterscheiden sich!
+                <p style="background:#0f1a14;border-left:3px solid var(--info,#5DADE2);padding:10px 12px;font-size:0.95em">
+                    <strong>Schema:</strong> SAFIR nutzt den <strong>NATO ATP-3.7.2 Standard</strong>
+                    mit deutschen Bezeichnungen — wie er auch in der GSG-Demo verwendet wird.
+                    Phonetisches Alphabet (Alfa, Bravo, Charlie, …) wird automatisch zu
+                    Buchstaben-Codes (A, B, C, …) normalisiert.
                 </p>
 
                 <h3>Wann benutzen?</h3>
                 <ul>
                     <li>Wenn ein <strong>MEDEVAC angefordert</strong> wird (Hubschrauber/Sani-Fahrzeug)</li>
                     <li>Wenn die Funkbrücke standardisierten Wortlaut erwartet</li>
-                    <li>Für Demo-/Übungs-Zwecke wenn man den BW-Standard zeigen will</li>
+                    <li>Für Demo-/Übungs-Zwecke um den NATO-Standard zu zeigen</li>
                 </ul>
                 <p style="color:var(--text-dim);font-size:0.95em">
                     Im Normalfall (Doku am Patienten) ist Freitext besser — du sparst dir
@@ -525,47 +526,59 @@
 
                 <h3>Aktivieren — drei Wege</h3>
                 <ol>
-                    <li><strong>Voice:</strong> <code>"Neun Liner"</code> oder <code>"Neunliner"</code> oder <code>"9 Liner"</code></li>
+                    <li><strong>Voice:</strong> <code>"Neun Liner"</code>, <code>"Neunliner"</code>, <code>"9 Liner"</code> oder <code>"MEDEVAC"</code></li>
                     <li><strong>Demo-Szenario:</strong> Einstellungen → Demo-Szenarien → „9-Liner MEDEVAC"</li>
-                    <li><strong>Direkt-Diktat:</strong> Aufnahme starten und mit „Neuner-Liner" einleiten — die KI erkennt das Format am Inhalt</li>
+                    <li><strong>Direkt-Diktat:</strong> Aufnahme starten und mit <em>„Zeile eins …"</em> einleiten — die KI erkennt das Format automatisch (Auto-Detect)</li>
                 </ol>
                 <p>
                     TTS bestätigt mit <em>„Neun Liner Modus aktiv. Aufnahme starten."</em> —
-                    die nächste Aufnahme wird als 9-Liner geparst statt als Multi-Patient-
-                    Diktat.
+                    die nächste Aufnahme wird als 9-Liner geparst statt als Multi-Patient-Diktat.
                 </p>
 
-                <h3>Was sage ich? Die 9 Linien (Bundeswehr GSG 07/2018)</h3>
+                <h3>Sprechtext-Konventionen</h3>
+                <ul>
+                    <li><strong>Zeilen-Einleitung:</strong> <code>„Zeile eins …"</code> oder <code>„Linie eins …"</code> (auch mit Doppelpunkt)</li>
+                    <li><strong>Nächste Zeile:</strong> alternativ <code>„Nächste Zeile"</code> / <code>„Nächste Linie"</code></li>
+                    <li><strong>Reihenfolge ist STRENG:</strong> 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9. Keine Sprünge.</li>
+                    <li><strong>BREAK</strong> zwischen Code-Paaren auf Zeilen 3 + 5 (z.&nbsp;B. <em>„Bravo eins, BREAK, Charlie eins"</em> = <code>1 B</code> + <code>1 C</code>)</li>
+                    <li><strong>Phonetisches Alphabet → Buchstaben-Codes:</strong> Alfa → A, Bravo → B, Charlie → C, …, Lima → L, November → N, Papa → P, Romeo → R, Whiskey → W, X-Ray → X</li>
+                </ul>
+
+                <h3>Was sage ich? Die 9 Linien (NATO ATP-3.7.2 / GSG)</h3>
                 <table class="hb-vc-table">
                     <thead><tr><th style="width:8%">Line</th><th style="width:32%">Inhalt</th><th>Codes / Beispiel-Wortlaut</th></tr></thead>
                     <tbody>
-                        <tr><td><strong>1</strong></td><td>Koordinaten / Landezone</td><td>Ortsangabe, UTM/MGRS, Markierung. Z.B. „32 U 12345 67890" — <em>Stellen exakt aussprechen, keine Quadrant-ID erfinden!</em></td></tr>
-                        <tr><td><strong>2</strong></td><td>Anprechpartner vor Ort</td><td>Funkrufname + Frequenz für MIST Report. Z.B. „Frequenz Alpha 1, Rufzeichen Sandtrop 1"</td></tr>
-                        <tr><td><strong>3</strong></td><td>Anzahl + Priorität</td><td><strong>A</strong>=Lebensbedrohlich (30 Min) · <strong>B</strong>=Dringend (60 Min) · <strong>C</strong>=Mit Vorrang (90 Min) · <strong>D</strong>=Routine (24 h) · <strong>E</strong>=Bei Gelegenheit</td></tr>
-                        <tr><td><strong>4</strong></td><td>Besondere Ausrüstung</td><td><strong>A</strong>=Keine · <strong>B</strong>=Defibrillator · <strong>C</strong>=Drahtschneider · <strong>D</strong>=Sanitätsrucksack · <strong>E</strong>=Sonstiges (in Remarks namentlich nennen)</td></tr>
-                        <tr><td><strong>5</strong></td><td>Anzahl + Transportart</td><td><strong>L</strong>=Liegend · <strong>A</strong>=Gehfähig · <strong>E</strong>=Eskorte/Begleitperson. Z.B. „1 gehfähig + 1 Begleitung"</td></tr>
-                        <tr><td><strong>6</strong></td><td>Militärische Sicherheit vor Ort</td><td><strong>N</strong>=NO ENEMY · <strong>P</strong>=Possible Enemy/Gelb · <strong>E</strong>=Enemy in Area/Rot · <strong>X</strong>=Eskorte erforderlich</td></tr>
-                        <tr><td><strong>7</strong></td><td>Markierung der Landezone</td><td><strong>A</strong>=Rauchsignal · <strong>B</strong>=Pyro · <strong>C</strong>=Keine · <strong>D</strong>=Andere<br><em style="color:var(--mil-amber)">Achtung: A ist Rauch, nicht Panels (NATO-Reihenfolge weicht ab!)</em></td></tr>
-                        <tr><td><strong>8</strong></td><td>Anzahl + Nationalitäten</td><td><strong>A</strong>=Eigene Kräfte · <strong>B</strong>=Verbündete Kräfte · <strong>D</strong>=Zivilisten · <strong>E</strong>=feindl. Kriegsgefangener<br><em style="color:var(--mil-amber)">Achtung: Kein Code „C" in diesem Schema!</em></td></tr>
-                        <tr><td><strong>9</strong></td><td>Hinweise zur Landezone</td><td>Anflugrichtung, Hindernisse, Geländebeschreibung. <em>(NICHT mehr ABC/NBC — das gehört in die Remarks!)</em></td></tr>
-                        <tr style="background:#1a1612"><td><strong>RE</strong></td><td>Remarks / Anmerkungen</td><td>Anmerkungen nach Readback: CBRN-Lage, Feindlage, Patienten-Beschreibung, alles was nicht in 1–9 passt</td></tr>
+                        <tr><td><strong>1</strong></td><td>Pickup-Site / Aufnahmestelle</td><td>FREITEXT: MGRS + Pickup-Zone-Name. Z.&nbsp;B. <em>„MGRS drei zwei Uniform Mike Victor eins zwei drei vier fünf sechs. Pickup Zone ist ADLER."</em></td></tr>
+                        <tr><td><strong>2</strong></td><td>Funkkanal + Rufname + Suffix</td><td>FREITEXT. Z.&nbsp;B. <em>„Erreichbar auf Kanal MEDEVAC DEMO. Rufname an der Pickup Site ist MESSE SAN EINS."</em></td></tr>
+                        <tr><td><strong>3</strong></td><td>Anzahl + Priorität</td><td><strong>A</strong>=URGENT · <strong>B</strong>=URGENT-SURGICAL · <strong>C</strong>=PRIORITY · <strong>D</strong>=ROUTINE · <strong>E</strong>=CONVENIENCE.<br>Z.&nbsp;B. <em>„Bravo eins, BREAK, Charlie eins"</em> → <code>1 B</code> + <code>1 C</code></td></tr>
+                        <tr><td><strong>4</strong></td><td>Sonderausrüstung</td><td><strong>A</strong>=None/keine · <strong>B</strong>=Hoist/Winde · <strong>C</strong>=Extraction/Berge­gerät · <strong>D</strong>=Ventilator/Beatmungs­gerät</td></tr>
+                        <tr><td><strong>5</strong></td><td>Patienten-Transport (Anzahl + Typ)</td><td><strong>L</strong>=Litter/liegend · <strong>A</strong>=Ambulatory/gehfähig.<br>Z.&nbsp;B. <em>„Lima eins, BREAK, Alfa zwei"</em> → <code>L1</code> + <code>A2</code></td></tr>
+                        <tr><td><strong>6</strong></td><td>Sicherheit Pickup-Site</td><td><strong>N</strong>=No Enemy · <strong>P</strong>=Possible Enemy · <strong>E</strong>=Enemy in Area · <strong>X</strong>=Enemy + bewaffnete Eskorte erforderlich</td></tr>
+                        <tr><td><strong>7</strong></td><td>Markierung Pickup-Site</td><td><strong>A</strong>=Panels · <strong>B</strong>=Pyrotechnic · <strong>C</strong>=Smoke (Rauch) · <strong>D</strong>=None · <strong>E</strong>=Other</td></tr>
+                        <tr><td><strong>8</strong></td><td>Nationalität + Status</td><td><strong>A</strong>=US-Military · <strong>B</strong>=US-Civilian · <strong>C</strong>=Non-US-Military (z.&nbsp;B. Bundeswehr / NATO-Partner) · <strong>D</strong>=Non-US-Civilian · <strong>E</strong>=Enemy POW</td></tr>
+                        <tr><td><strong>9</strong></td><td>CBRN-Kontamination</td><td><strong>C</strong>=Chemical · <strong>B</strong>=Biological · <strong>R</strong>=Radiological · <strong>N</strong>=Nuclear<br><em>(leerer String = keine Kontamination)</em></td></tr>
+                        <tr style="background:#1a1612"><td><strong>RE</strong></td><td>Remarks / Anmerkungen</td><td>Sonstige Hinweise nach Readback: Anflugrichtung, Hindernisse, Demo-SOP-Notizen</td></tr>
                     </tbody>
                 </table>
 
-                <h3>Beispiel-Diktat (vollständiger 9-Liner)</h3>
+                <h3>Beispiel-Diktat (vollständiger 9-Liner, GSG-Demo Option A)</h3>
                 <div class="hb-note" style="background:#0f1a14;border-left:3px solid var(--info,#5DADE2);font-style:italic;line-height:1.7">
-                    „Neuner Liner.<br>
-                    Linie 1: Abholzone bei Koordinate 32 U, 12345, 67890. Sammelpunkt südlicher Übungsbereich.<br>
-                    Linie 2: Funkkontakt Frequenz Alpha 1, Rufzeichen Sandtrop 1.<br>
-                    Linie 3: Ein Patient, Kategorie Routine.<br>
-                    Linie 4: Keine benötigte Spezialausrüstung erforderlich.<br>
-                    Linie 5: Patient gehfähig, Begleitung empfohlen.<br>
-                    Linie 6: Abholzone gesichert, keine unmittelbare Gefährdung erkennbar.<br>
-                    Linie 7: Markierung durch Einweiser.<br>
-                    Linie 8: Eigener Soldat, militärisch betroffen.<br>
-                    Linie 9: Lageaufnahme nach Zwischenfall im Übungsbetrieb. Keine Hinweise auf CBRN-Gefährdung, keine Brand- oder Explosionsgefahr, keine Feindlage.<br>
+                    „Neun Liner starten.<br>
+                    Zeile eins: Die Aufnahmestelle befindet sich bei MGRS drei zwei Uniform Mike Victor eins zwei drei, vier fünf sechs. Pickup Zone ist ADLER.<br>
+                    Zeile zwei: Erreichbar auf Kanal MEDEVAC DEMO. Rufname an der Pickup Site ist MESSE SAN EINS.<br>
+                    Zeile drei: Alfa eins, also ein Patient mit Priorität URGENT.<br>
+                    Zeile vier: Alfa, keine Sonderausrüstung erforderlich.<br>
+                    Zeile fünf: Lima eins, ein Tragenpatient.<br>
+                    Zeile sechs: November, keine feindlichen Kräfte im Bereich der Pickup Site.<br>
+                    Zeile sieben: Alfa, die Pickup Site ist mit Panel markiert. Farbe wird erst bei Kontakt bestätigt.<br>
+                    Zeile acht: Charlie, Non-U.S. military. Bundeswehr-Patient.<br>
+                    Zeile neun: Charlie, chemische CBRN-Kontamination wird vermutet.<br>
                     Aufnahme beenden."
                 </div>
+                <p style="color:var(--text-dim);font-size:0.9em;margin-top:8px">
+                    Erwartete Antwort des LLMs:
+                    <code style="font-size:0.9em">{"line1":"32U MV 123 456 ADLER","line2":"MEDEVAC DEMO, MESSE SAN EINS","line3":"1 A","line4":"A","line5":"L1","line6":"N","line7":"A","line8":"C","line9":"C"}</code>
+                </p>
 
                 <h2>4.5 ATMIST-Modus — Patientenübergabe in 6 Buchstaben</h2>
                 <p>
@@ -849,8 +862,12 @@
                             <td><code>export</code> · <code>exportieren</code> · <code>dokument erstellen</code> · <code>akte exportieren</code></td>
                         </tr>
                         <tr>
-                            <td><strong>9-Liner MEDEVAC-Modus</strong><br><span style="color:var(--text-dim);font-size:0.9em">Geführter NATO-9-Liner-Funkspruch</span></td>
-                            <td><code>neun liner</code> · <code>neunliner</code> · <code>neun-liner</code> · <code>9 liner</code></td>
+                            <td><strong>9-Liner MEDEVAC-Modus</strong><br><span style="color:var(--text-dim);font-size:0.9em">Geführter NATO ATP-3.7.2 Funkspruch (mit Phonetic-Alphabet → Codes)</span></td>
+                            <td><code>neun liner</code> · <code>neunliner</code> · <code>9 liner</code> · <code>medevac</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>ATMIST-Modus</strong><br><span style="color:var(--text-dim);font-size:0.9em">Sechs-zeilige Patientenübergabe (A·T·M·I·S·T)</span></td>
+                            <td><code>atmist</code> · <code>ad mist</code> · <code>at mist</code> · <code>patientenübergabe</code> · <code>atmist starten</code></td>
                         </tr>
                     </tbody>
                 </table>
@@ -1174,13 +1191,19 @@
                 <ul>
                     <li><strong>Ollama-URL</strong> — <code>http://127.0.0.1:11434</code></li>
                     <li><strong>Modell</strong> — <code>gemma3:4b</code> (Default seit 17.04.2026)</li>
+                    <li><strong>📝 Prompt-Editor</strong> — alle vier LLM-Prompts (Defense-Preamble,
+                        Multi-Patient-Segmentierung, 9-Liner-Extraktion, ATMIST-Extraktion,
+                        Patient-Feld-Extraktion) sind direkt in der UI editierbar.
+                        Änderungen wirken <strong>sofort</strong> beim nächsten LLM-Aufruf
+                        — kein Service-Restart nötig. „Auf Default zurücksetzen"-Button
+                        macht Experimente sicher.</li>
                 </ul>
 
                 <h2>⚙ Gerät</h2>
                 <ul>
                     <li>Unit-Name („BAT Alpha42") — wird auf der Surface-Karte als Label angezeigt</li>
                     <li>Device-ID, Default-Medic</li>
-                    <li>Backend-URL (Tailscale-IP des Surface)</li>
+                    <li>Backend-URL (Tailscale-IP der Rettungsstation)</li>
                 </ul>
 
                 <h2>🔐 Sicherheit</h2>
@@ -1194,11 +1217,85 @@
 
                 <h2>📋 System</h2>
                 <ul>
-                    <li>Daten zurücksetzen</li>
+                    <li><strong>🔁 Dienst-Steuerung</strong> (NEU 2026-04-29) — wenn das
+                        System in komischen Zuständen hängt (z.B. 9-Liner-Modus
+                        aktiviert obwohl normales Diktat gewollt):
+                        <ul>
+                            <li><strong>⚡ Soft-Reset</strong> — sofort, keine Downtime.
+                                Setzt nur transient-Flags zurück (9-Liner/ATMIST-Modus,
+                                Recording-Status, Audio-Buffer, Vosk-Queue).
+                                Patienten/Sessions/Operator-Login bleiben.</li>
+                            <li><strong>🔁 Service neu starten</strong> — Voll-Restart via
+                                systemd, ~30-60 s Downtime. Whisper + Ollama + Vosk
+                                werden neu geladen. Use-Case: Ollama-OOM, RC522-Reader hängt.
+                                Daten bleiben persistent.</li>
+                        </ul>
+                    </li>
+                    <li>Daten zurücksetzen (löscht alle Patienten + Pendings + Sessions)</li>
                     <li>Demo-Szenarien laden (Standard, Massenanfall, 9-Liner, Role-1-Übergabe)</li>
                     <li>Export (DOCX / PDF / JSON / XML)</li>
                     <li>RFID-Karte löschen</li>
                 </ul>
+
+                <h2>📄 Dokumente-Seite (Sidebar)</h2>
+                <ul>
+                    <li><strong>Patientendatenbank exportieren</strong> — DOCX / PDF / JSON / XML aller Patienten</li>
+                    <li><strong>Einzelpatient exportieren</strong> — gezielt einen Patient als DOCX/PDF</li>
+                    <li><strong>Vision &amp; Handbuch — Standalone-HTML</strong> (NEU 2026-04-30):
+                        <ul>
+                            <li>📦 <strong>Vision-Paket (ZIP)</strong> — komplette Vision-Page + 6 Use-Case-Mockups (Feuerwehr, Polizei, THW, Logistik, Sanitätsdienste, Forschung). Funktioniert offline. Ideal zum Verschicken.</li>
+                            <li>🌍 <strong>Vision (HTML)</strong> — nur die Vision-Page als einzelne Datei</li>
+                            <li>📖 <strong>Handbuch (HTML)</strong> — komplettes Handbuch als einzelne Datei</li>
+                        </ul>
+                    </li>
+                    <li><strong>Export-Historie</strong> — bereits erzeugte Dokumente, Download / Löschen</li>
+                </ul>
+            </section>
+
+            <!-- ========== Audit-Log + Edit ========== -->
+            <section id="hb-audit">
+                <h1><span class="hb-num">10</span>a Patientendaten bearbeiten &amp; Audit-Log</h1>
+                <p class="hb-section-lead">Manuelle Korrektur am Patient — wer hat wann was geändert? Audit-Log dokumentiert jede Änderung append-only.</p>
+
+                <h2>Was kann editiert werden?</h2>
+                <ul>
+                    <li><strong>Vitals</strong> (Puls, Blutdruck, SpO2) — direkt im
+                        Card-Footer editierbar (Fahrzeug-Modus)</li>
+                    <li><strong>Name + Dienstgrad</strong> — Card-Footer-Inputs</li>
+                    <li><strong>Triage</strong> — T1/T2/T3/T4-Buttons (nur Role 1+, nicht in Phase 0)</li>
+                    <li><strong>Transkript-Text</strong> — pro Aufnahme-Eintrag der „✎ Bearbeiten"-Button (NUR im Fahrzeug-Modus, im Feld bewusst gesperrt)</li>
+                </ul>
+
+                <h2>Audit-Log</h2>
+                <p>
+                    Jede Änderung wird in <code>patient.audit_log</code> mitgeschrieben.
+                    Append-only — keine Löschmöglichkeit, keine Rückgängig-Funktion.
+                    Forensisch wichtig: wer hat was wann manipuliert.
+                </p>
+                <p>
+                    <strong>Eintrags-Format:</strong> Timestamp, Operator-UID/Name/Rolle,
+                    Field-Path (z.&nbsp;B. <code>vitals.pulse</code>, <code>transcripts[0].text</code>),
+                    alter Wert → neuer Wert, Change-Type (manual_edit, voice_command,
+                    llm_extraction, sync_inbound, rfid_scan), Geräte-ID.
+                </p>
+
+                <h2>Wo sehe ich es?</h2>
+                <ul>
+                    <li><strong>Patient-Card-Header:</strong> Badge „✎ Nx ed. Maier" wenn
+                        manuelle Bearbeitungen vorhanden sind. Klick öffnet Detail-View
+                        mit voller Historie.</li>
+                    <li><strong>Patient-Detail-View:</strong> eigene Sektion „📝 Änderungs-Historie"
+                        mit Tabelle (Zeitstempel, Wer, Feld, Vorher, Nachher, Type).</li>
+                    <li><strong>Pro Transkript-Eintrag:</strong> kleiner „✎ editiert"-Marker
+                        wenn der Text nachträglich korrigiert wurde.</li>
+                </ul>
+
+                <h2>Operator-Identifikation</h2>
+                <p>
+                    Wenn ein Operator via RFID-Login eingeloggt ist, wird sein Name + Rolle
+                    geloggt. Ohne Login → „Unbekannt" als Operator-Name. Empfehlung: Vor
+                    der Demo / dem Einsatz einloggen, damit Audit-Log aussagekräftig ist.
+                </p>
             </section>
 
             <!-- ========== 11. Troubleshooting ========== -->
@@ -1236,6 +1333,8 @@
                     <thead><tr><th style="width:25%">Begriff</th><th>Bedeutung</th></tr></thead>
                     <tbody>
                         <tr><td><strong>ASR</strong></td><td>Automatic Speech Recognition — Sprache → Text. In SAFIR: Whisper large-v3-turbo</td></tr>
+                        <tr><td><strong>ATMIST</strong></td><td>Sechs-zeilige militär-medizinische Patientenübergabe: <strong>A</strong>ngaben/Alter, <strong>T</strong>ime, <strong>M</strong>echanismus, <strong>I</strong>njury, <strong>S</strong>igns, <strong>T</strong>reatment. Trigger: „atmist"</td></tr>
+                        <tr><td><strong>Audit-Log</strong></td><td>Append-only-Liste pro Patient: wer hat wann welches Feld geändert (Operator-UID, Timestamp, alt → neu, Change-Type). Sichtbar im Patient-Detail-View</td></tr>
                         <tr><td><strong>BAT</strong></td><td>„Beweglicher Arzt-Trupp" — Feldgerät in Phase 0 (hier: Jetson)</td></tr>
                         <tr><td><strong>DBA</strong></td><td>„Diktier-Baustein", Abschnitt eines Multi-Patient-Diktats</td></tr>
                         <tr><td><strong>Gemma 3 4B</strong></td><td>Google Open-Source-LLM mit 4 Mrd. Parametern, quantisiert auf Q4_K_M (~4.3 GB)</td></tr>
