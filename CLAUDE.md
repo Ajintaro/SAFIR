@@ -50,7 +50,7 @@ Auftraggeber: CGI Deutschland. Zielgruppe: Bundeswehr Sanitätsdienst.
 ### SINA Workstation (`backend/`) — Leitstelle (Role 1)
 - Hardware: **SINA Workstation** (secunet, BSI-zugelassen VS-NfD), Windows
 - Vorgaenger war eine Microsoft Surface — Hardware-Wechsel am 04.05.2026, Software ist identisch geblieben.
-- Tailscale-Hostname: `ai-station`, Backend-URL im Jetson-Config: `http://100.101.80.64:8080`
+- Tailscale-Hostname: `desktop-45t6p3p` (Default-Windows-Name, im Tailscale-Admin auf `ai-station` umbenennbar), Backend-URL im Jetson-Config: `http://100.95.246.25:8080`
 - `device_id`: `sina-01`, `system_name`: `SINA Workstation`
 - FastAPI Backend mit `/api/ingest` (Jetson-Push), `/api/patients`, `/api/units`, WebSocket `/ws`
 - Taktische Lagekarte (Leaflet), Event-Feed, Triage-Counts, BAT-Transport-Marker
@@ -139,7 +139,7 @@ Siehe `shared/models.py`:
 
 ### Netzwerk-Setup
 - Beide Geräte hängen via **Tailscale** (Mesh-VPN) zusammen — kein gemeinsames WLAN nötig
-- Backend-URL in `config.json`: `http://100.101.80.64:8080` (Tailscale-IP der SINA Workstation)
+- Backend-URL in `config.json`: `http://100.95.246.25:8080` (Tailscale-IP der SINA Workstation)
 - Jetson-Tailscale-IP: `100.126.179.27`, Hostname `jetson-orin`
 - SINA-Workstation-Tailscale-Hostname: `ai-station`
 
