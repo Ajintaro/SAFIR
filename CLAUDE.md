@@ -27,6 +27,30 @@
 > **Urspruengliche Roadmap-Plan-Datei lokal:** `C:\Users\the_s\.claude\plans\effervescent-brewing-alpaca.md`
 > (lokal, nicht im Repo, aber durch `docs/PROGRESS.md` im Repo gespiegelt).
 
+## Deployment auf beide Geräte (Jetson + SINA)
+
+`scripts/deploy-all.sh` deployed parallel auf Jetson (lokal via
+systemctl) und SINA Workstation (via SSH `Host sina` →
+`Win32_Process.Create` für detached Backend). Voraussetzungen:
+
+- HEAD muss zu `origin/main` gepusht sein (Skript prüft das)
+- `ssh sina` muss passwordless funktionieren (Pubkey in
+  `C:\ProgramData\ssh\administrators_authorized_keys` auf der SINA)
+- `sudo -n systemctl restart safir.service` muss ohne Passwort gehen
+
+Workflow für ein Update:
+
+```bash
+# 1. VERSION bumpen in shared/version.py (z.B. 0.1.3 -> 0.1.4)
+# 2. commiten + pushen + auf main mergen
+git push && git -C ../.. merge --ff-only HEAD && git push origin main
+# 3. parallel deployen + verifizieren
+scripts/deploy-all.sh
+```
+
+Das Skript wartet bis beide `/api/status` die neue VERSION melden
+(max. 180 s) und macht abschließend einen Mesh-Sanity-Check (Peers).
+
 ## Was ist SAFIR?
 Sprachgestützte Assistenz für Informationserfassung in der Rettungskette. KI-gestütztes Dokumentationssystem
 entlang der Rettungskette der Bundeswehr. Erste Demo für Bundeswehr-Delegation war am **19.03.2026**.
