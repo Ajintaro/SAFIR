@@ -1528,7 +1528,10 @@ def _log_patient_change(patient: dict, field: str, old_value, new_value,
     """
     if old_value == new_value:
         return
-    cfg = _config or {}
+    # Auf der SINA gibt es keine _config-Globalvariable wie auf dem
+    # Jetson — wir laden frisch aus der Datei. Funktion ist selten
+    # genug aufgerufen dass der Datei-IO nicht stoert.
+    cfg = load_backend_config()
     cur = getattr(state, "current_operator", None)
     last = getattr(state, "last_operator", None)
     if cur:
