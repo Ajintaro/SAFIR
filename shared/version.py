@@ -21,7 +21,7 @@ from __future__ import annotations
 # WICHTIG: Bei JEDER Aenderung (Feature/Fix/Refactor) hochzaehlen.
 # Schrittweite 0.0.1. Das ist die einzige Stelle an der die
 # Versionsnummer gepflegt wird.
-VERSION: str = "0.1.4"
+VERSION: str = "0.1.5"
 
 
 def get_full_version() -> str:

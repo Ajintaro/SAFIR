@@ -7233,11 +7233,9 @@ async def data_test_generate(body: dict | None = None):
     Werte:
       "standard"               (Default) Mix aus registriert/analysiert/gemeldet
       "mass_cas"               Massenanfall 10 Patienten, Triage-Mix
-      "nine_liner"             9-Liner MEDEVAC-Demo (analysierter Patient)
-      "nine_liner_pending"     Deutscher 9-Liner als unanalysierter Pending
-      "nine_liner_pending_en"  Englischer 9-Liner (NATO-Format) als Pending
-      "fmc_pending"            NATO Field Medical Card als Pending
-      "atmist_pending"         ATMIST-Uebergabe als Pending
+      "nine_liner_pending_en"  Englischer 9-Liner (NATO-Format) als unanalysiert
+      "fmc_pending"            NATO Field Medical Card als unanalysiert
+      "atmist_pending"         ATMIST-Uebergabe als unanalysiert
       "role1"                  2 Patienten analyzed + synced (Uebergabe)
     Alle Werte (Namen, Vitals, MGRS, Callsigns) sind randomisiert,
     Struktur und Demo-Story bleiben pro Szenario identisch.
@@ -7324,72 +7322,6 @@ async def data_test_generate(body: dict | None = None):
                 transcript_text=transcript,
             ))
         pending_texts = []
-
-    elif scenario == "nine_liner":
-        # 1 Patient mit vollstaendigem 9-Liner (kein pending Diktat, direkt
-        # als analyzed Patient mit template_type=9liner hingelegt).
-        # Refactor 2026-05-04: MGRS, Callsign, Rufzeichen, Patientenanzahl
-        # aus _rnd.
-        mgrs = _rnd.random_grid_mgrs()
-        callsign = _rnd.random_callsign()
-        freq = round(random.uniform(30.0, 87.9), 3)
-        n_patients = random.randint(1, 3)
-        prio = random.choice(["A", "B", "C"])
-        p9 = _mk_patient("MEDEVAC Request", "", [],
-            {}, flow_status="analyzed", analyzed=True, synced=False,
-            current_role="phase0",
-            transcript_text=(
-                f"Neun liner starten. Zeile eins MGRS {mgrs.lower().replace(' ', ' ')}. "
-                f"Zeile zwei Funkfrequenz {freq:.3f} Megahertz, Rufzeichen {callsign}. "
-                f"Zeile drei {n_patients} Patienten Dringlichkeit {prio}. "
-                f"Zeile vier bravo, Winde. Zeile fuenf beide liegend. "
-                f"Zeile sechs papa. Zeile sieben charlie, Rauch. "
-                f"Zeile acht charlie NATO. Zeile neun november, offenes Gelaende."
-            ))
-        p9["template_type"] = "9liner"
-        p9["nine_liner"] = {
-            "line1": mgrs,
-            "line2": f"{freq:.3f} MHz, {callsign}",
-            "line3": f"{n_patients} {prio}",
-            "line4": "B — Winde",
-            "line5": f"L{n_patients}",
-            "line6": "P — moeglicher Feind",
-            "line7": "C — Rauch",
-            "line8": "C — NATO",
-            "line9": "N — keine, offenes Gelaende",
-        }
-        test_patients = [p9]
-        pending_texts = []
-
-    elif scenario == "nine_liner_pending":
-        # Unanalysiertes Pending-Diktat im 9-Liner-Format — ideal fuer
-        # Live-Demo der Analyse-Pipeline. User klickt "Analysieren",
-        # Gemma extrahiert die 9 Felder.
-        # Refactor 2026-05-04: Pickup-Name, MGRS, Callsign, Patientenzahl
-        # aus _rnd. Struktur (Zeile 1..9 in Reihenfolge) bleibt identisch.
-        mgrs_words = _rnd.random_grid_mgrs()
-        pickup = _rnd.random_pickup_site().upper()
-        callsign = _rnd.random_callsign().upper()
-        n_pat = random.randint(1, 3)
-        n_word = ["ein", "zwei", "drei"][n_pat - 1]
-        test_patients = []
-        pending_texts = [{
-            "is_nine_liner": True,
-            "text": (
-                f"Neun Liner starten. Zeile eins: Die Aufnahmestelle befindet "
-                f"sich bei MGRS {mgrs_words}. Pickup Zone ist {pickup}. "
-                f"Zeile zwei: Erreichbar auf Kanal MEDEVAC DEMO. Rufname an "
-                f"der Pickup Site ist {callsign}. "
-                f"Zeile drei: Alfa {n_word}, {n_word} Patient Prioritaet URGENT. "
-                f"Zeile vier: Alfa, keine Sonderausruestung erforderlich. "
-                f"Zeile fuenf: Lima {n_word}, {n_word} Tragenpatient. "
-                f"Zeile sechs: November, keine feindlichen Kraefte im Bereich. "
-                f"Zeile sieben: Alfa, die Pickup Site ist mit Panel markiert. "
-                f"Farbe wird erst bei Kontakt bestaetigt. "
-                f"Zeile acht: Charlie, Non-U.S. military, Bundeswehr-Patient. "
-                f"Zeile neun: November, keine bekannte CBRN-Kontamination."
-            ),
-        }]
 
     elif scenario == "nine_liner_pending_en":
         # Englischer 9-Liner als Pending-Diktat (Anhang A, Demo fuer
