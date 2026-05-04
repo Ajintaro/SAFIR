@@ -633,7 +633,9 @@ async def _oled_analyze_pending():
             # filter gekippt. Wenn das Pending explizit als 9-Liner/ATMIST
             # markiert ist ODER der Auto-Detect anschlaegt -> durchlassen.
             is_template = (pt.get("is_nine_liner") or pt.get("is_atmist")
-                           or looks_like_nine_liner(text) or looks_like_atmist(text))
+                           or pt.get("is_nine_liner_en") or pt.get("is_fmc")
+                           or looks_like_nine_liner(text) or looks_like_atmist(text)
+                           or looks_like_nine_liner_en(text) or looks_like_fmc(text))
             if is_med or is_template:
                 to_analyze.append(pt)
                 if is_template and not is_med:
@@ -683,7 +685,13 @@ async def _oled_analyze_pending():
         await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
         session_started = time.monotonic()
         try:
-            created = await _segment_and_create_patients(full_text, record_time)
+            created = await _segment_and_create_patients(
+                full_text, record_time,
+                is_nine_liner=bool(pt.get("is_nine_liner")),
+                is_atmist=bool(pt.get("is_atmist")),
+                is_nine_liner_en=bool(pt.get("is_nine_liner_en")),
+                is_fmc=bool(pt.get("is_fmc")),
+            )
         finally:
             pt["analyzing"] = False
         session_duration = round(time.monotonic() - session_started, 1)
@@ -3046,14 +3054,16 @@ def _sanitize_llm_field(value, field_key: str = ""):
     return s
 
 
-def _call_ollama(prompt: str, label: str = "LLM") -> dict:
+def _call_ollama(prompt: str, label: str = "LLM", num_predict: int = 400,
+                 num_ctx: int | None = None) -> dict:
     """Ruft Ollama auf mit GPU-Fallback auf CPU bei OOM.
     keep_alive=-1 verhindert dass das Modell zwischen Analysen aus dem RAM
     fällt (Ollama-Default ist 5 min), wichtig für unseren permanenten
     Whisper+Qwen-Parallelbetrieb im Headless-Mode.
-    temperature=0 + num_predict=400 macht den Decode deterministisch und
-    schneller — für Feld-Extraktion und Segmentierung kein Kreativitäts-
-    bedarf, Schnelligkeit zählt.
+    temperature=0 macht den Decode deterministisch und schneller — für
+    Feld-Extraktion und Segmentierung kein Kreativitaetsbedarf.
+    num_predict default 400 reicht fuer 9-Liner/ATMIST/Enrichment, FMC
+    braucht mehr (~2400) wegen der 7 Sektionen mit Sub-Listen.
     num_ctx (siehe OLLAMA_NUM_CTX) begrenzt das Context-Fenster damit der
     KV-Cache klein bleibt — sonst passt 3B nicht neben Whisper ins VRAM."""
     # num_gpu=-1 = alle Modell-Layer auf GPU (Pflicht fuer Gemma 3 4B, sonst
@@ -3075,9 +3085,9 @@ def _call_ollama(prompt: str, label: str = "LLM") -> dict:
                     "options": {
                         "num_gpu": num_gpu,
                         "temperature": 0.0,
-                        "num_predict": 400,
+                        "num_predict": num_predict,
                         "top_k": 1,
-                        "num_ctx": OLLAMA_NUM_CTX,
+                        "num_ctx": num_ctx if num_ctx is not None else OLLAMA_NUM_CTX,
                     },
                     "keep_alive": -1,
                 },
@@ -3980,6 +3990,237 @@ def extract_nine_liner(transcript: str) -> dict:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Englischer 9-Liner Prompt — NATO MEDEVAC ATP-3.7.2 fuer Multinational
+# Operations. Gleiches Schema wie der deutsche Prompt, aber englischer
+# Sprachfluss ("Line 1", "casualty", "smoke signal" statt "Zeile eins",
+# "Patient", "Rauch"). Phonetisches Alphabet wird gleich behandelt.
+# ---------------------------------------------------------------------------
+NINE_LINER_EN_PROMPT = """Extract MEDEVAC 9-Liner (NATO ATP-3.7.2) fields from the English transcript below.
+Return ONLY JSON with fields line1..line9 + remarks.
+
+SCHEMA + CODES:
+
+line1 — Pickup location (FREETEXT)
+  MGRS grid + pickup zone name. Example: "32U NB 43826 91754 FALCON"
+
+line2 — Radio frequency / call sign (FREETEXT)
+  e.g. "MEDICAL NET 4 | CALL SIGN: MARBLE 37"
+
+line3 — Number of patients by precedence (CODES):
+  A=URGENT          B=URGENT-SURGICAL    C=PRIORITY
+  D=ROUTINE         E=CONVENIENCE
+  Format: "<number> <letter>", e.g. "1 B" for one urgent-surgical.
+
+line4 — Special equipment required (CODES):
+  A=NONE            B=HOIST              C=EXTRACTION       D=VENTILATOR
+  Single letter (A/B/C/D).
+
+line5 — Number of patients by type (CODES):
+  L=Litter          A=Ambulatory
+  Format: "L<n> A<n>", e.g. "L1 A0".
+
+line6 — Security of pickup site (CODES):
+  N=No enemy        P=Possible enemy     E=Enemy in area    X=Armed escort needed
+  Single letter (N/P/E/X).
+
+line7 — Method of marking pickup site (CODES):
+  A=Panel           B=Pyrotechnic        C=Smoke            D=None       E=Other
+  Single letter (A/B/C/D/E).
+
+line8 — Patient nationality and status (CODES):
+  A=US Military     B=US Civilian        C=Non-US Military  D=Non-US Civilian   E=EPW
+  Single letter (A/B/C/D/E). German soldier = C.
+
+line9 — NBC / CBRN contamination (CODES):
+  C=Chemical        B=Biological         R=Radiological     N=Nuclear
+  Single letter (C/B/R/N) OR empty string if no contamination.
+
+remarks — Any additional notes (readback, clarifications).
+
+PHONETIC ALPHABET (always normalise to letters):
+  Alpha->A  Bravo->B  Charlie->C  Delta->D  Echo->E  Foxtrot->F  Golf->G
+  Hotel->H  India->I  Juliett->J  Kilo->K  Lima->L  Mike->M  November->N
+  Oscar->O  Papa->P  Quebec->Q  Romeo->R  Sierra->S  Tango->T  Uniform->U
+  Victor->V  Whiskey->W  X-ray->X  Yankee->Y  Zulu->Z
+
+CRITICAL RULES:
+1. Empty string "" for fields not in transcript.
+2. Keep coordinates EXACTLY — do not shorten or invent.
+3. Code-fields (3,4,5,6,7,8,9) get ONLY codes, no long freetext.
+4. "End of request" marks the end — do not include it in any field.
+
+EXAMPLE TRANSCRIPT (Anhang A):
+"Line 1: Pickup location is grid 32 Uniform November Bravo 43826 91754. Pickup site name Falcon.
+Line 2: Contact Marble 37 on Med Net 4.
+Line 3: We have one casualty. Precedence is urgent surgical.
+Line 4: No special equipment required.
+Line 5: The casualty is a litter patient.
+Line 6: Possible enemy troops in the area.
+Line 7: Pickup site will be marked by smoke. Smoke color will be confirmed on contact.
+Line 8: The casualty is non-US military, one German soldier.
+Line 9: No known NBC or CBRN contamination. End of request."
+
+EXPECTED ANSWER:
+{"line1":"32U NB 43826 91754 FALCON","line2":"MEDICAL NET 4 | CALL SIGN: MARBLE 37","line3":"1 B","line4":"A","line5":"L1 A0","line6":"P","line7":"C","line8":"C","line9":"","remarks":""}
+
+Transcript:
+"""
+
+
+def extract_nine_liner_en(transcript: str) -> dict:
+    """Englische Variante von extract_nine_liner. Gleiche Output-Struktur."""
+    empty = {f"line{i}": "" for i in range(1, 10)}
+    empty["remarks"] = ""
+    if not transcript or not transcript.strip():
+        return empty
+    prompt = get_prompt("nine_liner_en") + transcript.strip() + "\n\nAnswer:"
+    result = _call_ollama(prompt, "9-Liner-EN")
+    if not isinstance(result, dict):
+        return empty
+    out = {}
+    for i in range(1, 10):
+        key = f"line{i}"
+        val = result.get(key, "")
+        out[key] = str(val).strip() if val else ""
+    rem = result.get("remarks", "")
+    out["remarks"] = str(rem).strip() if rem else ""
+    return out
+
+
+# ---------------------------------------------------------------------------
+# NATO Field Medical Card (FMC) — englischer Extraktions-Prompt
+# nach Anhang B (Jannik) und AMedP-8.1 Annex A.
+# Gibt JSON mit Sektionen A-G zurueck, jede Section ein Sub-Dict.
+# ---------------------------------------------------------------------------
+FMC_PROMPT = """Extract NATO Field Medical Card (FMC) fields from the English transcript below.
+Schema follows AMedP-8.1 Annex A. Return ONLY a single JSON object with the
+top-level keys section_a through section_g. Sections D and E may contain arrays.
+
+SCHEMA:
+
+section_a (Identification):
+  last_name, first_name, rank, sex (Male/Female), dob (DD MMM YYYY uppercase),
+  service_number, nationality (e.g. "German Armed Forces / DEU"), unit
+
+section_b (Cause):
+  casualty_type ("WIA — Wounded in Action" / "DOW" / "Disease" / "NBI"),
+  datetime_injury (e.g. "27 APR 2026 / 0718Z"),
+  mechanism (one-line description)
+
+section_c (Initial Assessment):
+  time_first_assessment ("HHMMZ"),
+  general_condition ("Alert" / "Confused" / "Unresponsive" / ...),
+  airway, breathing, chest,
+  main_injury (full sentence),
+  main_injury_region (lowercase tag, choose ONE of:
+    "head", "neck", "chest_l", "chest_r", "shoulder_l", "shoulder_r",
+    "upper_arm_l", "upper_arm_r", "forearm_l", "forearm_r",
+    "hand_l", "hand_r", "abdomen_l", "abdomen_r", "flank_l", "flank_r",
+    "back", "thigh_l", "thigh_r", "lower_leg_l", "lower_leg_r",
+    "foot_l", "foot_r"),
+  additional_injury, loss_of_consciousness, allergies, blood_group
+
+section_d (Vital Signs) — ARRAY of measurements, in chronological order:
+  Each entry: {time ("HHMMZ"), pulse, bp ("sys/dia mmHg"),
+              resp_rate, spo2 (%), gcs, pain ("X/10")}
+
+section_e (Treatment) — Object:
+  tourniquet (description), tourniquet_time ("HHMMZ"),
+  hemorrhage_control, hypothermia_prevention, iv_access,
+  medications: ARRAY of {name, dose, route ("IV"/"IM"/"PO"), time ("HHMMZ")},
+  fluids: ARRAY of {name, volume, route, time},
+  immobilization, surgical_procedure
+
+section_f (Movement / Evacuation):
+  evacuation_priority ("Urgent Surgical" / "Urgent" / "Priority" / "Routine"),
+  transport_category ("Litter" / "Ambulatory"),
+  destination ("Role 2 via Role 1" etc.),
+  considerations: ARRAY of strings
+
+section_g (Documentation):
+  recorded_by (full name + rank), function ("Combat Medic" etc.)
+
+CRITICAL RULES:
+1. Empty string "" or empty array [] for fields not in transcript.
+2. Keep all times in Zulu format "HHMMZ" (e.g. "0724Z").
+3. Keep service numbers EXACTLY (do not strip dashes/spaces).
+4. main_injury_region MUST be exactly one of the listed tags — pick the
+   anatomical region that best matches main_injury, lowercase, no spaces.
+5. Multiple medications go in section_e.medications as separate array entries
+   (one per drug — do NOT merge into one string).
+6. The two vital-signs measurements go in section_d as two array entries.
+
+EXAMPLE — given a transcript starting:
+  "Field Medical Card for one casualty. Patient is Sergeant Daniel Krueger, male,
+   German Army, service number DEU-482917, born 3 November 1992. Unit is 3rd
+   Platoon, 2nd Company, 391 Mechanized Infantry Battalion. ... Main injury is a
+   fragmentation wound to the right upper thigh with severe bleeding ..."
+
+Expected section_a (snippet):
+  {"last_name":"KRUEGER","first_name":"Daniel","rank":"Sergeant","sex":"Male",
+   "dob":"03 NOV 1992","service_number":"DEU-482917",
+   "nationality":"German Armed Forces / DEU",
+   "unit":"3rd Platoon, 2nd Company, 391 Mechanized Infantry Battalion"}
+And section_c.main_injury_region = "thigh_r".
+
+Transcript:
+"""
+
+
+def extract_fmc(transcript: str) -> dict:
+    """Extrahiert FMC-Sektionen A-G aus englischem Transkript via LLM.
+    Robust gegen unvollstaendige LLM-Antworten — fehlende Sektionen werden
+    als leere Defaults zurueckgegeben, sodass die Anzeige nicht crasht."""
+    empty = {
+        "section_a": {"last_name":"","first_name":"","rank":"","sex":"",
+                      "dob":"","service_number":"","nationality":"","unit":""},
+        "section_b": {"casualty_type":"","datetime_injury":"","mechanism":""},
+        "section_c": {"time_first_assessment":"","general_condition":"",
+                      "airway":"","breathing":"","chest":"",
+                      "main_injury":"","main_injury_region":"",
+                      "additional_injury":"","loss_of_consciousness":"",
+                      "allergies":"","blood_group":""},
+        "section_d": [],
+        "section_e": {"tourniquet":"","tourniquet_time":"",
+                      "hemorrhage_control":"","hypothermia_prevention":"",
+                      "iv_access":"","medications":[],"fluids":[],
+                      "immobilization":"","surgical_procedure":""},
+        "section_f": {"evacuation_priority":"","transport_category":"",
+                      "destination":"","considerations":[]},
+        "section_g": {"recorded_by":"","function":""},
+    }
+    if not transcript or not transcript.strip():
+        return empty
+    prompt = get_prompt("fmc") + transcript.strip() + "\n\nAnswer:"
+    # FMC hat 7 Sektionen mit Sub-Listen (Vitals, Meds). Default num_ctx
+    # (2048) reicht nicht fuer Prompt+Input+Output — daher hier explizit
+    # 8192 (Gemma 3 4B kann bis 128k, aber 8k ist genug fuer FMC und schont
+    # Speicher beim Decode).
+    result = _call_ollama(prompt, "FMC", num_predict=2400, num_ctx=8192)
+    if not isinstance(result, dict):
+        return empty
+    # Merge result into empty defaults so missing sub-keys stay valid
+    out = empty
+    for sec_key in ("section_a", "section_b", "section_c", "section_e",
+                    "section_f", "section_g"):
+        sec = result.get(sec_key)
+        if isinstance(sec, dict):
+            for k in out[sec_key].keys():
+                v = sec.get(k)
+                if v is None:
+                    continue
+                if isinstance(out[sec_key][k], list) and isinstance(v, list):
+                    out[sec_key][k] = v
+                else:
+                    out[sec_key][k] = str(v).strip() if not isinstance(v, list) else v
+    # section_d ist eine Liste
+    sd = result.get("section_d")
+    if isinstance(sd, list):
+        out["section_d"] = sd
+    return out
+
+
 def extract_atmist(transcript: str) -> dict:
     """Extrahiert ATMIST-Felder aus einem Transkript via LLM.
 
@@ -4065,7 +4306,9 @@ _DEFAULT_PROMPTS = {
     "defense_preamble": PROMPT_DEFENSE_PREAMBLE,
     "boundary": BOUNDARY_PROMPT,
     "nine_liner": NINE_LINER_PROMPT,
+    "nine_liner_en": NINE_LINER_EN_PROMPT,
     "atmist": ATMIST_PROMPT,
+    "fmc": FMC_PROMPT,
     "enrichment": _ENRICHMENT_PROMPT_TEMPLATE,
 }
 
@@ -4115,6 +4358,24 @@ _PROMPT_METADATA = {
                        "plus 'Antwort:' am Ende.",
         "placeholders": [],
         "rows": 16,
+    },
+    "nine_liner_en": {
+        "label": "9-Liner MEDEVAC (English / NATO ATP-3.7.2)",
+        "description": "Englische Variante des 9-Liner-Prompts fuer "
+                       "multinationale Einsaetze. Selbes Schema (line1..line9), "
+                       "aber Antworten und Code-Erlaeuterungen auf Englisch.",
+        "placeholders": [],
+        "rows": 16,
+    },
+    "fmc": {
+        "label": "NATO Field Medical Card (AMedP-8.1)",
+        "description": "Englischer Pflegebericht nach NATO-Standard mit "
+                       "Sektionen A-G (Identification, Cause, Initial "
+                       "Assessment, Vital Signs, Treatment, Movement, "
+                       "Documentation). main_injury_region ist getaggt "
+                       "fuer die Body-Diagramm-Anzeige.",
+        "placeholders": [],
+        "rows": 18,
     },
     "enrichment": {
         "label": "Patient-Feld-Extraktion",
@@ -4181,6 +4442,51 @@ def looks_like_atmist(transcript: str) -> bool:
     low = transcript.lower()
     hits = sum(1 for kw in _ATMIST_KEYWORDS if kw in low)
     return hits >= 2
+
+
+# Englischer 9-Liner Auto-Detect — Marker aus der NATO-Schreibweise.
+_NINE_LINER_EN_KEYWORDS = (
+    "line 1", "line 2", "line 3", "line 4", "line 5",
+    "line 6", "line 7", "line 8", "line 9",
+    "pickup location", "pickup site", "med net", "med net 4",
+    "casualty", "casualties", "litter patient", "litter patients",
+    "urgent surgical", "smoke signal", "non-us military", "cbrn",
+    "end of request",
+)
+
+
+def looks_like_nine_liner_en(transcript: str) -> bool:
+    """Englischer 9-Liner Auto-Detect. Schwelle 2+ Marker."""
+    if not transcript:
+        return False
+    low = transcript.lower()
+    hits = sum(1 for kw in _NINE_LINER_EN_KEYWORDS if kw in low)
+    return hits >= 2
+
+
+# FMC Auto-Detect — Marker aus AMedP-8.1-Wortlaut.
+_FMC_KEYWORDS = (
+    "field medical card", "fmc",
+    "service number", "blood group",
+    "tourniquet applied", "txa", "ketamine", "ceftriaxone",
+    "first assessment", "evacuation priority", "transport category",
+    "recommended destination", "wia", "wounded in action",
+    "balanced crystalloid", "antecubital", "splinted",
+)
+
+
+def looks_like_fmc(transcript: str) -> bool:
+    """FMC Auto-Detect — schon ein klares 'Field Medical Card' reicht.
+    Sonst Schwelle 3+ Marker (FMCs sind sehr lang, da sind 3 Treffer
+    unausweichlich falls es eine FMC ist, andererseits selten in einem
+    normalen Diktat)."""
+    if not transcript:
+        return False
+    low = transcript.lower()
+    if "field medical card" in low or "fmc" in low.split():
+        return True
+    hits = sum(1 for kw in _FMC_KEYWORDS if kw in low)
+    return hits >= 3
 
 
 @app.get("/api/pending")
@@ -4304,8 +4610,11 @@ async def analyze_pending_transcript(body: dict):
             # Keywords (Puls, Blutung), aber sind trotzdem medizinisch
             # relevante Funksprueche/Uebergaben.
             is_template = (pt.get("is_nine_liner") or pt.get("is_atmist")
+                           or pt.get("is_nine_liner_en") or pt.get("is_fmc")
                            or looks_like_nine_liner(full_text)
-                           or looks_like_atmist(full_text))
+                           or looks_like_atmist(full_text)
+                           or looks_like_nine_liner_en(full_text)
+                           or looks_like_fmc(full_text))
             if not is_med and not is_template:
                 print(f"[CONTENT-FILTER] Transkript nicht-medizinisch "
                       f"(only {kw_count} kw, {kw_preview}): "
@@ -4343,6 +4652,8 @@ async def analyze_pending_transcript(body: dict):
     # erlaubt manuellen UI-Override ohne dass der Flag im pending stehen muss.
     is_nine_liner = bool(pt.get("is_nine_liner")) or bool((body or {}).get("force_nine_liner"))
     is_atmist = bool(pt.get("is_atmist")) or bool((body or {}).get("force_atmist"))
+    is_nine_liner_en = bool(pt.get("is_nine_liner_en")) or bool((body or {}).get("force_nine_liner_en"))
+    is_fmc = bool(pt.get("is_fmc")) or bool((body or {}).get("force_fmc"))
     await broadcast({"type": "analysis_started", "chars": len(full_text), "pending_id": pt["id"]})
     session_started = time.monotonic()
     # B3 Auto-Recovery: Wenn die Segmentierung mit einer Exception crashed
@@ -4354,7 +4665,8 @@ async def analyze_pending_transcript(body: dict):
     try:
         created = await _segment_and_create_patients(
             full_text, record_time,
-            is_nine_liner=is_nine_liner, is_atmist=is_atmist)
+            is_nine_liner=is_nine_liner, is_atmist=is_atmist,
+            is_nine_liner_en=is_nine_liner_en, is_fmc=is_fmc)
     except Exception as e:
         pt["analyzing"] = False
         pt["analyzed"] = False
@@ -4651,6 +4963,69 @@ async def test_nine_liner(body: dict):
             "model": OLLAMA_MODEL,
             "input_chars": len(transcript),
         },
+    }
+
+
+@app.post("/api/test/nine-liner-en")
+async def test_nine_liner_en(body: dict):
+    """Test-Endpoint: POST {"transcript": "..."} mit englischem 9-Liner-Text.
+    Gibt extrahierte line1..line9 + remarks zurueck."""
+    transcript = body.get("transcript", "")
+    if not transcript:
+        return {"error": "no transcript provided"}
+    swap_active = getattr(state, "swap_mode", "coexist") != "coexist"
+    if swap_active:
+        await _enter_analysis_mode(reason="test_nine_liner_en")
+    import time as _t
+    t0 = _t.monotonic()
+    try:
+        nine_liner = extract_nine_liner_en(transcript)
+    finally:
+        if swap_active:
+            asyncio.create_task(_enter_recording_mode())
+    elapsed = _t.monotonic() - t0
+    filled = sum(1 for v in nine_liner.values() if v)
+    return {
+        "nine_liner": nine_liner,
+        "filled_count": filled,
+        "auto_detected": looks_like_nine_liner_en(transcript),
+        "_meta": {"elapsed_s": round(elapsed, 2), "model": OLLAMA_MODEL,
+                  "input_chars": len(transcript)},
+    }
+
+
+@app.post("/api/test/fmc")
+async def test_fmc(body: dict):
+    """Test-Endpoint: POST {"transcript": "..."} mit FMC-Text.
+    Gibt FMC-Sektionen A-G zurueck — ohne Lock-Check, ohne Patient-
+    Anlage. Nur fuer Prompt-Tuning + Demo-Vorabpruefung."""
+    transcript = body.get("transcript", "")
+    if not transcript:
+        return {"error": "no transcript provided"}
+    swap_active = getattr(state, "swap_mode", "coexist") != "coexist"
+    if swap_active:
+        await _enter_analysis_mode(reason="test_fmc")
+    import time as _t
+    t0 = _t.monotonic()
+    try:
+        fmc = extract_fmc(transcript)
+    finally:
+        if swap_active:
+            asyncio.create_task(_enter_recording_mode())
+    elapsed = _t.monotonic() - t0
+    def _count(o):
+        if isinstance(o, dict): return sum(1 for v in o.values() if v not in (None, "", [], {}))
+        if isinstance(o, list): return len(o)
+        return 0
+    filled_total = sum(_count(fmc.get(k)) for k in
+                       ("section_a","section_b","section_c","section_d",
+                        "section_e","section_f","section_g"))
+    return {
+        "fmc": fmc,
+        "filled_count": filled_total,
+        "auto_detected": looks_like_fmc(transcript),
+        "_meta": {"elapsed_s": round(elapsed, 2), "model": OLLAMA_MODEL,
+                  "input_chars": len(transcript)},
     }
 
 
@@ -7859,29 +8234,50 @@ async def stop_recording():
 
 async def _segment_and_create_patients(full_text: str, record_time: str,
                                         is_nine_liner: bool = False,
-                                        is_atmist: bool = False) -> list[str]:
+                                        is_atmist: bool = False,
+                                        is_nine_liner_en: bool = False,
+                                        is_fmc: bool = False) -> list[str]:
     """Ruft das LLM für die Segmentierung auf und legt pro erkanntem Patient
     einen Draft-Record an. Gibt die Liste der erzeugten patient_ids zurück.
 
-    Drei Pfade:
+    Pfade:
       A) **Standard-Patient-Diktat** (Default): Segmentierung + pro Segment
          Enrichment wie bisher.
       B) **9-Liner MEDEVAC** (is_nine_liner=True oder Auto-Detect): Kein
          Segmenter — extract_nine_liner() baut Dict line1..line9 + remarks,
-         daraus wird EIN Patient mit template_type="9liner" erzeugt.
+         daraus wird EIN Patient mit template_type="9liner".
+      B-EN) **9-Liner English** (is_nine_liner_en=True oder Auto-Detect):
+         extract_nine_liner_en() statt der deutschen Variante.
       C) **ATMIST Patientenuebergabe** (is_atmist=True oder Auto-Detect):
-         Analog 9-Liner, aber extract_atmist() baut Dict line1..line6
-         (A/T/M/I/S/T), Patient-Record bekommt template_type="atmist".
+         extract_atmist() baut Dict line1..line6, template_type="atmist".
+      D) **NATO FMC** (is_fmc=True oder Auto-Detect): extract_fmc() baut
+         Sektionen A-G, template_type="fmc".
     """
     loop = asyncio.get_event_loop()
 
+    # FMC-Auto-Detect (vor allen anderen — FMC-Texte sind sehr spezifisch und
+    # enthalten oft auch ATMIST-aehnliche Phrasen).
+    if not is_fmc and not is_nine_liner and not is_atmist and not is_nine_liner_en \
+            and looks_like_fmc(full_text):
+        print(f"[SEGMENT] FMC Auto-Detect angeschlagen — schalte um", flush=True)
+        is_fmc = True
+
     # ATMIST-Auto-Detect (vor 9-Liner gepruft, da ATMIST-Marker spezifischer)
-    if not is_atmist and not is_nine_liner and looks_like_atmist(full_text):
+    if not is_fmc and not is_atmist and not is_nine_liner and not is_nine_liner_en \
+            and looks_like_atmist(full_text):
         print(f"[SEGMENT] ATMIST Auto-Detect angeschlagen — schalte um", flush=True)
         is_atmist = True
 
-    # 9-Liner-Auto-Detect (nur wenn nicht ATMIST)
-    if not is_atmist and not is_nine_liner and looks_like_nine_liner(full_text):
+    # Englischer 9-Liner Auto-Detect (vor deutscher Variante damit englischer
+    # Text nicht in den deutschen Prompt rutscht).
+    if not is_fmc and not is_atmist and not is_nine_liner and not is_nine_liner_en \
+            and looks_like_nine_liner_en(full_text):
+        print(f"[SEGMENT] 9-Liner-EN Auto-Detect angeschlagen — schalte um", flush=True)
+        is_nine_liner_en = True
+
+    # Deutscher 9-Liner-Auto-Detect (nur wenn nichts anderes)
+    if not is_fmc and not is_atmist and not is_nine_liner and not is_nine_liner_en \
+            and looks_like_nine_liner(full_text):
         print(f"[SEGMENT] 9-Liner Auto-Detect angeschlagen — schalte um", flush=True)
         is_nine_liner = True
 
@@ -7965,6 +8361,123 @@ async def _segment_and_create_patients(full_text: str, record_time: str,
         await broadcast({"type": "patient_registered", "patient": patient})
         oled_menu.show_status("ATMIST", f"{filled}/6 Zeilen erkannt")
         tts.speak(f"ATMIST Patient angelegt: {patient_name}, {filled} von 6 Zeilen")
+        return [pid]
+
+    # Pfad D: NATO Field Medical Card
+    if is_fmc:
+        print(f"[FMC] Extrahiere FMC-Sektionen aus {len(full_text)} chars ...", flush=True)
+        oled_menu.show_status("FMC", "Extrahiere Sektionen", 30)
+        try:
+            fmc = await loop.run_in_executor(None, extract_fmc, full_text)
+        except Exception as e:
+            print(f"[FMC] Fehler: {e}", flush=True)
+            fmc = extract_fmc("")  # leere Defaults
+        cfg = load_config()
+        sa = fmc.get("section_a", {}) or {}
+        # Patient-Name aus Section A; Fallback wenn Extraktion leer
+        first = sa.get("first_name") or ""
+        last = sa.get("last_name") or ""
+        fmc_name = (f"{first} {last}".strip() or "FMC Patient")
+        patient = create_patient_record(
+            name=fmc_name,
+            triage="",
+            device_id=cfg.get("device_id", "jetson-01"),
+            created_by=cfg.get("default_medic", ""),
+        )
+        patient["unit"] = sa.get("unit") or cfg.get("unit_name", "")
+        patient["rank"] = sa.get("rank", "")
+        patient["template_type"] = "fmc"
+        patient["fmc"] = fmc
+        patient["analyzed"] = True
+        # Vitals + Verletzungs-Felder zusaetzlich in die Standard-Patient-
+        # Felder spiegeln, damit FMC-Patienten auch in der normalen Liste
+        # mit Puls/SpO2/Verletzung etc. erscheinen.
+        sc = fmc.get("section_c", {}) or {}
+        if sc.get("main_injury"):
+            patient["injuries"] = [sc["main_injury"]]
+            if sc.get("additional_injury"):
+                patient["injuries"].append(sc["additional_injury"])
+        sd = fmc.get("section_d", []) or []
+        if sd:
+            latest = sd[-1] if isinstance(sd[-1], dict) else {}
+            for k in ("pulse", "bp", "resp_rate", "spo2"):
+                if latest.get(k):
+                    patient.setdefault("vitals", {})[k] = str(latest[k])
+        sb = fmc.get("section_b", {}) or {}
+        if sb.get("mechanism"):
+            patient["mechanism"] = sb["mechanism"]
+        pid = patient["patient_id"]
+        patient["transcripts"].append({
+            "time": record_time,
+            "text": full_text,
+            "speaker": "sanitaeter",
+            "role_level": patient["current_role"],
+        })
+        # Filled-Counter ueber alle Sub-Sektionen (best-effort)
+        def _count_filled(obj):
+            if isinstance(obj, dict):
+                return sum(1 for v in obj.values() if v not in (None, "", [], {}))
+            if isinstance(obj, list):
+                return len(obj)
+            return 0
+        filled_total = sum(_count_filled(fmc.get(k)) for k in
+                           ("section_a","section_b","section_c","section_d",
+                            "section_e","section_f","section_g"))
+        patient["timeline"].append({
+            "time": datetime.now().isoformat(),
+            "role": patient["current_role"],
+            "event": "fmc_extracted",
+            "details": f"{filled_total} FMC-Felder befuellt, Patient {fmc_name}",
+        })
+        state.patients[pid] = patient
+        state.rfid_map[patient["rfid_tag_id"]] = pid
+        state.active_patient = pid
+        await broadcast({"type": "patient_registered", "patient": patient})
+        oled_menu.show_status("FMC", f"{filled_total} Felder erkannt")
+        tts.speak(f"Field Medical Card angelegt fuer {fmc_name}")
+        return [pid]
+
+    # Pfad B-EN: Englischer 9-Liner
+    if is_nine_liner_en:
+        print(f"[9LINER-EN] Extrahiere englische MEDEVAC-Felder aus {len(full_text)} chars ...", flush=True)
+        oled_menu.show_status("9-LINER EN", "Extracting fields", 30)
+        try:
+            nine_liner = await loop.run_in_executor(None, extract_nine_liner_en, full_text)
+        except Exception as e:
+            print(f"[9LINER-EN] Fehler: {e}", flush=True)
+            nine_liner = {f"line{i}": "" for i in range(1, 10)}
+        cfg = load_config()
+        patient = create_patient_record(
+            name="MEDEVAC Request (EN)",
+            triage="",
+            device_id=cfg.get("device_id", "jetson-01"),
+            created_by=cfg.get("default_medic", ""),
+        )
+        patient["unit"] = cfg.get("unit_name", "")
+        patient["template_type"] = "9liner"  # gleiche UI-Karte wie deutscher 9-Liner
+        patient["language"] = "en"
+        patient["nine_liner"] = nine_liner
+        patient["analyzed"] = True
+        pid = patient["patient_id"]
+        patient["transcripts"].append({
+            "time": record_time,
+            "text": full_text,
+            "speaker": "sanitaeter",
+            "role_level": patient["current_role"],
+        })
+        filled = sum(1 for v in nine_liner.values() if v)
+        patient["timeline"].append({
+            "time": datetime.now().isoformat(),
+            "role": patient["current_role"],
+            "event": "nine_liner_extracted",
+            "details": f"{filled}/9 Felder erkannt (English)",
+        })
+        state.patients[pid] = patient
+        state.rfid_map[patient["rfid_tag_id"]] = pid
+        state.active_patient = pid
+        await broadcast({"type": "patient_registered", "patient": patient})
+        oled_menu.show_status("9-LINER EN", f"{filled}/9 fields")
+        tts.speak(f"English 9-Liner created, {filled} of 9 fields recognised")
         return [pid]
 
     # Pfad B: 9-Liner
