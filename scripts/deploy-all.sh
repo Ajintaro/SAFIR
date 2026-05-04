@@ -45,9 +45,11 @@ cd "$REPO_ROOT"
 EXPECTED=$(python3 -c "import sys; sys.path.insert(0,'.'); from shared.version import VERSION; print(VERSION)")
 log "Erwartete Version: ${EXPECTED}"
 
-# Working tree clean?
-if [[ -n "$(git status --porcelain)" ]]; then
-    red "[deploy] Working tree nicht clean — bitte zuerst commiten/stashen."
+# Working tree clean? (untracked files ignorieren — z.B. data/, .reset_marker
+# auf dem Jetson-Hauptbaum sind erwartet, blockieren den Deploy nicht)
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+    red "[deploy] Working tree hat unstaged/uncommitted Aenderungen — bitte zuerst commiten/stashen."
+    git status --short --untracked-files=no
     exit 1
 fi
 
