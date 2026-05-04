@@ -1119,11 +1119,26 @@ def rc522_erase_card(timeout: float = 10.0) -> tuple[bool, str]:
             2: [8, 9, 10],
         }
 
+        # Tracking ob die Karte bereits leer war (alle Bloecke ZERO vor
+        # Schreibversuch). Wird in _erase_block_and_verify pro Block gesetzt.
+        already_zero_count = [0]
+        total_blocks = sum(len(blocks) for blocks in sector_blocks.values())
+
         def _erase_block_and_verify(sector, auth_block, blk) -> tuple[bool, str]:
             """Block auf Null schreiben + per Read verifizieren. Gleiche
             Re-Auth-Retry-Logik wie in rc522_write_patient_to_card —
             MIFARE verliert manchmal den Crypto1-State zwischen Write
-            und Read."""
+            und Read.
+
+            Skip-Write wenn der Block bereits ZERO ist (Karte wurde schon
+            mal geloescht). Spart Schreib-Zyklen + erlaubt dem Aufrufer
+            zu erkennen ob die Karte komplett leer war.
+            """
+            # Pre-Read: ist der Block bereits leer?
+            existing = _rc522_read_block(blk)
+            if existing == ZERO:
+                already_zero_count[0] += 1
+                return (True, "")
             for attempt in (1, 2):
                 ok, detail = _rc522_write_block(blk, ZERO)
                 if ok:
@@ -1189,6 +1204,9 @@ def rc522_erase_card(timeout: float = 10.0) -> tuple[bool, str]:
                         log.warning(f"RFID-Erase: Fehlgeschlagen auf Block {blk}: {err}")
                         return (False, f"Block {blk}: {err}")
                     log.info(f"RFID-Erase: Block {blk} auf Null gesetzt")
+            if already_zero_count[0] >= total_blocks:
+                log.info(f"RFID-Erase: Karte war bereits leer: UID {uid_hex}")
+                return (True, f"EMPTY:{uid_hex}")
             log.info(f"RFID-Erase erfolgreich (alle Bloecke genullt): UID {uid_hex}")
             return (True, uid_hex)
         finally:

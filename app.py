@@ -2400,6 +2400,12 @@ async def voice_erase_card():
         except Exception as e:
             success, result = False, str(e)
 
+        # 'EMPTY:UID' als Result -> Karte war bereits leer (alle Bloecke
+        # vorab ZERO). Erfolgreich, aber wir sagen es klarer als 'geloescht'.
+        already_empty = success and isinstance(result, str) and result.startswith("EMPTY:")
+        if already_empty:
+            result = result.split(":", 1)[1]  # echte UID extrahieren
+
         if success:
             # Patient-Zuordnung aufloesen damit der Record wieder "schreibbar"
             # wird und auf der Karte keine Daten mehr liegen die das Surface
@@ -2501,7 +2507,12 @@ async def voice_erase_card():
                 "patient_id": affected_pid,
             })
             await hardware_service.flash_success(0.7)
-            if patient_name:
+            if already_empty:
+                # Karte war bereits leer -> User klar machen, nicht als
+                # 'geloescht' verkaufen (das suggeriert eine Aktion stattfand).
+                oled_menu.show_status("BEREITS LEER", uid[:10])
+                tts.speak("Karte ist bereits leer")
+            elif patient_name:
                 oled_menu.show_status("GELOESCHT", patient_name[:14])
                 tts.speak(f"Karte gelöscht. {patient_name}")
             else:
@@ -5795,7 +5806,7 @@ async def register_patient(body: dict):
     name = body.get("name", "Unbekannt")
     triage = body.get("triage", "")
     rfid_tag_id = body.get("rfid_tag_id", "")
-    created_by = body.get("created_by", "") or cfg.get("default_medic", "")
+    created_by = body.get("created_by", "") or _resolve_creator(cfg)
 
     patient = create_patient_record(
         name=name,
@@ -5879,6 +5890,35 @@ def _truncate_value(v, max_len: int = 200) -> str:
     if len(s) > max_len:
         return s[:max_len].rstrip() + "…"
     return s
+
+
+def _resolve_creator(cfg: dict | None = None) -> str:
+    """Liefert den Namen, der als 'created_by' beim Anlegen eines Patienten
+    eingetragen werden soll.
+
+    Reihenfolge analog zu _log_patient_change:
+      1. state.current_operator.name — wer gerade per RFID eingeloggt ist
+      2. state.last_operator.name — zuletzt eingeloggt (System bleibt
+         entsperrt nach Logout, deswegen forensisch erlaubt mit Marker)
+      3. cfg.default_medic — Backup-Eintrag aus config.json
+      4. 'Unbekannt' — wenn nichts greift
+
+    Wichtig fuer Logging/Forensik: ein Patient soll dem tatsaechlich
+    eingeloggten Bediener zuzuordnen sein, nicht dem statischen
+    default_medic-Eintrag.
+    """
+    cur = getattr(state, "current_operator", None)
+    if cur and cur.get("name"):
+        return str(cur["name"])
+    last = getattr(state, "last_operator", None)
+    if last and last.get("name"):
+        return f"{last['name']} (letzter Login)"
+    if cfg is None:
+        cfg = _config or {}
+    default_medic = (cfg.get("default_medic") or "").strip()
+    if default_medic:
+        return default_medic
+    return "Unbekannt"
 
 
 def _log_patient_change(patient: dict, field: str, old_value, new_value,
@@ -7212,7 +7252,7 @@ async def data_test_generate(body: dict | None = None):
 
     cfg = load_config()
     device_id = cfg.get("device_id", "jetson-01")
-    operator = cfg.get("default_medic", "OFA Hugendubel")
+    operator = _resolve_creator(cfg)
     now = datetime.now().isoformat()
 
     # Vorlage fuer einen Test-Patienten
@@ -8323,7 +8363,7 @@ async def _segment_and_create_patients(full_text: str, record_time: str,
             name=patient_name,
             triage="",
             device_id=cfg.get("device_id", "jetson-01"),
-            created_by=cfg.get("default_medic", ""),
+            created_by=_resolve_creator(cfg),
         )
         patient["unit"] = cfg.get("unit_name", "")
         patient["template_type"] = "atmist"
@@ -8389,7 +8429,7 @@ async def _segment_and_create_patients(full_text: str, record_time: str,
             name=fmc_name,
             triage="",
             device_id=cfg.get("device_id", "jetson-01"),
-            created_by=cfg.get("default_medic", ""),
+            created_by=_resolve_creator(cfg),
         )
         patient["unit"] = sa.get("unit") or cfg.get("unit_name", "")
         patient["rank"] = sa.get("rank", "")
@@ -8458,7 +8498,7 @@ async def _segment_and_create_patients(full_text: str, record_time: str,
             name="MEDEVAC Request (EN)",
             triage="",
             device_id=cfg.get("device_id", "jetson-01"),
-            created_by=cfg.get("default_medic", ""),
+            created_by=_resolve_creator(cfg),
         )
         patient["unit"] = cfg.get("unit_name", "")
         patient["template_type"] = "9liner"  # gleiche UI-Karte wie deutscher 9-Liner
@@ -8501,7 +8541,7 @@ async def _segment_and_create_patients(full_text: str, record_time: str,
             name="MEDEVAC Request",
             triage="",
             device_id=cfg.get("device_id", "jetson-01"),
-            created_by=cfg.get("default_medic", ""),
+            created_by=_resolve_creator(cfg),
         )
         patient["unit"] = cfg.get("unit_name", "")
         patient["template_type"] = "9liner"
@@ -8559,7 +8599,7 @@ async def _segment_and_create_patients(full_text: str, record_time: str,
 
     cfg = load_config()
     device_id = cfg.get("device_id", "jetson-01")
-    default_medic = cfg.get("default_medic", "")
+    default_medic = _resolve_creator(cfg)
     unit_name = cfg.get("unit_name", "")
     created_pids: list[str] = []
 
