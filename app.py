@@ -45,6 +45,7 @@ from shared.models import PATIENT_SCHEMA, TRANSFER_SCHEMA, PatientFlowStatus, FL
 from shared import tts
 from shared import sitaware
 from shared import exports
+from shared import test_data_random as _rnd
 from shared.version import VERSION, get_build_hash, get_full_version
 from jetson.oled import oled_menu
 from jetson.hardware import HardwareService, SystemState
@@ -6818,6 +6819,7 @@ async def data_test_generate(body: dict | None = None):
     require_unlocked()  # Phase 11
     import copy as _copy
     import uuid as _uuid
+    import random
     scenario = (body or {}).get("scenario", "standard")
 
     cfg = load_config()
@@ -6871,91 +6873,60 @@ async def data_test_generate(body: dict | None = None):
         # manuell. Die Schulterstuecke (BW-Dienstgrad-Abzeichen) werden
         # dafuer alle sichtbar. Das Demo-Szenario zeigt die Ausgangslage
         # VOR der Triage-Entscheidung.
-        test_patients = [
-            _mk_patient("Lars Neumann", "Unteroffizier",
-                ["Splitterverletzung Thorax", "Pneumothorax"],
-                {"pulse": "140", "spo2": "84", "bp": "85/50", "resp_rate": "32"},
+        # Refactor 2026-05-04: Patient-Identitaeten kommen aus _rnd, damit
+        # jeder Demo-Klick eine andere Liste produziert. Verteilung der
+        # Schweregrade bleibt fest (3 critical, 4 severe, 2 moderate, 1 stable),
+        # damit die Triage-Demo immer realistisch dimensioniert ist.
+        severities = ["critical", "critical", "critical",
+                      "severe", "severe", "severe", "severe",
+                      "moderate", "moderate", "stable"]
+        random.shuffle(severities)
+        test_patients = []
+        for sev in severities:
+            sex, full = _rnd.random_full_name()
+            rank = _rnd.random_rank(sex=sex)
+            inj = _rnd.random_injuries(sev)
+            vit = _rnd.random_vitals(sev)
+            short_inj = inj[0] if inj else "Verletzung"
+            transcript = (f"{rank} {full.split()[1]}, {short_inj.lower()}, "
+                          f"Puls {vit['pulse']}, SpO2 {vit['spo2']} Prozent, "
+                          f"Blutdruck {vit['bp']}.")
+            test_patients.append(_mk_patient(
+                full, rank, inj, vit,
                 flow_status="reported", analyzed=True, synced=True,
                 triage="", current_role="role1",
-                transcript_text="Unteroffizier Neumann, Thorax-Splitter, Pneumothorax, Puls 140, SpO2 84 Prozent, kritisch."),
-            _mk_patient("Sandra Wolf", "Hauptgefreite",
-                ["Schussverletzung Abdomen", "starke Blutung"],
-                {"pulse": "128", "spo2": "88", "bp": "90/55"},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Hauptgefreite Wolf, Bauchschuss, starke innere Blutung, Puls 128, Blutdruck 90 zu 55."),
-            _mk_patient("Martin Fischer", "Stabsgefreiter",
-                ["Amputation Unterschenkel links", "Tourniquet"],
-                {"pulse": "135", "spo2": "91", "bp": "100/60"},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Stabsgefreiter Fischer, Unterschenkel-Amputation links, Tourniquet gesetzt."),
-            _mk_patient("Elena Krause", "Feldwebelin",
-                ["Oberschenkelfraktur", "Schocksymptomatik"],
-                {"pulse": "118", "spo2": "93", "bp": "105/65"},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Feldwebelin Krause, Oberschenkelfraktur, Schocksymptomatik, Puls 118."),
-            _mk_patient("Thomas Richter", "Obergefreiter",
-                ["Verbrennung 2. Grades Arm"],
-                {"pulse": "105", "spo2": "96", "bp": "130/80"},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Obergefreiter Richter, Verbrennung zweiten Grades rechter Arm, circa 8 Prozent."),
-            _mk_patient("Nina Berger", "Leutnant",
-                ["Kopfplatzwunde", "GCS 13"],
-                {"pulse": "95", "spo2": "97", "bp": "125/75", "gcs": "13"},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Leutnant Berger, Kopfplatzwunde, GCS 13, orientiert aber benommen."),
-            _mk_patient("Peter Schmitt", "Hauptmann",
-                ["Rippenprellung"],
-                {"pulse": "85", "spo2": "98", "bp": "130/82"},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Hauptmann Schmitt, Rippenprellung links, ansprechbar, stabil."),
-            _mk_patient("Anne Klein", "Soldatin",
-                ["Schnittwunde Hand"],
-                {"pulse": "78", "spo2": "99", "bp": "120/80"},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Soldatin Klein, Schnittwunde linke Hand, Druckverband, stabil."),
-            _mk_patient("Daniel Walter", "Gefreiter",
-                ["Distorsion Sprunggelenk"],
-                {"pulse": "80", "spo2": "98", "bp": "122/78"},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Gefreiter Walter, Sprunggelenks-Distorsion, Schiene angelegt."),
-            _mk_patient("Sabine Hoffmann", "Oberfeldwebel",
-                ["Finaler Zustand, keine Reaktion"],
-                {"pulse": "0", "spo2": ""},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Oberfeldwebel Hoffmann, keine Vitalzeichen, schwarze Sichtung."),
-        ]
+                transcript_text=transcript,
+            ))
         pending_texts = []
 
     elif scenario == "nine_liner":
         # 1 Patient mit vollstaendigem 9-Liner (kein pending Diktat, direkt
         # als analyzed Patient mit template_type=9liner hingelegt).
+        # Refactor 2026-05-04: MGRS, Callsign, Rufzeichen, Patientenanzahl
+        # aus _rnd.
+        mgrs = _rnd.random_grid_mgrs()
+        callsign = _rnd.random_callsign()
+        freq = round(random.uniform(30.0, 87.9), 3)
+        n_patients = random.randint(1, 3)
+        prio = random.choice(["A", "B", "C"])
         p9 = _mk_patient("MEDEVAC Request", "", [],
             {}, flow_status="analyzed", analyzed=True, synced=False,
             current_role="phase0",
             transcript_text=(
-                "Neun liner starten. Zeile eins MGRS drei zwei uniform mike charlie "
-                "eins zwei drei vier fuenf sechs sieben acht. Zeile zwei Funkfrequenz "
-                "vierzig komma zwei fuenf null Megahertz, Rufzeichen alpha zwei sechs. "
-                "Zeile drei zwei Patienten Dringlichkeit alpha. Zeile vier bravo, Winde. "
-                "Zeile fuenf beide liegend. Zeile sechs papa. Zeile sieben charlie, Rauch. "
-                "Zeile acht charlie NATO. Zeile neun november, offenes Gelaende."
+                f"Neun liner starten. Zeile eins MGRS {mgrs.lower().replace(' ', ' ')}. "
+                f"Zeile zwei Funkfrequenz {freq:.3f} Megahertz, Rufzeichen {callsign}. "
+                f"Zeile drei {n_patients} Patienten Dringlichkeit {prio}. "
+                f"Zeile vier bravo, Winde. Zeile fuenf beide liegend. "
+                f"Zeile sechs papa. Zeile sieben charlie, Rauch. "
+                f"Zeile acht charlie NATO. Zeile neun november, offenes Gelaende."
             ))
         p9["template_type"] = "9liner"
         p9["nine_liner"] = {
-            "line1": "32U MC 12345678",
-            "line2": "40.250 MHz, Alpha 2-6",
-            "line3": "2 A",
+            "line1": mgrs,
+            "line2": f"{freq:.3f} MHz, {callsign}",
+            "line3": f"{n_patients} {prio}",
             "line4": "B — Winde",
-            "line5": "L2",
+            "line5": f"L{n_patients}",
             "line6": "P — moeglicher Feind",
             "line7": "C — Rauch",
             "line8": "C — NATO",
@@ -6968,49 +6939,75 @@ async def data_test_generate(body: dict | None = None):
         # Unanalysiertes Pending-Diktat im 9-Liner-Format — ideal fuer
         # Live-Demo der Analyse-Pipeline. User klickt "Analysieren",
         # Gemma extrahiert die 9 Felder.
+        # Refactor 2026-05-04: Pickup-Name, MGRS, Callsign, Patientenzahl
+        # aus _rnd. Struktur (Zeile 1..9 in Reihenfolge) bleibt identisch.
+        mgrs_words = _rnd.random_grid_mgrs()
+        pickup = _rnd.random_pickup_site().upper()
+        callsign = _rnd.random_callsign().upper()
+        n_pat = random.randint(1, 3)
+        n_word = ["ein", "zwei", "drei"][n_pat - 1]
         test_patients = []
         pending_texts = [{
             "is_nine_liner": True,
             "text": (
-                "Neun Liner starten. Zeile eins: Die Aufnahmestelle befindet "
-                "sich bei MGRS drei zwei Uniform Mike Victor eins zwei drei, "
-                "vier fuenf sechs. Pickup Zone ist ADLER. Zeile zwei: "
-                "Erreichbar auf Kanal MEDEVAC DEMO. Rufname an der Pickup "
-                "Site ist MESSE SAN EINS. Zeile drei: Alfa eins, ein Patient "
-                "Prioritaet URGENT. Zeile vier: Alfa, keine Sonderausruestung "
-                "erforderlich. Zeile fuenf: Lima eins, ein Tragenpatient. "
-                "Zeile sechs: November, keine feindlichen Kraefte im Bereich. "
-                "Zeile sieben: Alfa, die Pickup Site ist mit Panel markiert. "
-                "Farbe wird erst bei Kontakt bestaetigt. Zeile acht: Charlie, "
-                "Non-U.S. military, Bundeswehr-Patient. Zeile neun: Charlie, "
-                "chemische CBRN-Kontamination wird vermutet."
+                f"Neun Liner starten. Zeile eins: Die Aufnahmestelle befindet "
+                f"sich bei MGRS {mgrs_words}. Pickup Zone ist {pickup}. "
+                f"Zeile zwei: Erreichbar auf Kanal MEDEVAC DEMO. Rufname an "
+                f"der Pickup Site ist {callsign}. "
+                f"Zeile drei: Alfa {n_word}, {n_word} Patient Prioritaet URGENT. "
+                f"Zeile vier: Alfa, keine Sonderausruestung erforderlich. "
+                f"Zeile fuenf: Lima {n_word}, {n_word} Tragenpatient. "
+                f"Zeile sechs: November, keine feindlichen Kraefte im Bereich. "
+                f"Zeile sieben: Alfa, die Pickup Site ist mit Panel markiert. "
+                f"Farbe wird erst bei Kontakt bestaetigt. "
+                f"Zeile acht: Charlie, Non-U.S. military, Bundeswehr-Patient. "
+                f"Zeile neun: November, keine bekannte CBRN-Kontamination."
             ),
         }]
 
     elif scenario == "atmist_pending":
         # Unanalysiertes ATMIST-Diktat fuer Live-Demo der ATMIST-
         # Patientenuebergabe.
+        # Refactor 2026-05-04: Patient-Name, Alter, Vitals, Zeiten aus _rnd.
+        sex_a, full_a = _rnd.random_full_name()
+        last = full_a.split()[-1]
+        sex_word = "maennlich" if sex_a == "m" else "weiblich"
+        age = random.randint(22, 42)
+        age_word = {22:"zweiundzwanzig",23:"dreiundzwanzig",24:"vierundzwanzig",
+                    25:"fuenfundzwanzig",26:"sechsundzwanzig",27:"siebenundzwanzig",
+                    28:"achtundzwanzig",29:"neunundzwanzig",30:"dreissig",
+                    31:"einunddreissig",32:"zweiunddreissig",33:"dreiunddreissig",
+                    34:"vierunddreissig",35:"fuenfunddreissig",36:"sechsunddreissig",
+                    37:"siebenunddreissig",38:"achtunddreissig",39:"neununddreissig",
+                    40:"vierzig",41:"einundvierzig",42:"zweiundvierzig"}.get(age, str(age))
+        weight = random.choice([70, 75, 78, 80, 82, 85, 90])
+        vit = _rnd.random_vitals("severe")
+        # ATMIST-Texte basieren oft auf Zulu-Zeiten — hier zwei nahe Zeitpunkte
+        _, t_inj = _rnd.random_zulu_time(offset_min=0)
+        _, t_handoff = _rnd.random_zulu_time(offset_min=8)
+        _, t_tq = _rnd.random_zulu_time(offset_min=2)
         test_patients = []
         pending_texts = [{
             "is_atmist": True,
             "text": (
-                "ATMIST starten. A, Angaben: Patient Schmidt, maennlich, "
-                "neunundzwanzig Jahre, ungefaehr achtzig Kilogramm. "
-                "T, Time: Verletzungszeit eins null eins sieben Zulu. "
-                "Uebergabezeit eins null zwei null Zulu. Zustand seit "
-                "Anlage des Tourniquets stabilisiert. "
-                "M, Mechanismus: Explosion mit Splitterwirkung in "
-                "unmittelbarer Naehe. Zusaetzlich Verdacht auf chemische "
-                "Kontamination der Umgebung. "
-                "I, Verletzungen: Penetrierende Verletzung rechter "
-                "Oberschenkel. Initial starke Blutung, aktuell kontrolliert. "
-                "S, Signs: Patient wach und ansprechbar. Atemweg frei. "
-                "Atemfrequenz vierundzwanzig. Puls einhundertzwanzig. "
-                "Blutdruck einhundert zu siebzig. Sauerstoffsaettigung "
-                "vierundneunzig Prozent. Schmerz sieben von zehn. "
-                "T, Treatment: Tourniquet rechter Oberschenkel angelegt "
-                "um eins null eins zwei Zulu. Druckverband angelegt. "
-                "Waermeerhalt eingeleitet."
+                f"ATMIST starten. A, Angaben: Patient {last}, {sex_word}, "
+                f"{age_word} Jahre, ungefaehr {weight} Kilogramm. "
+                f"T, Time: Verletzungszeit {' '.join(t_inj)} Zulu. "
+                f"Uebergabezeit {' '.join(t_handoff)} Zulu. Zustand seit "
+                f"Anlage des Tourniquets stabilisiert. "
+                f"M, Mechanismus: Explosion mit Splitterwirkung in "
+                f"unmittelbarer Naehe. Zusaetzlich Verdacht auf chemische "
+                f"Kontamination der Umgebung. "
+                f"I, Verletzungen: Penetrierende Verletzung rechter "
+                f"Oberschenkel. Initial starke Blutung, aktuell kontrolliert. "
+                f"S, Signs: Patient wach und ansprechbar. Atemweg frei. "
+                f"Atemfrequenz {vit['resp_rate']}. Puls {vit['pulse']}. "
+                f"Blutdruck {vit['bp'].replace('/', ' zu ')}. "
+                f"Sauerstoffsaettigung {vit['spo2']} Prozent. "
+                f"Schmerz {vit['pain']} von zehn. "
+                f"T, Treatment: Tourniquet rechter Oberschenkel angelegt "
+                f"um {' '.join(t_tq)} Zulu. Druckverband angelegt. "
+                f"Waermeerhalt eingeleitet."
             ),
         }]
 
@@ -7020,131 +7017,117 @@ async def data_test_generate(body: dict | None = None):
         # die wird in Role 1 vom Arzt manuell gesetzt, nicht automatisch.
         # Solange triage leer ist, zeigt das UI das Dienstgrad-Schulter-
         # stueck (siehe showRankBadge-Logik in renderPatientCards).
-        test_patients = [
-            _mk_patient("Christian Braun", "Hauptfeldwebel",
-                ["Schussverletzung Oberschenkel", "Tourniquet"],
-                {"pulse": "112", "spo2": "94", "bp": "105/65"},
+        # Refactor 2026-05-04: Patient-Identitaeten + Vitals aus _rnd.
+        test_patients = []
+        for severity in ["severe", "moderate"]:
+            sex, full = _rnd.random_full_name()
+            rank = _rnd.random_rank(sex=sex)
+            inj = _rnd.random_injuries(severity)
+            vit = _rnd.random_vitals(severity)
+            short_inj = inj[0] if inj else "Verletzung"
+            mins_ago = random.randint(20, 60)
+            transcript = (f"{rank} {full.split()[-1]}, {short_inj.lower()}, "
+                          f"versorgt vor {mins_ago} Minuten. Puls {vit['pulse']}, "
+                          f"Blutdruck {vit['bp']}, Sauerstoff {vit['spo2']} Prozent.")
+            test_patients.append(_mk_patient(
+                full, rank, inj, vit,
                 flow_status="reported", analyzed=True, synced=True,
                 triage="", current_role="role1",
-                transcript_text="Hauptfeldwebel Braun, Schussverletzung Oberschenkel, Tourniquet seit 45 Minuten."),
-            _mk_patient("Monika Weber", "Oberfeldwebelin",
-                ["Stichverletzung Abdomen"],
-                {"pulse": "102", "spo2": "96", "bp": "115/70"},
-                flow_status="reported", analyzed=True, synced=True,
-                triage="", current_role="role1",
-                transcript_text="Oberfeldwebelin Weber, Stichverletzung rechter Oberbauch, stabil."),
-        ]
+                transcript_text=transcript,
+            ))
         pending_texts = []
 
     else:  # "standard" — Default: realistischer Workflow-Mix
-        # Refactor 2026-04-26 nach User-Feedback:
-        #   - Markus + Andrea waren vorher "registered, not analyzed"-
-        #     Patienten mit Transcript-Text — das ist KEIN echter
-        #     Workflow-Zustand. Bevor die KI analysiert hat, gibt es nur
-        #     einen pending_transcript-Block, KEINEN Patient-Record. Diese
-        #     beiden landen jetzt als pendings.
-        #   - Tobias + Julia waren mit synced=True markiert, aber nie
-        #     wirklich ans Surface gepusht — Demo zeigte "gemeldet"-Badge,
-        #     auf der Leitstelle waren sie aber unsichtbar. Gefixt: nach
-        #     dem Erzeugen pushen wir sie tatsaechlich (siehe Code unten).
-        #   - Stefan + Lea: bleiben analyzed=True, synced=False (= warten
-        #     auf "Patienten melden"-Befehl).
-        # Resultat: realistischer Workflow-Mix den der Sanitaeter durch-
-        # spielen kann — pending analysieren, dann melden, dann sind alle
-        # Patienten konsistent zwischen Jetson und Surface.
+        # Refactor 2026-05-04: Patienten + Multi-Patient-Diktat sind komplett
+        # randomisiert (Namen, Raenge, Vitals, Verletzungen). Struktur und
+        # Verteilung der Flow-States bleiben gleich:
+        #   - 2x analyzed=True, synced=False (warten auf Melden)
+        #   - 1x analyzed=True, synced=True (in Phase 0 schon gemeldet)
+        #   - 1x analyzed=True, synced=True (schon in Role 1)
+        #   - 1x Multi-Patient-Diktat als Pending mit 4 zufaelligen Patienten
+
+        def _de_short_dictation(rank, name, severity, mechanism_de):
+            """Erzeugt einen kurzen deutschen Patient-Diktat-Text. Wird fuer
+            die einzelnen analysierten Test-Patienten genutzt."""
+            inj = _rnd.random_injuries(severity)
+            vit = _rnd.random_vitals(severity)
+            inj_text = inj[0] if inj else "Verletzung"
+            return inj, vit, (
+                f"{rank} {name}. {mechanism_de}. {inj_text}. "
+                f"Puls {vit['pulse']}, Sauerstoff {vit['spo2']} Prozent, "
+                f"Blutdruck {vit['bp']}. Patient ansprechbar."
+            )
+
+        # 4 Test-Patienten in unterschiedlichen Workflow-Stages
+        # P1 + P2: analyzed, noch nicht gemeldet
+        s1, n1 = _rnd.random_full_name(); r1 = _rnd.random_rank(sex=s1)
+        i1, v1, t1 = _de_short_dictation(r1, n1, "moderate",
+            "Splitterverletzung am Bein nach IED-Einwirkung")
+        s2, n2 = _rnd.random_full_name(); r2 = _rnd.random_rank(sex=s2)
+        i2, v2, t2 = _de_short_dictation(r2, n2, "severe",
+            "Sturz gegen Turmkranz, Verdacht auf Pneumothorax")
+        # P3 + P4: schon synced (Phase 0 / Role 1)
+        s3, n3 = _rnd.random_full_name(); r3 = _rnd.random_rank(sex=s3)
+        i3, v3, t3 = _de_short_dictation(r3, n3, "severe",
+            "Schussverletzung Unterschenkel, Tourniquet angelegt")
+        s4, n4 = _rnd.random_full_name(); r4 = _rnd.random_rank(sex=s4)
+        i4, v4, t4 = _de_short_dictation(r4, n4, "moderate",
+            "Fahrzeugunfall mit Kopfprellung")
         test_patients = [
-            _mk_patient(
-                "Stefan Becker", "Stabsunteroffizier",
-                ["Splitterverletzung re. Oberschenkel", "moderate Blutung"],
-                {"pulse": "98", "spo2": "94", "bp": "110/70"},
+            _mk_patient(n1, r1, i1, v1,
                 flow_status="analyzed", analyzed=True, synced=False,
-                transcript_text=(
-                    "Verwundeter ist Stabsunteroffizier Stefan Becker, 31 Jahre. "
-                    "Splitterverletzung am rechten Oberschenkel, moderate Blutung "
-                    "am Ausgang. Druckverband direkt angelegt, kein Tourniquet noetig. "
-                    "Puls 98, Sauerstoff 94 Prozent, Blutdruck 110 zu 70. "
-                    "Patient ist ansprechbar und orientiert."
-                ),
-            ),
-            _mk_patient(
-                "Lea Schwarz", "Hauptgefreite",
-                ["Prellung Brustkorb", "Atemnot"],
-                {"pulse": "115", "spo2": "89", "resp_rate": "24"},
+                transcript_text=t1),
+            _mk_patient(n2, r2, i2, v2,
                 flow_status="analyzed", analyzed=True, synced=False,
-                transcript_text=(
-                    "Hauptgefreite Lea Schwarz, 24 Jahre. Thoraxprellung links nach "
-                    "Sturz gegen den Turmkranz. Starke Atemnot, Atemfrequenz bei 24, "
-                    "Sauerstoff nur 89 Prozent. Puls tachykard 115, keine sichtbare "
-                    "offene Verletzung. Verdacht auf Pneumothorax, sofortige "
-                    "Sauerstoffgabe eingeleitet."
-                ),
-            ),
-            _mk_patient(
-                "Tobias Krueger", "Feldwebel",
-                ["Schussverletzung li. Unterschenkel", "Tourniquet angelegt"],
-                {"pulse": "132", "spo2": "92", "bp": "95/60"},
+                transcript_text=t2),
+            _mk_patient(n3, r3, i3, v3,
                 flow_status="reported", analyzed=True, synced=True,
-                transcript_text=(
-                    "Feldwebel Tobias Krueger, 34 Jahre. Schussverletzung am linken "
-                    "Unterschenkel, starke arterielle Blutung am Durchschuss. "
-                    "Tourniquet oberhalb der Verletzung angelegt, Blutung "
-                    "kontrolliert. Puls 132 tachykard, Blutdruck 95 zu 60, "
-                    "Sauerstoffsaettigung 92 Prozent. Dringend, Abtransport "
-                    "erforderlich."
-                ),
-            ),
-            _mk_patient(
-                "Julia Mueller", "Oberleutnant",
-                ["Kopfprellung", "Beinfraktur"],
-                {"pulse": "88", "spo2": "97", "bp": "120/80", "gcs": "14"},
+                transcript_text=t3),
+            _mk_patient(n4, r4, i4, v4,
                 flow_status="reported", analyzed=True, synced=True,
                 triage="", current_role="role1",
-                transcript_text=(
-                    "Oberleutnant Julia Mueller, 29 Jahre. Nach Fahrzeugunfall "
-                    "Kopfprellung mit kurzer Bewusstlosigkeit, jetzt wieder "
-                    "ansprechbar, GCS 14. Zusaetzlich geschlossene Fraktur am "
-                    "rechten Unterschenkel. Puls 88, Sauerstoff 97 Prozent, "
-                    "Blutdruck 120 zu 80 stabil. Schiene angelegt."
-                ),
-            ),
+                transcript_text=t4),
         ]
-        pending_texts = [
-            # Ein einziger zusammenhaengender Multi-Patient-Diktat-Block —
-            # so wuerde es ein Sanitaeter im Feld realistisch einsprechen:
-            # Intro mit Eigenname, dann 4 Patienten nacheinander mit
-            # natuerlichen Uebergangsphrasen ("der naechste Patient", "weiter
-            # mit"), am Ende "Patienten fertig". Aus diesem Block extrahiert
-            # die KI bei der Analyse die 4 einzelnen Patienten — Demo zeigt
-            # damit Multi-Patient-Segmentierung 1:1 wie in der Realitaet.
-            (
-                "Hier spricht Oberfeldarzt Doktor Reuter, BAT Alpha vier zwei, "
-                "ich melde vier Verwundete vom Zwischenfall am Kontrollpunkt. "
-                "Erster Patient ist Hauptgefreiter Markus Hoffmann, sechsundzwanzig "
-                "Jahre alt. Beim Absitzen vom Transporter ist er ungluecklich auf "
-                "das rechte Knie gefallen. Schwellung deutlich sichtbar, Schmerzen "
-                "beim Beugen aber belastbar. Ansprechbar, orientiert, Vitalwerte "
-                "stabil, keine sonstigen Verletzungen erkennbar. "
-                "Der naechste Patient ist Soldatin Andrea Wenzel, dreiundzwanzig "
-                "Jahre. Sie hat sich beim Hantieren mit dem Spaten eine "
-                "oberflaechliche Schnittwunde am linken Unterarm zugezogen. "
-                "Circa acht Zentimeter lang, leicht blutend, aber kein "
-                "pulsierender Blutaustritt. Druckverband angelegt, Kreislauf "
-                "stabil. "
-                "Weiter mit dem dritten Patienten, Oberstabsgefreiter Benjamin "
-                "Richter, maennlich, siebenundzwanzig Jahre. Schussverletzung am "
-                "rechten Oberarm mit Durchschuss, starke Blutung. Druckverband "
-                "angelegt, Blutung unter Kontrolle. Puls einhundertachtzehn "
-                "tachykard, Sauerstoff dreiundneunzig Prozent, Blutdruck einhundert "
-                "zu sechzig. Patient ansprechbar aber blass. "
-                "Vierte Patientin ist Stabsunteroffizierin Maria Lange, weiblich, "
-                "zweiunddreissig Jahre. Verbrennung zweiten Grades an der linken "
-                "Handflaeche, etwa drei Prozent der Koerperoberflaeche. Schmerzen "
-                "stark, Vitalwerte stabil, Puls sechsundneunzig, Sauerstoff "
-                "siebenundneunzig Prozent, Blutdruck einhundertdreissig zu "
-                "fuenfundachtzig. Kuehlung mit steriler Kompresse angelegt. "
-                "Patienten fertig."
-            ),
+
+        # Multi-Patient-Diktat-Block: 4 zufaellige Patienten in einem
+        # zusammenhaengenden Sprachfluss — die Segmenter-Pipeline soll diese
+        # bei der Analyse in 4 separate Patient-Records aufteilen.
+        sani_sex, sani_name = _rnd.random_full_name()
+        sani_rank = _rnd.random_rank("sani", sex=sani_sex)
+        unit_short = "BAT Alpha vier zwei"
+        # Beschreibungs-Templates pro Severity
+        block_templates = [
+            ("moderate", "Erster Patient ist {rank} {name}, {age} Jahre alt. "
+                "Beim Absitzen vom Fahrzeug ungluecklich auf das Knie gefallen. "
+                "Schwellung sichtbar, Schmerzen beim Beugen aber belastbar. "
+                "Vitalwerte stabil, Puls {pulse}, Sauerstoff {spo2} Prozent."),
+            ("moderate", "Der naechste Patient ist {rank} {name}, {age} Jahre. "
+                "Oberflaechliche Schnittwunde am Unterarm, etwa acht Zentimeter "
+                "lang, leicht blutend, aber kein pulsierender Austritt. "
+                "Druckverband angelegt, Kreislauf stabil."),
+            ("severe", "Weiter mit dem dritten Patienten, {rank} {name}, "
+                "{age} Jahre. Schussverletzung am Oberarm mit Durchschuss, "
+                "starke Blutung. Druckverband angelegt, Blutung unter "
+                "Kontrolle. Puls {pulse} tachykard, Sauerstoff {spo2} Prozent, "
+                "Blutdruck {bp}. Patient ansprechbar aber blass."),
+            ("moderate", "Vierte Patientin ist {rank} {name}, {age} Jahre. "
+                "Verbrennung zweiten Grades an der Handflaeche, etwa drei "
+                "Prozent der Koerperoberflaeche. Vitalwerte stabil, Puls "
+                "{pulse}, Sauerstoff {spo2} Prozent. Kuehlung angelegt."),
         ]
+        block_parts = [f"Hier spricht {sani_rank} {sani_name}, {unit_short}, "
+                       f"ich melde vier Verwundete vom Zwischenfall am Kontrollpunkt. "]
+        for severity, tpl in block_templates:
+            sex, full = _rnd.random_full_name()
+            rank = _rnd.random_rank(sex=sex)
+            age = random.randint(21, 38)
+            vit = _rnd.random_vitals(severity)
+            block_parts.append(tpl.format(
+                rank=rank, name=full, age=age,
+                pulse=vit["pulse"], spo2=vit["spo2"], bp=vit["bp"],
+            ) + " ")
+        block_parts.append("Patienten fertig.")
+        pending_texts = ["".join(block_parts)]
 
     # Gemeinsamer Code: Patienten in state ablegen, pending anlegen
     for p in test_patients:
