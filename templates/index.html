@@ -2325,9 +2325,11 @@
                             font-size: 12px; }
         .fmc-vitals-table th, .fmc-vitals-table td {
             border: 1px solid #111; padding: 3px 8px; text-align: left;
+            color: #111;
         }
         .fmc-vitals-table th {
-            background: #ebe7d6; font-family: 'Rajdhani', sans-serif;
+            background: #fff; color: #111;
+            font-family: 'Rajdhani', sans-serif;
             font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
             font-weight: 700;
         }
@@ -2335,15 +2337,17 @@
                            font-size: 12px; }
         .fmc-treat-table th, .fmc-treat-table td {
             border: 1px solid #111; padding: 3px 8px; text-align: left;
+            color: #111;
         }
         .fmc-treat-table th {
-            background: #ebe7d6; font-family: 'Rajdhani', sans-serif;
+            background: #fff; color: #111;
+            font-family: 'Rajdhani', sans-serif;
             font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
             font-weight: 700;
         }
         .fmc-legend {
-            font-size: 10px; color: #333; padding: 4px 8px;
-            background: #ebe7d6;
+            font-size: 10px; color: #111; padding: 4px 8px;
+            background: #fff; border-top: 1px solid #111;
         }
         .fmc-legend-line { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
         .fmc-legend-glyph {
@@ -5059,12 +5063,12 @@
             const filled = !!nl[k];
             const expanded = _expandNineLinerValue(k, nl[k], lang);
             return `<tr style="${filled ? '' : 'opacity:0.45'}">
-                <td style="border:1px solid #111;padding:5px 8px;background:#ebe7d6;font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:0.06em;font-size:${labelSize};vertical-align:top;width:38%">${labels[k]}</td>
+                <td style="border:1px solid #111;padding:5px 8px;background:#fff;color:#111;font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:0.06em;font-size:${labelSize};vertical-align:top;width:38%">${labels[k]}</td>
                 <td style="border:1px solid #111;padding:5px 10px;background:#fff;font-family:'Share Tech Mono',monospace;font-size:${fontSize};line-height:1.45;color:#111">${expanded}</td>
             </tr>`;
         }).join('');
         const remarks = nl.remarks
-            ? `<tr><td style="border:1px solid #111;padding:5px 8px;background:#ebe7d6;font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:0.06em;font-size:${labelSize};vertical-align:top">REMARKS</td>
+            ? `<tr><td style="border:1px solid #111;padding:5px 8px;background:#fff;color:#111;font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:0.06em;font-size:${labelSize};vertical-align:top">REMARKS</td>
                    <td style="border:1px solid #111;padding:5px 10px;background:#fff;font-size:${fontSize};color:#111;font-family:'Share Tech Mono',monospace">${(nl.remarks||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td></tr>`
             : '';
         return `
@@ -5236,7 +5240,7 @@
             </div>
             <div class="fmc-assessments-cell">
                 ${assessmentsRows}
-                <div class="fmc-asmt-row" style="background:#ebe7d6">
+                <div class="fmc-asmt-row" style="background:#fff">
                     <div class="fmc-asmt-label">Blood Group</div>
                     <div class="fmc-asmt-val ${A.blood_type || C.blood_group ? '' : 'empty'} fmc-value">
                         ${_fmcEsc(C.blood_group || A.blood_type || '—')}
