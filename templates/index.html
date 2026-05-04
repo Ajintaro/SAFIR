@@ -8427,25 +8427,16 @@
         if (editor) editor.remove();
     }
 
-    // Audit-Badge auf der Patient-Card ->Detail-View mit Audit-Section
-    // oeffnen. Faellt zurueck auf Card-aufklappen wenn keine Detail-View
-    // verfuegbar.
+    // Audit-Badge auf der Patient-Card -> Detail-Modal mit Audit-Section
+    // oeffnen. Das Modal-CSS (r1-detail-overlay/modal) liegt im
+    // gemeinsamen Template und funktioniert auf beiden Geraeten —
+    // role1ShowPatientDetail ist also ueberall verfuegbar. Fruheren
+    // scrollIntoView-Fallback entfernt: war ungewollt (UI sprang) und
+    // unnoetig.
     function openPatientDetailForAudit(pid) {
-        const p = patients[pid];
-        if (!p) return;
-        // role1ShowPatientDetail existiert auf Surface (Lagekarte)
+        if (!patients[pid]) return;
         if (typeof role1ShowPatientDetail === 'function') {
             role1ShowPatientDetail(pid);
-            return;
-        }
-        // Fallback: Card aufklappen + Patient aktivieren
-        const detail = document.querySelector(`details[data-pid="${pid}"]`);
-        if (detail) {
-            detail.open = true;
-            detail.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-        if (typeof selectPatient === 'function') {
-            selectPatient(pid);
         }
     }
 
@@ -10048,7 +10039,13 @@
     // ============================================================
     function role1ShowPatientDetail(patientId) {
         if (!patientId) return;
-        const p = role1Patients.find(pt =>pt.patient_id === patientId);
+        // role1Patients ist nur die gemeldete Teilmenge — wenn das
+        // Audit-Badge auf einem unsynced Patienten geklickt wird
+        // (Patientendatenbank-Liste) ist der Patient da nicht drin.
+        // Fallback aufs globale patients-Objekt damit das Modal
+        // trotzdem aufgeht.
+        let p = role1Patients.find(pt =>pt.patient_id === patientId);
+        if (!p) p = patients[patientId];
         if (!p) return;
 
         const triageColors = { T1: '#FF0000', T2: '#FF8800', T3: '#00AA00', T4: '#4444AA' };
