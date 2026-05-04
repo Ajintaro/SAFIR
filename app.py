@@ -1073,7 +1073,7 @@ async def _oled_register_chip():
     state.chip_register_until = time.monotonic() + 30.0
     oled_menu.show_status("CHIP REGIS.", "Karte auflegen")
     try:
-        tts.speak("Blaue Karte jetzt auflegen")
+        tts.speak("Karte jetzt auflegen")
     except Exception:
         pass
     # 30 s warten oder bis Registrierung abgeschlossen ist. Das eigentliche

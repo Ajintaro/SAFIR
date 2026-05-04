@@ -3667,7 +3667,7 @@
                     <div class="settings-section" id="settings-operators">
                         <div class="settings-title">Operator-Karten (RFID-Login)</div>
                         <div class="settings-desc">
-                            Blaue RFID-Chips am Karten-Leser sperren und entsperren das System.
+                            Operator-RFID-Chips am Karten-Leser sperren und entsperren das System.
                             Jede Karte identifiziert einen Sanit&auml;ter oder Arzt mit Rang und Rolle.
                             Dieselbe Karte nochmal auflegen = abmelden + sperren.
                         </div>
@@ -3702,7 +3702,7 @@
                         <div class="settings-card" style="border-left:3px solid var(--info,#5DADE2)">
                             <div class="settings-card-title" style="color:var(--info,#5DADE2)">Neue Karte registrieren</div>
                             <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px">
-                                Leg den Karten-Lern-Modus an, halte dann den blauen Chip auf den Leser.
+                                Leg den Karten-Lern-Modus an, halte dann den Operator-Chip auf den Leser.
                                 Die UID wird automatisch ausgelesen. Danach Name, Rang und Rolle
                                 eintragen und speichern.
                             </div>
@@ -6334,10 +6334,14 @@
             case 'system_unlocked':
                 updateLockBanner(false);
                 showToast('System entsperrt', '', 'voice');
+                // Direkt in den Phase-0-Workflow (Patient-Seite) wechseln
+                // damit der Sani nicht erst manuell durchnavigieren muss.
+                try { navigateTo('patients'); } catch (_) {}
                 break;
             case 'operator_login':
                 updateLockBanner(false);
                 if (msg.name) showToast('Willkommen ' + msg.name, '', 'voice');
+                try { navigateTo('patients'); } catch (_) {}
                 break;
             case 'operator_logout':
                 updateLockBanner(true);

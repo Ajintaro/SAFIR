@@ -28,7 +28,9 @@
                 "neuer patient",
                 "patient aufnehmen",
                 "neue aufnahme",
-                "naechster patient"
+                "naechster patient",
+                "neue patientin",
+                "neue patienten"
             ]
         },
         "patient_ready": {
@@ -37,7 +39,10 @@
                 "patient fertig",
                 "patient abgeschlossen",
                 "versorgung abgeschlossen",
-                "patient abschließen"
+                "patient abschließen",
+                "patientin fertig",
+                "patient aufgenommen",
+                "patienten aufgenommen"
             ]
         },
         "triage_red": {
@@ -99,7 +104,8 @@
                 "alle patienten analysieren",
                 "patienten analysieren",
                 "alle analysieren",
-                "analyse starten"
+                "analyse starten",
+                "analyse"
             ]
         },
         "send_backend": {
@@ -187,7 +193,45 @@
                 "9 liner",
                 "medevac",
                 "medevac anfordern",
-                "nato medevac"
+                "nato medevac",
+                "evakuierung"
+            ]
+        },
+        "atmist_mode": {
+            "label": "ATMIST Patientenuebergabe Modus",
+            "triggers": [
+                "atmist",
+                "ad mist",
+                "at mist",
+                "atomist",
+                "ad mest",
+                "at most",
+                "ad mister",
+                "at mister",
+                "patientenuebergabe",
+                "patient uebergabe",
+                "atmist starten",
+                "atmist modus"
+            ]
+        },
+        "template_mode_off": {
+            "label": "Template-Modus deaktivieren (9-Liner / ATMIST aus)",
+            "triggers": [
+                "modus abbrechen",
+                "modus aus",
+                "modus zuruecksetzen",
+                "modus zurueck setzen",
+                "modus deaktivieren",
+                "normales diktat",
+                "normales mode",
+                "freitext modus",
+                "freitext diktat",
+                "neun liner aus",
+                "neun liner abbrechen",
+                "neunliner aus",
+                "atmist aus",
+                "atmist abbrechen",
+                "9 liner aus"
             ]
         }
     },
@@ -215,7 +259,7 @@
         "num_ctx": 2048
     },
     "backend": {
-        "url": "http://100.101.80.64:8080",
+        "url": "http://100.95.246.25:8080",
         "auto_sync": true
     },
     "hardware": {
@@ -238,7 +282,26 @@
         "lock_idle_seconds": 1800
     },
     "rfid": {
-        "operators": [],
+        "operators": [
+            {
+                "uid": "9CF13904",
+                "label": "OP1",
+                "name": "Bediener 1",
+                "role": "arzt"
+            },
+            {
+                "uid": "8804248C",
+                "label": "OP2",
+                "name": "Bediener 2",
+                "role": "arzt"
+            },
+            {
+                "uid": "8804DC74",
+                "label": "OP3",
+                "name": "Bediener 3",
+                "role": "arzt"
+            }
+        ],
         "roles": {
             "bat_soldat_1": [
                 "patient_create",
@@ -252,7 +315,8 @@
                 "rfid_write_patient",
                 "rfid_overwrite_patient"
             ]
-        }
+        },
+        "ntag_enabled": true
     },
     "device_id": "jetson-01",
     "unit_name": "BAT Alpha42",
@@ -272,32 +336,32 @@
         {
             "id": "recording",
             "label": "Phase 0",
-            "icon": "&#9873;",
+            "icon": "",
             "subtitle": "Feldgerät",
             "default": true
         },
         {
             "id": "role1",
             "label": "Role 1",
-            "icon": "&#9769;",
+            "icon": "",
             "subtitle": "Rettungsstation"
         },
         {
             "id": "role2",
             "label": "Role 2",
-            "icon": "&#9883;",
+            "icon": "",
             "subtitle": "Rettungszentrum"
         },
         {
             "id": "role3",
             "label": "Role 3",
-            "icon": "&#9879;",
+            "icon": "",
             "subtitle": "Einsatzlazarett"
         },
         {
             "id": "role4",
             "label": "Role 4",
-            "icon": "&#127973;",
+            "icon": "",
             "subtitle": "Bundeswehrkrankenhaus"
         },
         {
@@ -308,29 +372,29 @@
         {
             "id": "patients",
             "label": "Patienten",
-            "icon": "&#9764;"
+            "icon": ""
         },
         {
             "id": "documents",
             "label": "Dokumente",
-            "icon": "&#128196;"
+            "icon": ""
         },
         {
             "id": "handbook",
             "label": "Handbuch",
-            "icon": "&#128218;",
+            "icon": "",
             "subtitle": "Bedienungsanleitung"
         },
         {
             "id": "vision",
             "label": "Vision",
-            "icon": "&#127919;",
+            "icon": "",
             "subtitle": "Weitere Einsatzgebiete"
         },
         {
             "id": "settings",
             "label": "Einstellungen",
-            "icon": "&#9881;"
+            "icon": ""
         }
     ]
 }
