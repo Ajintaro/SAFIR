@@ -8662,8 +8662,12 @@
                     const fmcF = (p.fmc && p.fmc.section_f) || {};
                     const dCount = Array.isArray(p.fmc && p.fmc.section_d) ? p.fmc.section_d.length : 0;
                     const eMeds = ((p.fmc && p.fmc.section_e) || {}).medications || [];
-                    fmcCardHtml = `<details style="margin-top:8px;border-left:3px solid var(--mil-red,#cc2222);background:var(--bg-elevated)">
-                        <summary style="padding:6px 8px;cursor:pointer;font-size:var(--fs-body-sm);color:var(--mil-tan,#c8b878);letter-spacing:0.1em;text-transform:uppercase">
+                    // WICHTIG: onclick stopPropagation auf summary + innerem
+                    // details, damit der Klick nicht zur aeusseren Patient-
+                    // Card-<details> bubbled (sonst triggert deren onclick
+                    // selectPatient() -> Re-Render -> FMC klappt sofort wieder zu).
+                    fmcCardHtml = `<details onclick="event.stopPropagation()" style="margin-top:8px;border-left:3px solid var(--mil-red,#cc2222);background:var(--bg-elevated)">
+                        <summary onclick="event.stopPropagation()" style="padding:6px 8px;cursor:pointer;font-size:var(--fs-body-sm);color:var(--mil-tan,#c8b878);letter-spacing:0.1em;text-transform:uppercase">
                             &#127973; NATO Field Medical Card &mdash;
                             <span style="color:var(--text-dim);text-transform:none;letter-spacing:0">
                                 ${(fmcA.last_name || '').toString()}, ${(fmcA.first_name || '').toString()}
