@@ -46,7 +46,7 @@ from shared import tts
 from shared import sitaware
 from shared import exports
 from shared import test_data_random as _rnd
-from shared.version import VERSION, get_build_hash, get_full_version
+from shared.version import VERSION, get_full_version
 from jetson.oled import oled_menu
 from jetson.hardware import HardwareService, SystemState
 
@@ -5261,11 +5261,9 @@ async def get_status():
         # 'system_name' (config-overridable, default Jetson Orin Nano).
         "device": "jetson",
         "system_name": cfg.get("system_name", "NVIDIA Jetson Orin Nano"),
-        # Versionsinfo aus shared/version.py — eine zentrale Quelle.
-        # get_build_hash() ist lazy-cached und re-tryt bei "dev"-
-        # Fallback automatisch beim naechsten Aufruf.
+        # Versionsinfo aus shared/version.py — eine zentrale Quelle,
+        # manuell gepflegt, +0.0.1 pro Aenderung.
         "version": VERSION,
-        "build": get_build_hash(),
         "full_version": get_full_version(),
         # Aktiv konfigurierter LLM-Tag und Ollama-URL — fuer UI.
         "llm_model": OLLAMA_MODEL,
@@ -7884,6 +7882,10 @@ async def receive_heartbeat(body: dict):
         "port": body.get("port", 8080),
         "last_seen": datetime.now().isoformat(),
         "patient_count": body.get("patient_count", 0),
+        # Versionsfeld — vom Peer mitgeschickt, damit die Leitstelle
+        # auf einen Blick sieht welcher BAT welche SAFIR-Version
+        # faehrt. Leer wenn Peer auf altem Code laeuft.
+        "version": body.get("version", ""),
     }
     return {"status": "ok", "peers": len(state.peers)}
 
@@ -7911,6 +7913,7 @@ async def get_peers():
         "is_self": True,
         "last_seen": now.isoformat(),
         "patient_count": len(state.patients),
+        "version": VERSION,
     }
     # Eigene Instanz nicht doppelt
     peers_list = [p for p in peers_list if p["device_id"] != own["device_id"]]
@@ -7936,6 +7939,10 @@ async def _heartbeat_loop():
                 "ip": "",
                 "port": 8080,
                 "patient_count": len(state.patients),
+                # Versions-Identitaet — die Leitstelle zeigt das im
+                # Peers-Dialog an, sodass man pro Geraet sofort sieht
+                # welche SAFIR-Version laeuft.
+                "version": VERSION,
             }
 
             # An Backend senden (falls konfiguriert)

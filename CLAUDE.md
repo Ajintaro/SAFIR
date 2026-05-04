@@ -8,9 +8,16 @@
 > abgeschlossen. Stand auf GitHub als Stable-Snapshot.
 >
 > **Demo-URL fuer Messebesucher (Tailscale-Mesh-intern, gruenes Schloss):**
-> - Surface (Leitstelle): `https://ai-station.tail0fe60f.ts.net/`
+> - SINA Workstation (Leitstelle): `https://ai-station.tail0fe60f.ts.net/`
 > - Jetson (Feldgerät): `https://jetson-orin.tail0fe60f.ts.net/`
 > - HTTP `localhost:8080` läuft parallel weiter für Diagnose
+>
+> **Hardware-Wechsel 04.05.2026**: Die Microsoft Surface ist als
+> Leitstelle ausgeschieden, ersetzt durch eine **SINA Workstation**
+> (secunet, BSI-zugelassen für VS-NfD). Tailscale-Hostname und
+> Backend-URL bleiben identisch (`ai-station` / Tailnet-IP), die
+> SAFIR-Backend-Software ist die gleiche. Nur Hardware-Plattform
+> + `system_name` + `device_id` (`sina-01`) sind angepasst.
 >
 > Wenn der User nach der Messe Folge-Aenderungen wünscht, lies erst
 > `docs/PROGRESS.md` Abschnitt **„Session 26.04.2026"** für den aktuellen
@@ -37,17 +44,19 @@ Auftraggeber: CGI Deutschland. Zielgruppe: Bundeswehr Sanitätsdienst.
 - FastAPI + WebSocket Dashboard auf Port 8080
 - Hardware-Integration: 2 Taster (Rot/Grün, GPIO Pin 11/26), OLED SSD1306 (I2C Bus 7), RFID RC522, LEDs, Shutdown-Combo
 - Headless-Autostart via `safir.service` (systemd, User=root) + OLED-Status-Monitor (`safir-oled-ready.service`)
-- Live-Sync: Backend-WS-Client (`_backend_ws_loop`) verbindet sich persistent zum Surface, mergt eingehende Patient-Events in `state.patients`
+- Live-Sync: Backend-WS-Client (`_backend_ws_loop`) verbindet sich persistent zur Leitstelle, mergt eingehende Patient-Events in `state.patients`
 - **Status: funktionsfähig** — Multi-Patient-Flow, Segmentierung, Batch-RFID-Schreiben, bi-direktionaler Live-Sync
 
-### Microsoft Surface (`backend/`) — Leitstelle (Role 1)
-- Hardware: Microsoft Surface, Windows
+### SINA Workstation (`backend/`) — Leitstelle (Role 1)
+- Hardware: **SINA Workstation** (secunet, BSI-zugelassen VS-NfD), Windows
+- Vorgaenger war eine Microsoft Surface — Hardware-Wechsel am 04.05.2026, Software ist identisch geblieben.
 - Tailscale-Hostname: `ai-station`, Backend-URL im Jetson-Config: `http://100.101.80.64:8080`
+- `device_id`: `sina-01`, `system_name`: `SINA Workstation`
 - FastAPI Backend mit `/api/ingest` (Jetson-Push), `/api/patients`, `/api/units`, WebSocket `/ws`
 - Taktische Lagekarte (Leaflet), Event-Feed, Triage-Counts, BAT-Transport-Marker
 - Peer-Discovery-Heartbeat (pullt alle aktiven Feldgeräte)
 - **Ollama Gemma 4 E4B** (`gemma4:e4b`, 9.6 GB Q4_K_M) für KI-Review (zweite Instanz prüft Jetson-Extraktion gegen Original-Transkript). On-demand geladen, nicht permanent im RAM.
-- **Surface-Start**: `start_backend.bat` / `stop_backend.bat` auf Desktop. Backend läuft via `Win32_Process.Create` detached (überlebt SSH-Disconnect).
+- **Backend-Start**: `start_backend.bat` / `stop_backend.bat` auf Desktop. Backend läuft via `Win32_Process.Create` detached (überlebt SSH-Disconnect).
 - **Status: alle Endpoints + Lagekarte + Sync-Empfang + KI-Review funktioniert** — Jetson-Patienten kommen via POST und per WebSocket-Broadcast rein. SitaWare-Exports (CoT/NVG/MEDEVAC/FHIR) auf beiden Backends gespiegelt.
 
 ## Tailscale Serve — HTTPS-Zugang im Mesh
@@ -60,7 +69,7 @@ Schloss im Browser, **nur** für Mitglieder des Tailnets erreichbar (kein
 | Gerät | URL |
 |---|---|
 | Jetson (Feldgerät) | `https://jetson-orin.tail0fe60f.ts.net/` |
-| Surface (Leitstelle) | `https://ai-station.tail0fe60f.ts.net/` |
+| SINA Workstation (Leitstelle) | `https://ai-station.tail0fe60f.ts.net/` |
 
 HTTP `localhost:8080` bleibt parallel verfügbar (Diagnose, lokales Testen).
 Cert-Erneuerung erfolgt automatisch alle 60 Tage durch Tailscale.
@@ -87,7 +96,7 @@ Kernprinzip: Verwundete müssen innerhalb von 60 Minuten medizinisch versorgt we
 - Vosk: Sprachbefehle auf Jetson (offline, leichtgewichtig). Mit `SetWords(True)` für Per-Wort-Confidence (Recording-Guard)
 - Ollama:
   - Jetson: **Gemma 3 4B** (`gemma3:4b`, 4.3 GB Q4_K_M, permanent im VRAM via `keep_alive=-1`, `num_gpu=-1` Pflicht — sonst 40% auf CPU)
-  - Surface: **Gemma 4 E4B** (`gemma4:e4b`, 9.6 GB Q4_K_M, on-demand, KI-Review der Jetson-Extraktion)
+  - SINA Workstation: **Gemma 4 E4B** (`gemma4:e4b`, 9.6 GB Q4_K_M, on-demand, KI-Review der Jetson-Extraktion)
 - Piper TTS auf Jetson (CPU, de_DE-thorsten-medium)
 - python-docx + reportlab: DOCX/PDF-Export für Protokolle
 - Tailscale Serve: HTTPS-Zugang im Mesh-Netz (LE-Zertifikate, grünes Schloss)
@@ -116,13 +125,13 @@ Siehe `shared/models.py`:
 
 ## Jetson ↔ Backend Anbindung (IMPLEMENTIERT, bi-direktional)
 
-### Ausgehend: Jetson → Surface
+### Ausgehend: Jetson → Leitstelle (SINA)
 - **POST `/api/ingest`** nach erfolgreichem "Melden" (`sync_all_patients()` in `app.py`) — sendet Patient + Transfer-Schema
 - Trigger: Sprachbefehl "Patienten melden", OLED-Menü "Melden", GUI-Button
 - `patient["synced"] = True` wird nach 200 OK gesetzt
 - Auto-Retry über exponential backoff nicht implementiert — Manual-Retry via "Melden" erneut auslösen
 
-### Eingehend: Surface → Jetson (Live-Sync)
+### Eingehend: Leitstelle (SINA) → Jetson (Live-Sync)
 - **Persistenter WebSocket-Client** `_backend_ws_loop()` verbindet sich zu `ws://<backend>/ws`
 - Auto-Reconnect mit exponential backoff (2 s → 30 s)
 - Event-Handler `_handle_backend_event()` mergt `init`/`patient_new`/`patient_update`/`patient_deleted`/`transfer_update` in `state.patients` und re-broadcastet an die Jetson-eigenen Dashboard-Clients
@@ -130,9 +139,9 @@ Siehe `shared/models.py`:
 
 ### Netzwerk-Setup
 - Beide Geräte hängen via **Tailscale** (Mesh-VPN) zusammen — kein gemeinsames WLAN nötig
-- Backend-URL in `config.json`: `http://100.101.80.64:8080` (Tailscale-IP des Surface)
+- Backend-URL in `config.json`: `http://100.101.80.64:8080` (Tailscale-IP der SINA Workstation)
 - Jetson-Tailscale-IP: `100.126.179.27`, Hostname `jetson-orin`
-- Surface-Tailscale-Hostname: `ai-station`
+- SINA-Workstation-Tailscale-Hostname: `ai-station`
 
 ## GPU-Speicher-Management (Jetson Orin Nano)
 
@@ -197,12 +206,12 @@ MacBook kann sich verbinden: `ssh jetson@jetson-orin` oder `ssh jetson@100.126.1
    - **Batch** (OLED "RFID schreiben" / Sprachbefehl / Fahrzeug-Button "RFID-Batch") — iteriert durch alle Patienten ohne Karte
    - **Per-Patient** (Fahrzeug-Modus: `📇 Karte`-Button pro Patient-Card, oder `POST /api/rfid/write-single` mit `{patient_id}`) — Use-Case: Sanitäter mit nur 3 Karten für 8 Patienten wählt gezielt aus
    - 3-Stufen-Recovery (Direkt → Soft-Reauth → Hard-Recovery via RC522-Reset). Inter-Block-Delay 50 ms. Warm-up 100 ms vor erstem Sektor.
-8. **Melden** sendet alle `analyzed && !synced` Patienten via `POST /api/ingest` an das Surface-Backend. Surface broadcastet via WS zurück an alle BATs.
+8. **Melden** sendet alle `analyzed && !synced` Patienten via `POST /api/ingest` an das Leitstellen-Backend (SINA). Die Leitstelle broadcastet via WS zurück an alle BATs.
 
 **Wichtig: RFID-Write meldet Patient NICHT automatisch** (User-Wunsch).
 Differenziertes Verhalten:
-- Patient `synced=False` (lokal, nie gemeldet): RFID-Write nur lokal, kein Surface-Push. Sanitäter muss explizit „Patienten melden" sagen.
-- Patient `synced=True` (schon gemeldet): UID-Update wird sofort an Surface geschickt — sonst kennt das Surface die Karten-UID nicht beim Omnikey-Scan an der Rettungsstation.
+- Patient `synced=False` (lokal, nie gemeldet): RFID-Write nur lokal, kein Leitstellen-Push. Sanitäter muss explizit „Patienten melden" sagen.
+- Patient `synced=True` (schon gemeldet): UID-Update wird sofort an die Leitstelle geschickt — sonst kennt sie die Karten-UID nicht beim Omnikey-Scan an der Rettungsstation.
 
 Triage wird **erst in Role 1 (Rettungsstation)** manuell gesetzt — Triage-Buttons im Dashboard oder Sprachbefehl "Triage rot/gelb/grün/blau". In Phase 0 (BAT) sind Triage-Updates **deaktiviert** (`voice_set_triage` und `update_patient` ignorieren das Feld bei `current_role == "phase0"`, TTS-Hinweis: "Triage erfolgt erst in der Rettungsstation"). Gemma erfindet sonst Werte die nicht im Text stehen — deshalb auch keine Auto-Triage im LLM-Prompt.
 
@@ -235,7 +244,7 @@ Ersetzt die alte Frontend-Simulation. Voreingestellte Bonn-Standorte
 (Beuel, Hardthöhe, Bad Godesberg, Endenich, Rheinaue) als Dropdown im
 Fahrzeug-Modus. Sanitäter wählt Standort → drückt "Rückfahrt zur
 Rettungsstation" → BAT-Marker bewegt sich animiert (40 Steps × 1.5 s
-= 60 s) auf der Surface-Karte zur Rettungsstation
+= 60 s) auf der Leitstellen-Karte zur Rettungsstation
 (`config.json:rescue_station`, default 50.7374/7.0982 Bonn).
 Voice-Command "rückfahrt zur rettungsstation" mit Variants. API:
 `/api/bat/position/presets`, `/api/bat/position`, `/api/bat/position/set`,

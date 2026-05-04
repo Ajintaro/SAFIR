@@ -572,7 +572,33 @@
             width: 28px;
             text-align: center;
             flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
+        .nav-icon .ico {
+            width: 22px;
+            height: 22px;
+        }
+        /* Lucide-Icon-Klasse — wird ueberall fuer SVG-<use>-Refs
+           verwendet. currentColor sorgt dafuer dass das Icon die
+           Textfarbe des Eltern-Elements uebernimmt — Theme-Switch
+           und Hover-Effekte gehen also automatisch mit. */
+        .ico {
+            width: 1em;
+            height: 1em;
+            display: inline-block;
+            vertical-align: -0.15em;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+            flex-shrink: 0;
+        }
+        .ico-lg { width: 20px; height: 20px; }
+        .ico-xl { width: 28px; height: 28px; }
+        .ico-2xl { width: 40px; height: 40px; }
         .nav-label {
             opacity: 0;
             transition: opacity 0.15s;
@@ -2388,6 +2414,12 @@
 </head>
 <body data-theme="dark">
 
+<!-- Lucide Icon Sprite (ISC, https://lucide.dev/) — alle Icons als
+     <symbol id="icon-NAME"> einmalig im Body. Verwendung an anderen
+     Stellen via <svg class="ico"><use href="#icon-NAME"/></svg>.
+     Faerbt sich automatisch ueber currentColor mit. -->
+{% include '_icons.svg.html' %}
+
 <!-- HEADER -->
 <div class="header">
     <div class="header-left">
@@ -2401,7 +2433,7 @@
     </div>
     <div class="header-right">
         <div class="vosk-indicator inactive" id="vosk-indicator" onclick="toggleVosk()" title="Sprachsteuerung ein/aus">
-            <span class="mic-icon"></span>
+            <span class="mic-icon"><svg class="ico" style="width:16px;height:16px"><use href="#icon-mic-off"/></svg></span>
             <span id="vosk-label">Sprache aus</span>
         </div>
         <span class="badge badge-err" id="badge-status" style="display:none"></span>
@@ -2410,13 +2442,10 @@
             <span id="peers-label">1 Teilnehmer</span>
         </span>
         <button class="hw-toggle" id="hw-toggle" onclick="toggleHwOverlay()" title="Hardware-Monitor">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="4" y="4" width="16" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/>
-                <line x1="8" y1="9" x2="8" y2="12"/><line x1="12" y1="7" x2="12" y2="12"/><line x1="16" y1="10" x2="16" y2="12"/>
-            </svg>
+            <svg class="ico" style="width:16px;height:16px"><use href="#icon-activity"/></svg>
         </button>
         <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Theme wechseln">
-            <span id="theme-icon" style="font-size:14px"></span>
+            <span id="theme-icon"><svg class="ico" style="width:16px;height:16px"><use href="#icon-moon"/></svg></span>
         </button>
     </div>
 </div>
@@ -2568,7 +2597,7 @@
                 <!-- Patientenliste (aufklappbare Karten) -->
                 <div id="patient-cards-feld" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
                     <div class="empty" style="padding:30px;text-align:center">
-                        <div class="icon" style="font-size:28px;opacity:0.4"></div>
+                        <div class="icon" style="opacity:0.4"><svg class="ico ico-2xl"><use href="#icon-mic"/></svg></div>
                         <div style="font-size:var(--fs-body);color:var(--text-dim)">Sprachbefehl: <strong>"Neuer Patient"</strong> → <strong>"Aufnahme starten"</strong></div>
                     </div>
                 </div>
@@ -2604,7 +2633,7 @@
 
                 <!-- Patientenliste (Hauptbereich) -->
                 <div id="patient-cards-fz" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
-                    <div class="empty" style="padding:30px;text-align:center"><div class="icon" style="font-size:24px;opacity:0.4"></div><div style="font-size:var(--fs-body);color:var(--text-dim)">Keine Patienten — "Neuer Patient" klicken oder per Sprache anlegen</div></div>
+                    <div class="empty" style="padding:30px;text-align:center"><div class="icon" style="opacity:0.4"><svg class="ico ico-xl"><use href="#icon-users"/></svg></div><div style="font-size:var(--fs-body);color:var(--text-dim)">Keine Patienten — "Neuer Patient" klicken oder per Sprache anlegen</div></div>
                 </div>
             </div>
 
@@ -2683,7 +2712,7 @@
              ====================================================== -->
         <div class="page" id="page-triage">
             <div class="placeholder-page">
-                <div class="ph-icon"></div>
+                <div class="ph-icon"><svg class="ico ico-2xl"><use href="#icon-list-checks"/></svg></div>
                 <div class="ph-title">Triage-Übersicht</div>
                 <div class="ph-desc">
                     Visuelle Darstellung aller Patienten nach Triage-Kategorie.<br>
@@ -2701,7 +2730,7 @@
              ====================================================== -->
         <div class="page" id="page-phase0">
             <div class="placeholder-page">
-                <div class="ph-icon"></div>
+                <div class="ph-icon"><svg class="ico ico-2xl"><use href="#icon-flag"/></svg></div>
                 <div class="ph-title">Phase 0 — Selbst- und Kameradenhilfe</div>
                 <div class="ph-desc">Verwundetenversorgung am Ort des Geschehens. Erste Maßnahmen durch Kameraden oder Ersthelfer. TCCC-Dokumentation per Spracheingabe.</div>
                 <div class="ph-badge">Aktiv auf diesem Gerät (Jetson Feldgeraet)</div>
@@ -2742,7 +2771,7 @@
                     <!-- Transport-Liste -->
                     <div class="role1-transport-list" id="r1-transport-list">
                         <div class="empty">
-                            <div class="icon"></div>
+                            <div class="icon" style="opacity:0.4"><svg class="ico ico-xl"><use href="#icon-radio"/></svg></div>
                             <div>Warte auf Meldungen von Feldgeräten...</div>
                             <div style="margin-top:8px;font-size:var(--fs-body-sm)">BATs senden Verwundete über SAFIR Phase 0</div>
                         </div>
@@ -2758,7 +2787,7 @@
              ====================================================== -->
         <div class="page" id="page-role2">
             <div class="placeholder-page">
-                <div class="ph-icon"></div>
+                <div class="ph-icon"><svg class="ico ico-2xl"><use href="#icon-stethoscope"/></svg></div>
                 <div class="ph-title">Role 2 — Chirurgische Akutversorgung</div>
                 <div class="ph-desc">Rettungszentrum mit chirurgischen Sofortmassnahmen. Übergabeberichte, OP-Vorbereitung und erweiterte Diagnostik.</div>
                 <div class="ph-badge">Geplant für Phase 3</div>
@@ -2770,7 +2799,7 @@
              ====================================================== -->
         <div class="page" id="page-role3">
             <div class="placeholder-page">
-                <div class="ph-icon"></div>
+                <div class="ph-icon"><svg class="ico ico-2xl"><use href="#icon-hospital"/></svg></div>
                 <div class="ph-title">Role 3 — Einsatzlazarett</div>
                 <div class="ph-desc">Erweiterte medizinische Versorgung. Vollstaendige Patientenakte, KI-gestützte Diagnoseunterstuetzung und Langzeitdokumentation.</div>
                 <div class="ph-badge">Geplant für Phase 3</div>
@@ -2782,7 +2811,7 @@
              ====================================================== -->
         <div class="page" id="page-role4">
             <div class="placeholder-page">
-                <div class="ph-icon"></div>
+                <div class="ph-icon"><svg class="ico ico-2xl"><use href="#icon-landmark"/></svg></div>
                 <div class="ph-title">Role 4 — Bundeswehrkrankenhaus</div>
                 <div class="ph-desc">Endgueltige medizinische Versorgung und Rehabilitation. Statistiken, Auswertung und vollstaendige Aktenfuehrung.</div>
                 <div class="ph-badge">Geplant für Phase 4</div>
@@ -3122,43 +3151,43 @@
             <div class="settings-layout">
                 <div class="settings-sidebar">
                     <div class="settings-nav-item active" onclick="showSettingsSection('voice')" data-settings="voice">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-message-square"/></svg></span>
                         Sprachbefehle
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('recognition')" data-settings="recognition">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-mic"/></svg></span>
                         Spracherkennung
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('llm')" data-settings="llm">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-activity"/></svg></span>
                         KI / LLM
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('device')" data-settings="device">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-wifi"/></svg></span>
                         Gerät &amp; Netzwerk
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('display')" data-settings="display">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-eye"/></svg></span>
                         Darstellung
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('interop')" data-settings="interop">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-file-up"/></svg></span>
                         Interoperabilität
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('security')" data-settings="security">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-shield"/></svg></span>
                         Sicherheit
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('operators')" data-settings="operators">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-id-card"/></svg></span>
                         Operatoren
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('philosophy')" data-settings="philosophy">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-target"/></svg></span>
                         Philosophie
                     </div>
                     <div class="settings-nav-item" onclick="showSettingsSection('system')" data-settings="system">
-                        <span class="settings-nav-icon"></span>
+                        <span class="settings-nav-icon"><svg class="ico ico-lg"><use href="#icon-settings"/></svg></span>
                         System
                     </div>
                 </div>
@@ -3277,7 +3306,7 @@
                                     Passwort: <code id="wifi-hotspot-pw"></code>
                                 </div>
                                 <div style="font-size:var(--fs-body-sm);color:var(--warning);margin-top:var(--space-2)">
-                                    Achtung: Beim Verbinden mit einem echten WLAN wird der Hotspot automatisch beendet — das Surface verliert kurz die Verbindung (10-20 s) und du musst dich danach mit dem neuen WLAN verbinden um weiter auf SAFIR zuzugreifen.
+                                    Achtung: Beim Verbinden mit einem echten WLAN wird der Hotspot automatisch beendet — die Leitstelle verliert kurz die Verbindung (10-20 s) und du musst dich danach mit dem neuen WLAN verbinden um weiter auf SAFIR zuzugreifen.
                                 </div>
                             </div>
                             <div class="btn-group" style="margin-bottom:var(--space-3)">
@@ -3555,7 +3584,7 @@
                         <div class="settings-card"><!-- bestehender Architektur-ueberblick -->
                             <div class="settings-card-title">Architektur-Überblick</div>
                             <pre style="margin:0;padding:14px;background:var(--bg-elevated);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm);line-height:1.5;color:var(--text-secondary);white-space:pre;overflow-x:auto">
-[Jetson BAT] ──┐                                    ┌── [Surface R1]
+[Jetson BAT] ──┐                                    ┌── [SINA R1]
   SAFIR-App    │                                    │    SAFIR-App
                │   ╔════════════════════════════╗   │
                └──▶║ WireGuard End-zu-End       ║◀──┘
@@ -4011,7 +4040,7 @@
                             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
                                 <button class="btn" onclick="loadDemoScenario('standard')" style="padding:12px;text-align:left;line-height:1.4">
                                     <div style="font-weight:700;font-size:var(--fs-body)">Standard-Mix</div>
-                                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:2px">2 analysierte (warten auf Melden), 2 gemeldete (auf Surface sichtbar), 1 langes Multi-Patient-Diktat (4 Verwundete am Stück) zum Live-Analysieren</div>
+                                    <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-top:2px">2 analysierte (warten auf Melden), 2 gemeldete (auf der Leitstelle sichtbar), 1 langes Multi-Patient-Diktat (4 Verwundete am Stück) zum Live-Analysieren</div>
                                 </button>
                                 <button class="btn" onclick="loadDemoScenario('mass_cas')" style="padding:12px;text-align:left;line-height:1.4">
                                     <div style="font-weight:700;font-size:var(--fs-body)">Massenanfall</div>
@@ -4266,9 +4295,21 @@
     }
 
     // ---- Activity Bar ----
+    // ``icon`` darf ein Lucide-Name sein ("activity", "alert-triangle"),
+    // ein lucide:-Prefix-String, oder ein roher HTML-String. Leer
+    // = kein Icon (Bar ohne Symbol).
     function showActivity(icon, text, detail = '') {
         const bar = document.getElementById('activity-bar');
-        document.getElementById('activity-icon').innerHTML = icon;
+        const iconEl = document.getElementById('activity-icon');
+        if (!icon) {
+            iconEl.innerHTML = '';
+        } else if (typeof icon === 'string' && icon.startsWith('lucide:')) {
+            iconEl.innerHTML = renderIcon(icon);
+        } else if (typeof icon === 'string' && /^[a-z][a-z0-9-]*$/.test(icon)) {
+            iconEl.innerHTML = renderIcon('lucide:' + icon);
+        } else {
+            iconEl.innerHTML = icon;
+        }
         document.getElementById('activity-text').textContent = text;
         document.getElementById('activity-detail').textContent = detail;
         bar.classList.add('active');
@@ -4281,11 +4322,29 @@
     }
 
     // ---- Toast ----
+    // Icon kann sein:
+    //   ''                  -> auto-Mapping ueber cls (success/error/...)
+    //   'success'/'error'/'warning'/'info' -> Lucide-Auto
+    //   'lucide:NAME'       -> direkt
+    //   roher HTML-String   -> wird wie bisher gerendert
     function showToast(text, icon = '', cls = '') {
+        const TOAST_ICONS = {
+            success: 'check', error: 'x', warning: 'alert-triangle', info: 'info'
+        };
+        let iconHtml = '';
+        if (icon && typeof icon === 'string' && icon.startsWith('lucide:')) {
+            iconHtml = renderIcon(icon);
+        } else if (icon && TOAST_ICONS[icon]) {
+            iconHtml = renderIcon('lucide:' + TOAST_ICONS[icon]);
+        } else if (!icon && TOAST_ICONS[cls]) {
+            iconHtml = renderIcon('lucide:' + TOAST_ICONS[cls]);
+        } else if (icon) {
+            iconHtml = icon;
+        }
         const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
         toast.className = 'toast ' + cls;
-        toast.innerHTML = `${icon ? '<span class="toast-icon">' + icon + '</span>' : ''}<span>${text}</span>`;
+        toast.innerHTML = `${iconHtml ? '<span class="toast-icon">' + iconHtml + '</span>' : ''}<span>${text}</span>`;
         container.appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() =>toast.remove(), 300); }, 3000);
     }
@@ -4332,6 +4391,20 @@
         location.hash = pageId;
     }
 
+    // Rendert ein Icon-Field aus der Config. Unterstuetzt Format:
+    //   "lucide:flag"     -> SVG <use href="#icon-flag"/>  (Lucide-Sprite)
+    //   "&#9873;"          -> HTML-Entity (Backwards-Compat)
+    //   ""                 -> nichts
+    function renderIcon(spec) {
+        if (!spec) return '';
+        const s = String(spec);
+        if (s.startsWith('lucide:')) {
+            const name = s.slice(7).replace(/[^a-z0-9-]/gi, '');
+            return `<svg class="ico"><use href="#icon-${name}"/></svg>`;
+        }
+        return s;
+    }
+
     function buildSidebar(navItems) {
         const nav = document.getElementById('sidebar-nav');
         nav.innerHTML = navItems.map(item => {
@@ -4345,7 +4418,7 @@
             const subtitle = item.subtitle ? `<div class="nav-subtitle">${item.subtitle}</div>` : '';
             return `
                 <div class="nav-item ${item.default ? 'active' : ''}" data-page="${item.id}" onclick="navigateTo('${item.id}')">
-                    <span class="nav-icon">${item.icon}</span>
+                    <span class="nav-icon">${renderIcon(item.icon)}</span>
                     <span class="nav-label">
                         ${item.label}
                         ${subtitle}
@@ -5666,7 +5739,7 @@
                 banner.style.display = 'block';
                 if (ssidEl) ssidEl.textContent = hs.ssid || 'SAFIR-Setup';
                 if (pw) pw.textContent = hs.password || '';
-                line.textContent = 'Setup-Modus: Surface/Handy mit ' + (hs.ssid || 'SAFIR-Setup') + ' verbinden → ' + (hs.url || 'http://10.42.0.1:8080') + ' öffnen.';
+                line.textContent = 'Setup-Modus: Notebook/Handy mit ' + (hs.ssid || 'SAFIR-Setup') + ' verbinden → ' + (hs.url || 'http://10.42.0.1:8080') + ' öffnen.';
             } else {
                 banner.style.display = 'none';
                 const w = s.wifi || {};
@@ -6188,7 +6261,7 @@
                 beepTranscribeDone();
                 break;
             case 'analysis_started':
-                showActivity('', 'KI analysiert Transkript…', msg.chars + ' Zeichen');
+                showActivity('activity', 'KI analysiert Transkript…', msg.chars + ' Zeichen');
                 markPendingAnalyzing(msg.pending_id, true);
                 break;
             case 'analysis_complete':
@@ -6211,7 +6284,7 @@
                 if (msg.error) showToast('Fehler: ' + msg.error, ''); break;
             case 'model_loading':
                 updateModelBadge(msg.model, 'loading');
-                showActivity('', `Whisper-Modell wird geladen...`, msg.model);
+                showActivity('download', `Whisper-Modell wird geladen...`, msg.model);
                 break;
             case 'model_loaded':
                 updateModelBadge(msg.model, 'loaded', msg.ram_mb);
@@ -6222,13 +6295,13 @@
                 showSessionInfo(msg.session); refreshSessions(); break;
             case 'analyzing':
                 showToast('KI analysiert Transkripte...', '');
-                showActivity('', 'KI-Analyse läuft...', 'Einzelpatient');
+                showActivity('activity', 'KI-Analyse läuft...', 'Einzelpatient');
                 document.getElementById('btn-analyze').textContent = 'Analysiert...';
                 document.getElementById('btn-analyze').disabled = true;
                 showAnalysisSpinner(true);
                 break;
             case 'analyzing_batch':
-                showActivity('', `KI-Analyse: ${msg.count} Patienten`, 'Whisper wird entladen, Ollama startet...');
+                showActivity('activity', `KI-Analyse: ${msg.count} Patienten`, 'Whisper wird entladen, Ollama startet...');
                 showToast(`${msg.count} Patienten werden analysiert...`, '');
                 document.getElementById('btn-analyze').textContent = 'Analysiert...';
                 document.getElementById('btn-analyze').disabled = true;
@@ -7437,7 +7510,7 @@
         const res = await api('/api/sessions');
         const list = document.getElementById('session-list');
         if (!res.sessions || res.sessions.length === 0) {
-            list.innerHTML = '<div class="empty" style="padding:16px"><div class="icon"></div>Keine Sessions</div>';
+            list.innerHTML = '<div class="empty" style="padding:16px"><div class="icon" style="opacity:0.4"><svg class="ico ico-xl"><use href="#icon-folder"/></svg></div>Keine Sessions</div>';
             return;
         }
         list.innerHTML = res.sessions.map(s => {
@@ -7609,12 +7682,15 @@
     function updateVoskIndicator(enabled, listening) {
         const ind = document.getElementById('vosk-indicator');
         const label = document.getElementById('vosk-label');
+        const micEl = ind ? ind.querySelector('.mic-icon') : null;
         if (enabled) {
             ind.className = 'vosk-indicator active';
             label.textContent = listening ? 'Sprache aktiv' : 'Sprache (pausiert)';
+            if (micEl) micEl.innerHTML = '<svg class="ico" style="width:16px;height:16px"><use href="#icon-mic"/></svg>';
         } else {
             ind.className = 'vosk-indicator inactive';
             label.textContent = 'Sprache aus';
+            if (micEl) micEl.innerHTML = '<svg class="ico" style="width:16px;height:16px"><use href="#icon-mic-off"/></svg>';
         }
     }
 
@@ -7628,7 +7704,7 @@
         const res = await api('/api/files');
         const list = document.getElementById('file-list');
         if (!res.files || res.files.length === 0) {
-            list.innerHTML = '<div class="empty" style="padding:16px"><div class="icon"></div>Keine Dokumente</div>';
+            list.innerHTML = '<div class="empty" style="padding:16px"><div class="icon" style="opacity:0.4"><svg class="ico ico-xl"><use href="#icon-file-text"/></svg></div>Keine Dokumente</div>';
             return;
         }
         list.innerHTML = res.files.map(f => {
@@ -7754,6 +7830,21 @@
         if (dlg.open) { dlg.close(); } else { dlg.show(); refreshPeers(); }
     }
 
+    // Vergleicht zwei SemVer-aehnliche Versionsstrings ("0.1.7"
+    // vs "0.1.10"). Liefert -1/0/+1. Fehlende Teile zaehlen als 0.
+    // Verwendet im Peers-Dialog fuer Outdated-Markierung.
+    function compareVersions(a, b) {
+        const pa = String(a || '').split('.').map(n => parseInt(n, 10) || 0);
+        const pb = String(b || '').split('.').map(n => parseInt(n, 10) || 0);
+        const len = Math.max(pa.length, pb.length);
+        for (let i = 0; i < len; i++) {
+            const da = pa[i] || 0, db = pb[i] || 0;
+            if (da > db) return 1;
+            if (da < db) return -1;
+        }
+        return 0;
+    }
+
     async function refreshPeers() {
         const res = await api('/api/peers');
         const list = document.getElementById('peers-list');
@@ -7762,6 +7853,14 @@
             return;
         }
         const now = Date.now();
+        // Hoechste Version im Mesh als "aktuell". Peers darunter sind
+        // veraltet — der Sani sieht auf einen Blick wo nachgezogen
+        // werden muss. Vergleich ueber compareVersions().
+        const versions = res.peers.map(p => p.version).filter(Boolean);
+        let maxVer = '';
+        for (const v of versions) {
+            if (!maxVer || compareVersions(v, maxVer) > 0) maxVer = v;
+        }
         list.innerHTML = res.peers.map(p => {
             const lastSeen = new Date(p.last_seen);
             const ageSec = (now - lastSeen.getTime()) / 1000;
@@ -7772,12 +7871,22 @@
             const patients = p.patient_count ? `${p.patient_count} Pat.` : '';
             const role = p.unit_role || '';
             const sys = p.system_name || p.device_id;
+            // Versions-Badge: "v0.1.1" — gelber Rahmen + "VERALTET"
+            // wenn Peer-Version niedriger als hoechste Version im
+            // Mesh, grauer Rahmen wenn keine Versionsdaten.
+            const ver = p.version || '';
+            const hasVer = !!ver;
+            const isOutdated = hasVer && maxVer && compareVersions(ver, maxVer) < 0;
+            const verColor = !hasVer ? 'var(--text-dim)' : isOutdated ? 'var(--warning)' : 'var(--success)';
+            const verLabel = hasVer ? 'v' + ver : 'Version unbekannt';
+            const verTitle = isOutdated ? `Veraltet — neueste Version im Netz: v${maxVer}` : '';
             return `<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;background:var(--bg-surface2);border-left:2px solid ${dotColor}">
                 <span class="ws-dot" style="background:${dotColor};flex-shrink:0"></span>
                 <div style="flex:1;min-width:0">
-                    <div style="display:flex;align-items:center;gap:6px">
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                         <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.unit_name || p.device_id}</span>
                         ${role ? `<span style="font-size:var(--fs-body-sm);padding:1px 4px;border:1px solid var(--border-light);color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;flex-shrink:0">${role}</span>` : ''}
+                        <span title="${verTitle}" style="font-size:var(--fs-body-sm);padding:1px 4px;border:1px solid var(--border-light);color:${verColor};font-weight:600;font-family:'Share Tech Mono',monospace;letter-spacing:0.04em;flex-shrink:0">${verLabel}${isOutdated ? ' · VERALTET' : ''}</span>
                     </div>
                     <div style="font-size:var(--fs-body-sm);color:var(--text-dim)">${sys} ${patients ? '· ' + patients : ''}</div>
                 </div>
@@ -7948,7 +8057,13 @@
 
     // ---- Theme (4-state: dark → saphir → light → bundeswehr → dark) ----
     const THEMES = ['dark', 'saphir', 'light', 'bundeswehr'];
-    const THEME_ICONS = {dark: '', saphir: '', light: '️', bundeswehr: ''};
+    // Theme-Icon zeigt das *Ziel* des Klicks: aktuell dark -> klick
+    // wird hell, also Sonne anzeigen. Lucide-Icon-Names:
+    //   dark        -> moon
+    //   saphir      -> moon (eigenes dunkles Theme)
+    //   light       -> sun
+    //   bundeswehr  -> shield (gruen, BW-relevant)
+    const THEME_ICONS = {dark: 'moon', saphir: 'moon', light: 'sun', bundeswehr: 'shield'};
     const THEME_LABELS = {dark: 'Dark', saphir: 'Saphir', light: 'Light', bundeswehr: 'Bundeswehr'};
 
     function toggleTheme() {
@@ -7960,7 +8075,10 @@
 
     function updateThemeIcon(theme) {
         const el = document.getElementById('theme-icon');
-        if (el) el.textContent = THEME_ICONS[theme] || '';
+        if (el) {
+            const iconName = THEME_ICONS[theme] || 'moon';
+            el.innerHTML = `<svg class="ico" style="width:16px;height:16px"><use href="#icon-${iconName}"/></svg>`;
+        }
         const toggle = document.getElementById('theme-toggle');
         if (toggle) toggle.title = 'Theme: ' + (THEME_LABELS[theme] || theme);
     }
@@ -8762,7 +8880,7 @@
         // Admin-Tabelle mitaktualisieren
         try { renderAdminPatients(); } catch (e) { /* noop */ }
 
-        const emptyHtml = '<div class="empty" style="padding:20px;text-align:center"><div class="icon" style="font-size:20px;opacity:0.4"></div><div style="font-size:var(--fs-body-sm);color:var(--text-dim)">Keine Patienten</div></div>';
+        const emptyHtml = '<div class="empty" style="padding:20px;text-align:center"><div class="icon" style="opacity:0.4"><svg class="ico ico-lg"><use href="#icon-users"/></svg></div><div style="font-size:var(--fs-body-sm);color:var(--text-dim)">Keine Patienten</div></div>';
 
         ['patient-cards-feld', 'patient-cards-fz'].forEach(containerId => {
             const container = document.getElementById(containerId);
@@ -9050,7 +9168,7 @@
         const btn = document.getElementById('btn-send-backend');
         btn.textContent = 'Synchronisiere...';
         btn.disabled = true;
-        showActivity('', 'Daten werden an Leitstelle übertragen...', '');
+        showActivity('send', 'Daten werden an Leitstelle übertragen...', '');
 
         try {
             const res = await api('/api/patients/sync', 'POST');
@@ -9698,7 +9816,7 @@
         const triageColors = { T1: '#FF0000', T2: '#FF8800', T3: '#00AA00', T4: '#4444AA' };
 
         if (Object.keys(bySource).length === 0) {
-            list.innerHTML = '<div class="empty"><div class="icon"></div><div>Warte auf Meldungen von Feldgeraeten...</div></div>';
+            list.innerHTML = '<div class="empty"><div class="icon" style="opacity:0.4"><svg class="ico ico-xl"><use href="#icon-radio"/></svg></div><div>Warte auf Meldungen von Feldgeraeten...</div></div>';
             role1PrevBySource = {};
             role1LastBySource = {};
             return;
@@ -10246,17 +10364,17 @@
             } else {
                 // Fallback Navigation
                 buildSidebar([
-                    { id: 'home', label: 'Start', icon: '', default: true },
-                    { id: 'recording', label: 'Aufnahme', icon: '' },
-                    { id: 'patients', label: 'Patienten', icon: '' },
-                    { id: 'settings', label: 'Einstellungen', icon: '' },
+                    { id: 'home', label: 'Start', icon: 'lucide:flag', default: true },
+                    { id: 'recording', label: 'Aufnahme', icon: 'lucide:circle-play' },
+                    { id: 'patients', label: 'Patienten', icon: 'lucide:users' },
+                    { id: 'settings', label: 'Einstellungen', icon: 'lucide:settings' },
                 ]);
             }
         } catch (e) {
             buildSidebar([
-                { id: 'dashboard', label: 'Dashboard', icon: '', default: true },
-                { id: 'patients', label: 'Patienten', icon: '' },
-                { id: 'settings', label: 'Einstellungen', icon: '' },
+                { id: 'dashboard', label: 'Dashboard', icon: 'lucide:heart-pulse', default: true },
+                { id: 'patients', label: 'Patienten', icon: 'lucide:users' },
+                { id: 'settings', label: 'Einstellungen', icon: 'lucide:settings' },
             ]);
         }
 
@@ -10347,32 +10465,29 @@
         // das Feld bleibt bestehen.
         const devLabel = status.system_name
             || (status.device === 'leitstelle'
-                ? 'Microsoft Surface'
+                ? 'SINA Workstation'
                 : 'NVIDIA Jetson Orin Nano');
         const hwName = document.getElementById('hw-overlay-device-name');
         if (hwName) hwName.textContent = devLabel;
         // Settings ->SAFIR Informationen: Geraete-Name + Version aus
-        // /api/status. Damit ist die Card pro Geraet korrekt (Surface
-        // zeigt "Microsoft Surface", Jetson zeigt "NVIDIA Jetson...").
+        // /api/status. Damit ist die Card pro Geraet korrekt (Leitstelle
+        // zeigt "SINA Workstation", Jetson zeigt "NVIDIA Jetson...").
         const infoDev = document.getElementById('info-device-name');
         if (infoDev) infoDev.textContent = devLabel;
         // Versionsanzeige in Settings, Sidebar und Footer-Badge — alle
-        // drei Stellen aus dem gleichen status.version. Build-Hash wird
-        // klein dahintergesetzt damit unterschiedliche Builds derselben
-        // Version unterscheidbar sind (z.B. "0.1.0  build a1b2c3d").
+        // drei Stellen aus dem gleichen status.version. Bei JEDER
+        // Aenderung wird VERSION in shared/version.py manuell um
+        // +0.0.1 hochgezaehlt, sodass jeder Build eine klare Zahl hat.
         const ver = status.version || '?';
-        const build = status.build && status.build !== 'dev' ? status.build : '';
         const sidebarVer = document.getElementById('sidebar-version');
         if (sidebarVer) sidebarVer.textContent = 'v' + ver;
         const infoVer = document.getElementById('info-version');
         if (infoVer) infoVer.textContent = ver;
         const infoBuild = document.getElementById('info-build');
-        if (infoBuild) infoBuild.textContent = build ? '(build ' + build + ')' : '';
+        if (infoBuild) infoBuild.textContent = '';
         const footerBadge = document.getElementById('footer-badge');
         if (footerBadge) {
-            footerBadge.innerHTML = 'SAFIR v' + ver
-                + (build ? ' · ' + build : '')
-                + ' · CGI Deutschland · AFCEA 2026';
+            footerBadge.innerHTML = 'SAFIR v' + ver + ' · CGI Deutschland · AFCEA 2026';
         }
         // Settings ->SAFIR Informationen: LLM-Modell + Server-URL
         // dynamisch aus /api/status (statt hardcoded "Qwen").

@@ -40,7 +40,7 @@ if str(ROOT_DIR) not in _sys.path:
     _sys.path.insert(0, str(ROOT_DIR))
 from shared import exports  # noqa: E402
 from shared import sitaware  # noqa: E402
-from shared.version import VERSION, get_build_hash, get_full_version  # noqa: E402
+from shared.version import VERSION, get_full_version  # noqa: E402
 TEMPLATES_DIR = ROOT_DIR / "templates"          # Einheitliches Template
 TEMPLATES_DIR_LOCAL = PROJECT_DIR / "templates"  # Fallback
 STATIC_DIR = PROJECT_DIR / "static"
@@ -268,18 +268,16 @@ async def get_status():
     cfg = load_backend_config()
     return {
         "device": "leitstelle",
-        "device_id": cfg.get("device_id", "surface-01"),
+        "device_id": cfg.get("device_id", "sina-01"),
         "unit_name": cfg.get("unit_name", "Rettungsstation"),
         "role": cfg.get("role", "role1"),
         # Geraete-Name fuer Settings -> SAFIR Informationen und das
-        # Hardware-Monitor-Overlay. Frontend faellt auf 'Microsoft
-        # Surface' zurueck wenn dieses Feld fehlt (Backwards-Compat).
-        "system_name": cfg.get("system_name", "Microsoft Surface"),
-        # Versionsinfo aus shared/version.py — eine zentrale Quelle.
-        # get_build_hash() ist lazy-cached und re-tryt bei "dev"-
-        # Fallback automatisch beim naechsten Aufruf.
+        # Hardware-Monitor-Overlay. Frontend faellt auf 'SINA
+        # Workstation' zurueck wenn dieses Feld fehlt.
+        "system_name": cfg.get("system_name", "SINA Workstation"),
+        # Versionsinfo aus shared/version.py — eine zentrale Quelle,
+        # manuell gepflegt, +0.0.1 pro Aenderung.
         "version": VERSION,
-        "build": get_build_hash(),
         "full_version": get_full_version(),
         # Aktiv konfigurierter LLM-Tag und Ollama-URL — wird vom UI
         # dynamisch in Settings/Tech-Stack eingeblendet, statt
@@ -316,13 +314,14 @@ def load_backend_config() -> dict:
         with open(BACKEND_CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     return {
-        "device_id": "surface-01",
+        "device_id": "sina-01",
         "unit_name": "Rettungsstation",
         "role": "role1",
+        "system_name": "SINA Workstation",
         "navigation": [
-            {"id": "role1", "label": "Role 1", "icon": "&#9769;", "subtitle": "Rettungsstation", "default": True},
-            {"id": "patients", "label": "Patienten", "icon": "&#9764;"},
-            {"id": "settings", "label": "Einstellungen", "icon": "&#9881;"},
+            {"id": "role1", "label": "Role 1", "icon": "lucide:heart-pulse", "subtitle": "Rettungsstation", "default": True},
+            {"id": "patients", "label": "Patienten", "icon": "lucide:users"},
+            {"id": "settings", "label": "Einstellungen", "icon": "lucide:settings"},
         ],
     }
 
@@ -1561,7 +1560,7 @@ def _log_patient_change(patient: dict, field: str, old_value, new_value,
         "old_value": _truncate_value(old_value),
         "new_value": _truncate_value(new_value),
         "change_type": change_type,
-        "device": cfg.get("device_id", "surface-01"),
+        "device": cfg.get("device_id", "sina-01"),
     }
     audit = patient.setdefault("audit_log", [])
     audit.append(entry)
@@ -1692,7 +1691,7 @@ async def state_soft_reset(body: dict | None = None):
     return {
         "status": "ok",
         "cleared": cleared,
-        "message": ("Surface hat keine transient-State-Flags die "
+        "message": ("Leitstelle hat keine transient-State-Flags die "
                     "haengen koennten — alles sauber.") if not cleared else "OK",
     }
 
@@ -1818,19 +1817,19 @@ SAFIR · CGI Deutschland · AFCEA 2026
 
 @app.post("/api/system/restart-service")
 async def system_restart_service(body: dict | None = None):
-    """Hard-Reset: NICHT verfuegbar auf Surface (Windows).
+    """Hard-Reset: NICHT verfuegbar auf der Leitstelle (Windows).
 
-    Surface laeuft als User-Prozess via start_backend.bat (cmd-Fenster
-    auf dem Desktop). Es gibt keinen Auto-Restart-Mechanismus wie
-    systemd auf dem Jetson — wuerde der Server sich selbst toeten,
-    bliebe das Backend tot bis manuell neu gestartet.
+    Die SINA-Workstation laeuft als User-Prozess via start_backend.bat
+    (cmd-Fenster auf dem Desktop). Es gibt keinen Auto-Restart-
+    Mechanismus wie systemd auf dem Jetson — wuerde der Server sich
+    selbst toeten, bliebe das Backend tot bis manuell neu gestartet.
 
     Gibt 501 zurueck mit Hinweis was der User stattdessen tun soll.
     """
     import platform
     return {
         "status": "error",
-        "error": ("Hard-Reset auf Surface nicht verfuegbar "
+        "error": ("Hard-Reset auf der Leitstelle nicht verfuegbar "
                   "(kein systemd-Auto-Restart). Bitte stop_backend.bat "
                   "und dann start_backend.bat manuell ausfuehren."),
         "platform": platform.system(),
@@ -2017,16 +2016,16 @@ PROTOCOLS_DIR_EXPORT.mkdir(exist_ok=True, parents=True)
 
 
 def _export_cfg() -> tuple[str, str]:
-    """Liefert (device_id, unit_name) aus der Surface-Config für Exports."""
+    """Liefert (device_id, unit_name) aus der Leitstellen-Config für Exports."""
     try:
         cfg_path = PROJECT_DIR / "config.json"
         if cfg_path.exists():
             with open(cfg_path, encoding="utf-8") as f:
                 cfg = json.load(f)
-            return cfg.get("device_id", "surface-01"), cfg.get("unit_name", "Leitstelle")
+            return cfg.get("device_id", "sina-01"), cfg.get("unit_name", "Leitstelle")
     except Exception:
         pass
-    return "surface-01", "Leitstelle"
+    return "sina-01", "Leitstelle"
 
 
 def _export_filename(ext: str) -> str:
@@ -2319,6 +2318,10 @@ async def receive_heartbeat(body: dict, request: Request):
         "port": body.get("port", 8080),
         "last_seen": datetime.now().isoformat(),
         "patient_count": body.get("patient_count", 0),
+        # Versionsfeld vom Peer (z.B. Jetson-BAT) — leerstring wenn
+        # der Peer auf einem alten Build laeuft, der noch nichts
+        # mitschickt. Frontend zeigt im Peers-Dialog "?".
+        "version": body.get("version", ""),
     }
     return {"status": "ok", "peers": len(state.peers)}
 
@@ -2339,13 +2342,14 @@ async def get_peers():
     own = {
         "unit_name": cfg.get("unit_name", "Rettungsstation"),
         "unit_role": cfg.get("role", "role1"),
-        "system_name": "Surface Pro",
-        "device_id": cfg.get("device_id", "surface-01"),
+        "system_name": cfg.get("system_name", "SINA Workstation"),
+        "device_id": cfg.get("device_id", "sina-01"),
         "ip": "127.0.0.1",
         "port": 8080,
         "is_self": True,
         "last_seen": now.isoformat(),
         "patient_count": len(state.patients),
+        "version": VERSION,
     }
     # Eigene Instanz nicht doppelt
     peers_list = [p for p in peers_list if p["device_id"] != own["device_id"]]
@@ -2454,13 +2458,16 @@ async def _heartbeat_loop():
         try:
             cfg = load_backend_config()
             payload = {
-                "device_id": cfg.get("device_id", "surface-01"),
+                "device_id": cfg.get("device_id", "sina-01"),
                 "unit_name": cfg.get("unit_name", "Rettungsstation"),
                 "unit_role": cfg.get("role", "role1"),
-                "system_name": "Surface Pro",
+                "system_name": cfg.get("system_name", "SINA Workstation"),
                 "ip": "",
                 "port": 8080,
                 "patient_count": len(state.patients),
+                # Versions-Identitaet — Peer zeigt das im Peers-Dialog
+                # an, sodass jeder weiss welche Leitstellen-Version laeuft.
+                "version": VERSION,
             }
             # An alle bekannten Peers senden
             for peer in list(state.peers.values()):
@@ -2669,12 +2676,12 @@ async def startup():
 # SitaWare / Tactical-Medical Interoperability (parallel zum Jetson-Endpoint)
 # ---------------------------------------------------------------------------
 def _surface_sitaware_params() -> dict:
-    """Standardparameter fuer SitaWare-Exporte aus der Surface-Konfig."""
+    """Standardparameter fuer SitaWare-Exporte aus der Leitstellen-Konfig."""
     cfg = load_backend_config()
     pos = cfg.get("device_position") or cfg.get("position") or {}
     return {
         "unit_name": cfg.get("unit_name", "Rettungsstation"),
-        "device_id": cfg.get("device_id", "surface-01"),
+        "device_id": cfg.get("device_id", "sina-01"),
         "lat": float(pos.get("lat", 50.7374)),
         "lon": float(pos.get("lon", 7.0982)),
         "radio_freq": cfg.get("radio_frequency", "0.0"),
