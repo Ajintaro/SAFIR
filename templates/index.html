@@ -4975,9 +4975,11 @@
         if (key === 'line3') {
             const map = isEn ? PRECEDENCE_EN : PRECEDENCE_DE;
             const counts = parseCounts(val);
-            return ['A','B','C','D','E'].map(k =>
-                `<div style="display:flex;justify-content:space-between;gap:8px"><span>${k} — ${map[k]}</span><strong>${counts[k] || 0}</strong></div>`
-            ).join('');
+            return ['A','B','C','D','E'].map(k => {
+                const n = counts[k] || 0;
+                const hi = n > 0;
+                return `<div>${k} — ${map[k]}: <strong style="color:${hi?'#cc2222':'#888'};font-size:${hi?'1.15em':'1em'};margin-left:4px">${n}</strong></div>`;
+            }).join('');
         }
         if (key === 'line4') {
             const map = isEn ? SPECIAL_EQ_EN : SPECIAL_EQ_DE;
@@ -4991,9 +4993,11 @@
         if (key === 'line5') {
             const map = isEn ? TYPE_EN : TYPE_DE;
             const counts = parseCounts(val);
-            return ['L','A'].map(k =>
-                `<div style="display:flex;justify-content:space-between;gap:8px"><span>${k} — ${map[k]}</span><strong>${counts[k] || 0}</strong></div>`
-            ).join('');
+            return ['L','A'].map(k => {
+                const n = counts[k] || 0;
+                const hi = n > 0;
+                return `<div>${k} — ${map[k]}: <strong style="color:${hi?'#cc2222':'#888'};font-size:${hi?'1.15em':'1em'};margin-left:4px">${n}</strong></div>`;
+            }).join('');
         }
         if (key === 'line6') {
             const map = isEn ? SECURITY_EN : SECURITY_DE;

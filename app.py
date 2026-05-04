@@ -4036,6 +4036,13 @@ line9 — NBC / CBRN contamination (CODES):
   C=Chemical        B=Biological         R=Radiological     N=Nuclear
   Single letter (C/B/R/N) OR empty string if no contamination.
 
+  CRITICAL NEGATION RULE: phrases like "no known nuclear, biological,
+  chemical, or CBRN contamination" mean NO contamination → return "" (empty).
+  Words listed after "no known" / "none" / "no" describe categories that
+  are ABSENT, not present. Only return a letter if the transcript ASSERTS
+  contamination is present (e.g. "suspected chemical contamination",
+  "nuclear contamination detected", "biological agent confirmed").
+
 remarks — Any additional notes (readback, clarifications).
 
 PHONETIC ALPHABET (always normalise to letters):
