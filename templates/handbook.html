@@ -98,7 +98,7 @@
 
             <!-- ========== 1. Was ist SAFIR? ========== -->
             <section id="hb-intro">
-                <h1><span class="hb-num">1</span> Was ist SAFIR?</h1>
+                <h1><span class="hb-num">1</span>Was ist SAFIR?</h1>
                 <p class="hb-section-lead">Sprachgestützte Assistenz für Informationserfassung in der Rettungskette.</p>
 
                 <p>SAFIR ist ein KI-gestütztes Dokumentationssystem für den Sanitätsdienst der Bundeswehr. Ein Sanitäter im Feld diktiert seine Befunde frei in natürlicher Sprache. Die Software segmentiert das Diktat in einzelne Patienten, extrahiert strukturierte Daten (Name, Verletzungen, Vitalwerte) und schreibt die Patient-ID auf RFID-Karten, die dem Verwundeten mitgegeben werden. Über ein verschlüsseltes Mesh-Netz werden die Patientendaten live an die Leitstelle in der Rettungsstation gespiegelt, wo Ärzte auf einer taktischen Lagekarte Triage und Transport koordinieren.</p>
@@ -160,8 +160,8 @@
 
                 <h2>Wer nutzt welches Gerät?</h2>
                 <ul>
-                    <li><strong>Sanitäter im Feld (Phase 0):</strong> Jetson Orin Nano — batteriebetrieben, headless, mit 2 physischen Tastern, OLED-Display und RFID-Reader. Diktat erfolgt per Mikrofon direkt am Feldgerät.</li>
-                    <li><strong>Arzt in der Rettungsstation (Role 1):</strong> Microsoft Surface — Web-UI mit taktischer Lagekarte, Patientendatenbank, Triage-Counts und Omnikey-Kartenleser für direkte Patientenaufrufung.</li>
+                    <li><strong>Sanitäter im Feld (Phase 0):</strong>Jetson Orin Nano — batteriebetrieben, headless, mit 2 physischen Tastern, OLED-Display und RFID-Reader. Diktat erfolgt per Mikrofon direkt am Feldgerät.</li>
+                    <li><strong>Arzt in der Rettungsstation (Role 1):</strong>Microsoft Surface — Web-UI mit taktischer Lagekarte, Patientendatenbank, Triage-Counts und Omnikey-Kartenleser für direkte Patientenaufrufung.</li>
                 </ul>
 
                 <h2>Was macht SAFIR NICHT?</h2>
@@ -174,7 +174,7 @@
 
             <!-- ========== 2. Geräte-Übersicht ========== -->
             <section id="hb-devices">
-                <h1><span class="hb-num">2</span> Geräte-Übersicht</h1>
+                <h1><span class="hb-num">2</span>Geräte-Übersicht</h1>
                 <p class="hb-section-lead">Zwei Geräte, verbunden über verschlüsseltes Mesh-Netz. Jedes Gerät hat klar definierte Rolle, Hardware und Bedienoberfläche.</p>
 
                 <div class="hb-grid-2">
@@ -192,7 +192,7 @@
                     </div>
                     <div>
                         <h3>Leitstelle (Role 1)</h3>
-                        <p><strong>Microsoft Surface</strong> mit Windows, Tailscale-Hostname <code>ai-station</code>.</p>
+                        <p><strong>Microsoft Surface</strong>mit Windows, Tailscale-Hostname <code>ai-station</code>.</p>
                         <ul>
                             <li>Web-Dashboard mit taktischer Lagekarte (Leaflet)</li>
                             <li>Patientendatenbank mit Volltext-Durchsuchung</li>
@@ -272,11 +272,11 @@
                 </table>
                 <div class="hb-note info">
                     <div class="hb-note-title">Wichtig zur Reichweite</div>
-                    Die HTTPS-URLs sind <strong>nur innerhalb des Tailnets</strong> erreichbar.
+                    Die HTTPS-URLs sind <strong>nur innerhalb des Tailnets</strong>erreichbar.
                     Ein Messebesucher mit Tablet braucht entweder die Tailscale-App
                     installiert (einmalige Anmeldung am Tailnet, dann grünes Schloss) — oder
                     er bekommt die HTTP-Variante über das gleiche WLAN gezeigt. Echte
-                    Internet-Erreichbarkeit wäre <code>tailscale funnel</code> (Sicherheits-
+                    Internet-Erreichbarkeit wäre <code>tailscale funnel</code>(Sicherheits-
                     Caveats: jeder mit der URL kommt rein, deshalb für Demo-Zwecke nicht
                     aktiviert).
                 </div>
@@ -284,7 +284,7 @@
 
             <!-- ========== 3. Erste Schritte ========== -->
             <section id="hb-firststeps">
-                <h1><span class="hb-num">3</span> Erste Schritte</h1>
+                <h1><span class="hb-num">3</span>Erste Schritte</h1>
                 <p class="hb-section-lead">Vom Einschalten bis zum ersten Diktat in unter einer Minute.</p>
 
                 <h2>Feldgerät (Jetson) einschalten</h2>
@@ -293,14 +293,14 @@
                         <div class="hb-step-num">1</div>
                         <div class="hb-step-body">
                             <div class="hb-step-title">Powerbank verbinden</div>
-                            <div class="hb-step-desc">USB-C-Kabel von der Powerbank (15 V / 65 W) an den Jetson stecken. <strong>Wichtig:</strong> Kein 12 V-Hub — der Jetson braucht stabile 15 V unter Last, sonst Brownout-Reboots.</div>
+                            <div class="hb-step-desc">USB-C-Kabel von der Powerbank (15 V / 65 W) an den Jetson stecken. <strong>Wichtig:</strong>Kein 12 V-Hub — der Jetson braucht stabile 15 V unter Last, sonst Brownout-Reboots.</div>
                         </div>
                     </div>
                     <div class="hb-step">
                         <div class="hb-step-num">2</div>
                         <div class="hb-step-body">
                             <div class="hb-step-title">Boot abwarten (~30 s)</div>
-                            <div class="hb-step-desc">Das OLED zeigt den Startverlauf. SAFIR startet automatisch via <code>safir.service</code> (systemd). Ollama lädt zuerst, dann Whisper. Wenn die OLED-Seite „MODELLE" grün ist, ist das System bereit.</div>
+                            <div class="hb-step-desc">Das OLED zeigt den Startverlauf. SAFIR startet automatisch via <code>safir.service</code>(systemd). Ollama lädt zuerst, dann Whisper. Wenn die OLED-Seite „MODELLE" grün ist, ist das System bereit.</div>
                         </div>
                     </div>
                     <div class="hb-step">
@@ -373,7 +373,7 @@
 
             <!-- ========== 4. Komplett-Workflow ========== -->
             <section id="hb-workflow">
-                <h1><span class="hb-num">4</span> Diktat-Workflow — Komplett-Ablauf</h1>
+                <h1><span class="hb-num">4</span>Diktat-Workflow — Komplett-Ablauf</h1>
                 <p class="hb-section-lead">
                     End-to-End-Anleitung: Vom Einschalten ueber das Diktat (Freitext oder
                     9-Liner) bis zur uebermittelten Patientenakte in der Rettungsstation.
@@ -418,17 +418,17 @@
                 <h2>4.1 Pre-Flight — Bevor du startest</h2>
                 <p>Drei Sekunden Check, bevor der erste Patient kommt:</p>
                 <ul>
-                    <li><strong>Operator-Login:</strong> Persönliche RFID-Karte auf den Reader. TTS sagt „Willkommen, [Rang] [Name]". Ohne Login sind Schreib-/Analyse-Aktionen gesperrt.</li>
-                    <li><strong>OLED-Seite MODELLE:</strong> Whisper + LLM müssen grün sein. Wenn rot/gelb: „Mikrofon-Test" sprechen — TTS bestätigt mit Loopback.</li>
-                    <li><strong>Backend-Verbindung:</strong> OLED-Seite NETZWERK zeigt „Backend: verbunden". Wenn getrennt → Diktat geht trotzdem (lokal gespeichert), Übergabe erfolgt nachträglich.</li>
+                    <li><strong>Operator-Login:</strong>Persönliche RFID-Karte auf den Reader. TTS sagt „Willkommen, [Rang] [Name]". Ohne Login sind Schreib-/Analyse-Aktionen gesperrt.</li>
+                    <li><strong>OLED-Seite MODELLE:</strong>Whisper + LLM müssen grün sein. Wenn rot/gelb: „Mikrofon-Test" sprechen — TTS bestätigt mit Loopback.</li>
+                    <li><strong>Backend-Verbindung:</strong>OLED-Seite NETZWERK zeigt „Backend: verbunden". Wenn getrennt → Diktat geht trotzdem (lokal gespeichert), Übergabe erfolgt nachträglich.</li>
                 </ul>
 
                 <h2>4.2 Aufnahme starten — drei gleichwertige Wege</h2>
                 <table class="hb-vc-table">
                     <thead><tr><th style="width:25%">Methode</th><th>Aktion</th><th>Wann sinnvoll</th></tr></thead>
                     <tbody>
-                        <tr><td><strong>Voice</strong></td><td><code>"Neuer Patient"</code> oder <code>"Aufnahme starten"</code></td><td>Hände frei (Verband, Spritze, etc.)</td></tr>
-                        <tr><td><strong>Taster B</strong> (grün, Pin 26)</td><td>Lang drücken (≥ 500 ms)</td><td>Laut/Funk im Hintergrund — Voice unzuverlässig</td></tr>
+                        <tr><td><strong>Voice</strong></td><td><code>"Neuer Patient"</code>oder <code>"Aufnahme starten"</code></td><td>Hände frei (Verband, Spritze, etc.)</td></tr>
+                        <tr><td><strong>Taster B</strong>(grün, Pin 26)</td><td>Lang drücken (≥ 500 ms)</td><td>Laut/Funk im Hintergrund — Voice unzuverlässig</td></tr>
                         <tr><td><strong>GUI</strong></td><td>Button „+ Neuer Patient" oder „Aufnahme starten"</td><td>Im Fahrzeug-Modus mit Touchscreen</td></tr>
                     </tbody>
                 </table>
@@ -449,11 +449,11 @@
 
                 <h3>Was sage ich? Empfohlene Reihenfolge</h3>
                 <ol>
-                    <li><strong>Identität:</strong> Name, Rang, Einheit, ggf. Geburtsdatum</li>
-                    <li><strong>Mechanismus:</strong> Was ist passiert? (Schuss, IED, Sturz, Verbrennung, etc.)</li>
-                    <li><strong>Verletzungen:</strong> Wo, was, wie schwer (anatomisch beschreiben)</li>
-                    <li><strong>Vitalwerte:</strong> Puls, Blutdruck, Atemfrequenz, SpO2, GCS, Schmerz</li>
-                    <li><strong>Maßnahmen:</strong> Tourniquet, Verband, Zugang, Medikamente, Position</li>
+                    <li><strong>Identität:</strong>Name, Rang, Einheit, ggf. Geburtsdatum</li>
+                    <li><strong>Mechanismus:</strong>Was ist passiert? (Schuss, IED, Sturz, Verbrennung, etc.)</li>
+                    <li><strong>Verletzungen:</strong>Wo, was, wie schwer (anatomisch beschreiben)</li>
+                    <li><strong>Vitalwerte:</strong>Puls, Blutdruck, Atemfrequenz, SpO2, GCS, Schmerz</li>
+                    <li><strong>Maßnahmen:</strong>Tourniquet, Verband, Zugang, Medikamente, Position</li>
                     <li><strong>Allergien / Blutgruppe / Vorgeschichte</strong> — falls bekannt</li>
                     <li><strong>Abschluss:</strong> „Patient fertig" oder „Aufnahme stoppen"</li>
                 </ol>
@@ -493,7 +493,7 @@
                     <div class="hb-note-title">Filter, die im Hintergrund laufen</div>
                     <ul style="margin:6px 0 0 18px">
                         <li><strong>Intro-Erkennung:</strong> „Hier spricht Oberfeldarzt…", „Ich bin auf dem Platz der Verwundeten" werden NICHT als Patient angelegt.</li>
-                        <li><strong>Off-Topic-Filter:</strong> Medizinisch irrelevante Sätze („Morgen möchte ich Motorrad fahren") werden gefiltert.</li>
+                        <li><strong>Off-Topic-Filter:</strong>Medizinisch irrelevante Sätze („Morgen möchte ich Motorrad fahren") werden gefiltert.</li>
                         <li><strong>Prompt-Injection-Schutz:</strong> „Ignoriere alle vorherigen Anweisungen" o.ä. wird ignoriert — die KI hält sich strikt an das Extraktions-Schema.</li>
                         <li><strong>Vitalwert-Plausibilität:</strong> „Puls 5000" wird verworfen, statt das Feld mit Müll zu füllen.</li>
                     </ul>
@@ -502,12 +502,12 @@
                 <h2>4.4 9-Liner-MEDEVAC-Modus — geführter Funkspruch (NATO ATP-3.7.2)</h2>
                 <p>
                     Statt Freitext kann der Sanitäter den 9-Liner als <em>strukturierten
-                    Funkspruch</em> diktieren. Die KI parst dann genau die 9 Linien und füllt
+                    Funkspruch</em>diktieren. Die KI parst dann genau die 9 Linien und füllt
                     das MEDEVAC-Template aus. Das Ergebnis ist 1:1 der Funkspruch, den die
                     Rettungsstation für die Anforderung braucht.
                 </p>
                 <p style="background:#0f1a14;border-left:3px solid var(--info,#5DADE2);padding:10px 12px;font-size:0.95em">
-                    <strong>Schema:</strong> SAFIR nutzt den <strong>NATO ATP-3.7.2 Standard</strong>
+                    <strong>Schema:</strong>SAFIR nutzt den <strong>NATO ATP-3.7.2 Standard</strong>
                     mit deutschen Bezeichnungen — wie er auch in der GSG-Demo verwendet wird.
                     Phonetisches Alphabet (Alfa, Bravo, Charlie, …) wird automatisch zu
                     Buchstaben-Codes (A, B, C, …) normalisiert.
@@ -515,7 +515,7 @@
 
                 <h3>Wann benutzen?</h3>
                 <ul>
-                    <li>Wenn ein <strong>MEDEVAC angefordert</strong> wird (Hubschrauber/Sani-Fahrzeug)</li>
+                    <li>Wenn ein <strong>MEDEVAC angefordert</strong>wird (Hubschrauber/Sani-Fahrzeug)</li>
                     <li>Wenn die Funkbrücke standardisierten Wortlaut erwartet</li>
                     <li>Für Demo-/Übungs-Zwecke um den NATO-Standard zu zeigen</li>
                 </ul>
@@ -526,9 +526,9 @@
 
                 <h3>Aktivieren — drei Wege</h3>
                 <ol>
-                    <li><strong>Voice:</strong> <code>"Neun Liner"</code>, <code>"Neunliner"</code>, <code>"9 Liner"</code> oder <code>"MEDEVAC"</code></li>
-                    <li><strong>Demo-Szenario:</strong> Einstellungen → Demo-Szenarien → „9-Liner MEDEVAC"</li>
-                    <li><strong>Direkt-Diktat:</strong> Aufnahme starten und mit <em>„Zeile eins …"</em> einleiten — die KI erkennt das Format automatisch (Auto-Detect)</li>
+                    <li><strong>Voice:</strong> <code>"Neun Liner"</code>, <code>"Neunliner"</code>, <code>"9 Liner"</code>oder <code>"MEDEVAC"</code></li>
+                    <li><strong>Demo-Szenario:</strong>Einstellungen → Demo-Szenarien → „9-Liner MEDEVAC"</li>
+                    <li><strong>Direkt-Diktat:</strong>Aufnahme starten und mit <em>„Zeile eins …"</em>einleiten — die KI erkennt das Format automatisch (Auto-Detect)</li>
                 </ol>
                 <p>
                     TTS bestätigt mit <em>„Neun Liner Modus aktiv. Aufnahme starten."</em> —
@@ -537,11 +537,11 @@
 
                 <h3>Sprechtext-Konventionen</h3>
                 <ul>
-                    <li><strong>Zeilen-Einleitung:</strong> <code>„Zeile eins …"</code> oder <code>„Linie eins …"</code> (auch mit Doppelpunkt)</li>
-                    <li><strong>Nächste Zeile:</strong> alternativ <code>„Nächste Zeile"</code> / <code>„Nächste Linie"</code></li>
-                    <li><strong>Reihenfolge ist STRENG:</strong> 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9. Keine Sprünge.</li>
-                    <li><strong>BREAK</strong> zwischen Code-Paaren auf Zeilen 3 + 5 (z.&nbsp;B. <em>„Bravo eins, BREAK, Charlie eins"</em> = <code>1 B</code> + <code>1 C</code>)</li>
-                    <li><strong>Phonetisches Alphabet → Buchstaben-Codes:</strong> Alfa → A, Bravo → B, Charlie → C, …, Lima → L, November → N, Papa → P, Romeo → R, Whiskey → W, X-Ray → X</li>
+                    <li><strong>Zeilen-Einleitung:</strong> <code>„Zeile eins …"</code>oder <code>„Linie eins …"</code>(auch mit Doppelpunkt)</li>
+                    <li><strong>Nächste Zeile:</strong>alternativ <code>„Nächste Zeile"</code> / <code>„Nächste Linie"</code></li>
+                    <li><strong>Reihenfolge ist STRENG:</strong>1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9. Keine Sprünge.</li>
+                    <li><strong>BREAK</strong>zwischen Code-Paaren auf Zeilen 3 + 5 (z.&nbsp;B. <em>„Bravo eins, BREAK, Charlie eins"</em> = <code>1 B</code>+ <code>1 C</code>)</li>
+                    <li><strong>Phonetisches Alphabet → Buchstaben-Codes:</strong>Alfa → A, Bravo → B, Charlie → C, …, Lima → L, November → N, Papa → P, Romeo → R, Whiskey → W, X-Ray → X</li>
                 </ul>
 
                 <h3>Was sage ich? Die 9 Linien (NATO ATP-3.7.2 / GSG)</h3>
@@ -550,9 +550,9 @@
                     <tbody>
                         <tr><td><strong>1</strong></td><td>Pickup-Site / Aufnahmestelle</td><td>FREITEXT: MGRS + Pickup-Zone-Name. Z.&nbsp;B. <em>„MGRS drei zwei Uniform Mike Victor eins zwei drei vier fünf sechs. Pickup Zone ist ADLER."</em></td></tr>
                         <tr><td><strong>2</strong></td><td>Funkkanal + Rufname + Suffix</td><td>FREITEXT. Z.&nbsp;B. <em>„Erreichbar auf Kanal MEDEVAC DEMO. Rufname an der Pickup Site ist MESSE SAN EINS."</em></td></tr>
-                        <tr><td><strong>3</strong></td><td>Anzahl + Priorität</td><td><strong>A</strong>=URGENT · <strong>B</strong>=URGENT-SURGICAL · <strong>C</strong>=PRIORITY · <strong>D</strong>=ROUTINE · <strong>E</strong>=CONVENIENCE.<br>Z.&nbsp;B. <em>„Bravo eins, BREAK, Charlie eins"</em> → <code>1 B</code> + <code>1 C</code></td></tr>
+                        <tr><td><strong>3</strong></td><td>Anzahl + Priorität</td><td><strong>A</strong>=URGENT · <strong>B</strong>=URGENT-SURGICAL · <strong>C</strong>=PRIORITY · <strong>D</strong>=ROUTINE · <strong>E</strong>=CONVENIENCE.<br>Z.&nbsp;B. <em>„Bravo eins, BREAK, Charlie eins"</em> → <code>1 B</code>+ <code>1 C</code></td></tr>
                         <tr><td><strong>4</strong></td><td>Sonderausrüstung</td><td><strong>A</strong>=None/keine · <strong>B</strong>=Hoist/Winde · <strong>C</strong>=Extraction/Berge­gerät · <strong>D</strong>=Ventilator/Beatmungs­gerät</td></tr>
-                        <tr><td><strong>5</strong></td><td>Patienten-Transport (Anzahl + Typ)</td><td><strong>L</strong>=Litter/liegend · <strong>A</strong>=Ambulatory/gehfähig.<br>Z.&nbsp;B. <em>„Lima eins, BREAK, Alfa zwei"</em> → <code>L1</code> + <code>A2</code></td></tr>
+                        <tr><td><strong>5</strong></td><td>Patienten-Transport (Anzahl + Typ)</td><td><strong>L</strong>=Litter/liegend · <strong>A</strong>=Ambulatory/gehfähig.<br>Z.&nbsp;B. <em>„Lima eins, BREAK, Alfa zwei"</em> → <code>L1</code>+ <code>A2</code></td></tr>
                         <tr><td><strong>6</strong></td><td>Sicherheit Pickup-Site</td><td><strong>N</strong>=No Enemy · <strong>P</strong>=Possible Enemy · <strong>E</strong>=Enemy in Area · <strong>X</strong>=Enemy + bewaffnete Eskorte erforderlich</td></tr>
                         <tr><td><strong>7</strong></td><td>Markierung Pickup-Site</td><td><strong>A</strong>=Panels · <strong>B</strong>=Pyrotechnic · <strong>C</strong>=Smoke (Rauch) · <strong>D</strong>=None · <strong>E</strong>=Other</td></tr>
                         <tr><td><strong>8</strong></td><td>Nationalität + Status</td><td><strong>A</strong>=US-Military · <strong>B</strong>=US-Civilian · <strong>C</strong>=Non-US-Military (z.&nbsp;B. Bundeswehr / NATO-Partner) · <strong>D</strong>=Non-US-Civilian · <strong>E</strong>=Enemy POW</td></tr>
@@ -593,8 +593,8 @@
 
                 <h3>Aktivieren</h3>
                 <ol>
-                    <li><strong>Voice:</strong> <code>"ATMIST"</code> oder <code>"ATMIST starten"</code></li>
-                    <li><strong>Direkt-Diktat:</strong> Aufnahme starten und mit "A, Angaben:" einleiten — Auto-Detect schaltet auf ATMIST-Pfad</li>
+                    <li><strong>Voice:</strong> <code>"ATMIST"</code>oder <code>"ATMIST starten"</code></li>
+                    <li><strong>Direkt-Diktat:</strong>Aufnahme starten und mit "A, Angaben:" einleiten — Auto-Detect schaltet auf ATMIST-Pfad</li>
                 </ol>
 
                 <h3>Was sage ich? Die 6 Zeilen</h3>
@@ -628,9 +628,9 @@
                 <h2>4.6 Aufnahme stoppen</h2>
                 <p>Spiegelsymmetrisch zum Start — drei gleichwertige Wege:</p>
                 <ul>
-                    <li><strong>Voice:</strong> <code>"Patient fertig"</code> oder <code>"Aufnahme stoppen"</code></li>
-                    <li><strong>Taster B</strong> lang drücken</li>
-                    <li><strong>GUI:</strong> roter „Stopp"-Button im Aufnahme-Panel</li>
+                    <li><strong>Voice:</strong> <code>"Patient fertig"</code>oder <code>"Aufnahme stoppen"</code></li>
+                    <li><strong>Taster B</strong>lang drücken</li>
+                    <li><strong>GUI:</strong>roter „Stopp"-Button im Aufnahme-Panel</li>
                 </ul>
                 <p>
                     TTS bestätigt sofort mit <em>„Aufnahme beendet"</em>. Whisper
@@ -646,8 +646,8 @@
                 </p>
                 <ol>
                     <li><strong>Transkript überfliegen</strong> — sind alle Patienten/Felder erwähnt?</li>
-                    <li><strong>Lücken nachträglich aufnehmen:</strong> Button „+ Anhängen" oder einfach erneut „Aufnahme starten" → das neue Diktat wird an die Karte angehängt.</li>
-                    <li><strong>Falsche Aufnahme verwerfen:</strong> Sprachbefehl <code>"Letzten Eintrag löschen"</code> oder Karten-Menü → Löschen.</li>
+                    <li><strong>Lücken nachträglich aufnehmen:</strong>Button „+ Anhängen" oder einfach erneut „Aufnahme starten" → das neue Diktat wird an die Karte angehängt.</li>
+                    <li><strong>Falsche Aufnahme verwerfen:</strong>Sprachbefehl <code>"Letzten Eintrag löschen"</code>oder Karten-Menü → Löschen.</li>
                 </ol>
                 <p style="color:var(--text-dim);font-size:0.95em">
                     Mehrere UNANALYSIERT-Karten parallel sind ok — die Analyse verarbeitet
@@ -657,17 +657,17 @@
                 <h2>4.8 KI-Analyse triggern</h2>
                 <p>Die Analyse macht zwei Dinge gleichzeitig:</p>
                 <ol>
-                    <li><strong>Segmentierung:</strong> Trennt Multi-Patient-Diktate an Satzgrenzen + Trigger-Phrasen in einzelne Patienten</li>
-                    <li><strong>Feldextraktion:</strong> Pro Patient zieht das LLM Stammdaten + Vitalwerte + Verletzungen ins strukturierte Schema</li>
+                    <li><strong>Segmentierung:</strong>Trennt Multi-Patient-Diktate an Satzgrenzen + Trigger-Phrasen in einzelne Patienten</li>
+                    <li><strong>Feldextraktion:</strong>Pro Patient zieht das LLM Stammdaten + Vitalwerte + Verletzungen ins strukturierte Schema</li>
                 </ol>
                 <p>Drei Wege:</p>
                 <ul>
-                    <li><strong>Voice:</strong> <code>"Alle analysieren"</code> oder <code>"Patienten analysieren"</code></li>
-                    <li><strong>OLED-Menü:</strong> Taster A lang → „Analysieren"</li>
-                    <li><strong>GUI:</strong> 🧠 Analyse-Button auf der Pending-Karte</li>
+                    <li><strong>Voice:</strong> <code>"Alle analysieren"</code>oder <code>"Patienten analysieren"</code></li>
+                    <li><strong>OLED-Menü:</strong>Taster A lang → „Analysieren"</li>
+                    <li><strong>GUI:</strong>Analyse-Button auf der Pending-Karte</li>
                 </ul>
                 <p>
-                    Dauer: <strong>~15 s pro Patient</strong> (Gemma 3 4B auf Jetson, Q4_K_M).
+                    Dauer: <strong>~15 s pro Patient</strong>(Gemma 3 4B auf Jetson, Q4_K_M).
                     Während der Analyse läuft ein Progress-Spinner; bei mehreren Patienten
                     siehst du sie nacheinander aufploppen. System ist danach wieder frei.
                 </p>
@@ -678,9 +678,9 @@
                     <strong>ANALYSIERT</strong>. Empfohlene Sicht-Prüfung pro Patient:
                 </p>
                 <ul>
-                    <li><strong>Confidence-Badges:</strong> Grün/Gelb/Rot pro Feld zeigen, wie sicher die KI bei der Extraktion war. Rote Felder kurz gegen-prüfen.</li>
-                    <li><strong>Fehlerhafte Werte korrigieren:</strong> Klick aufs Feld → Editor-Modus → ändern + speichern.</li>
-                    <li><strong>Ergänzen:</strong> Felder die im Diktat nicht vorkamen, kannst du jetzt manuell nachtragen.</li>
+                    <li><strong>Confidence-Badges:</strong>Grün/Gelb/Rot pro Feld zeigen, wie sicher die KI bei der Extraktion war. Rote Felder kurz gegen-prüfen.</li>
+                    <li><strong>Fehlerhafte Werte korrigieren:</strong>Klick aufs Feld → Editor-Modus → ändern + speichern.</li>
+                    <li><strong>Ergänzen:</strong>Felder die im Diktat nicht vorkamen, kannst du jetzt manuell nachtragen.</li>
                 </ul>
                 <p style="color:var(--text-dim);font-size:0.95em">
                     Confidence funktioniert nach dem Prinzip: <em>„Eher leer als geraten."</em>
@@ -696,11 +696,11 @@
                 </p>
                 <p>Zwei Wege:</p>
                 <ul>
-                    <li><strong>Batch (alle Patienten ohne Karte):</strong> Voice
-                        <code>"Karte schreiben"</code> oder Button „📇 RFID-Batch" im
+                    <li><strong>Batch (alle Patienten ohne Karte):</strong>Voice
+                        <code>"Karte schreiben"</code>oder Button „ RFID-Batch" im
                         Fahrzeug-Modus. OLED zeigt Counter („Karte 1/3"), TTS führt durch.</li>
-                    <li><strong>Per-Patient (gezielt eine Karte):</strong> Im Fahrzeug-Modus
-                        gibt es pro Patient-Card einen <strong>📇 Karte</strong>-Button (mil-tan,
+                    <li><strong>Per-Patient (gezielt eine Karte):</strong>Im Fahrzeug-Modus
+                        gibt es pro Patient-Card einen <strong>Karte</strong>-Button (mil-tan,
                         rechts neben dem Lösch-Icon). Klick → nur dieser eine Patient wird
                         geschrieben. Nützlich wenn der Sanitäter im BAT z.B. nur 3 Karten
                         dabei hat aber 8 Patienten — er wählt gezielt die kritischen aus.</li>
@@ -725,18 +725,18 @@
                     werden sie in einem Rutsch an die Rettungsstation übermittelt.
                 </p>
                 <ul>
-                    <li><strong>Voice:</strong> <code>"Patienten melden"</code> oder <code>"An Leitstelle melden"</code></li>
-                    <li><strong>GUI:</strong> ⚡ „Alle melden"-Button</li>
+                    <li><strong>Voice:</strong> <code>"Patienten melden"</code>oder <code>"An Leitstelle melden"</code></li>
+                    <li><strong>GUI:</strong>  „Alle melden"-Button</li>
                 </ul>
                 <p>
-                    Die Übertragung läuft via <strong>HTTPS über Tailscale</strong> (WireGuard
+                    Die Übertragung läuft via <strong>HTTPS über Tailscale</strong>(WireGuard
                     end-to-end-verschlüsselt). 1 Patient ≈ 1–5 KB; Batch von 10 Patienten
                     ≈ 50 KB — bei 2400 bps VHF-Funk ca. 40 s, via SVFuA/IP quasi instantan.
                 </p>
                 <p>
                     Erfolgreich gemeldete Patienten bekommen das Status-Badge
-                    <strong>GEMELDET</strong> und das Symbol ✓. Bei Fehler (Backend down,
-                    Netz weg) bleibt der Patient im State <em>ANALYSIERT (offen)</em> und
+                    <strong>GEMELDET</strong>und das Symbol ✓. Bei Fehler (Backend down,
+                    Netz weg) bleibt der Patient im State <em>ANALYSIERT (offen)</em>und
                     wird beim nächsten „Patienten melden" automatisch nachgeliefert —
                     keine Doppelübertragung dank Idempotenz-Check über Patient-ID.
                 </p>
@@ -746,9 +746,9 @@
                     Auf dem Surface in der Leitstelle erscheint sofort (WebSocket-Push):
                 </p>
                 <ul>
-                    <li><strong>Lagekarte:</strong> BAT-Marker mit Anzahl Patienten als Badge</li>
-                    <li><strong>Patientenliste rechts:</strong> Alle gemeldeten Verwundeten, Triage-sortiert</li>
-                    <li><strong>Triage-Counts:</strong> T1/T2/T3/T4 als große Zähler oben</li>
+                    <li><strong>Lagekarte:</strong>BAT-Marker mit Anzahl Patienten als Badge</li>
+                    <li><strong>Patientenliste rechts:</strong>Alle gemeldeten Verwundeten, Triage-sortiert</li>
+                    <li><strong>Triage-Counts:</strong>T1/T2/T3/T4 als große Zähler oben</li>
                     <li><strong>Event-Feed:</strong> „2 neue Patienten von BAT Alpha 42 gemeldet" als Toast + im Live-Ticker</li>
                 </ul>
                 <p>
@@ -762,10 +762,10 @@
                     <div class="hb-note-title">Zusammenfassung — der „Happy Path"</div>
                     <ol style="margin:6px 0 0 18px">
                         <li>Operator-Login (RFID)</li>
-                        <li><code>"Neuer Patient"</code> → diktieren → <code>"Patient fertig"</code> (für jeden Verwundeten)</li>
-                        <li><code>"Alle analysieren"</code> (einmal für alle)</li>
+                        <li><code>"Neuer Patient"</code> → diktieren → <code>"Patient fertig"</code>(für jeden Verwundeten)</li>
+                        <li><code>"Alle analysieren"</code>(einmal für alle)</li>
                         <li>Confidence-Badges sichten, ggf. korrigieren</li>
-                        <li><code>"Karte schreiben"</code> (RFID-Batch, optional)</li>
+                        <li><code>"Karte schreiben"</code>(RFID-Batch, optional)</li>
                         <li><code>"Patienten melden"</code> → Surface-Dashboard zeigt sofort</li>
                     </ol>
                     Bei 3 Patienten mit Standard-Diktat: ca. <strong>2–3 Minuten</strong>
@@ -775,9 +775,9 @@
 
             <!-- ========== 5. Voice-Commands ========== -->
             <section id="hb-voice">
-                <h1><span class="hb-num">5</span> Voice-Commands</h1>
+                <h1><span class="hb-num">5</span>Voice-Commands</h1>
                 <p class="hb-section-lead">
-                    SAFIR erkennt Sprachbefehle <strong>komplett offline</strong> über Vosk
+                    SAFIR erkennt Sprachbefehle <strong>komplett offline</strong>über Vosk
                     (kleines deutsches Modell, CPU). Latenz vom Wort-Ende zur Aktion: ca.
                     <strong>15 ms</strong>. Parallel zum Wake-Word-losen Befehlsmodus läuft
                     Whisper für die Diktat-Transkription — die beiden ASR-Stacks
@@ -789,17 +789,17 @@
                     Das Mikrofon läuft permanent. Vosk vergleicht jedes erkannte Wort gegen
                     die Trigger-Liste pro Aktion. Trifft ein Trigger zu, wird die zugehörige
                     Aktion ausgelöst — auch wenn gerade ein Diktat läuft (z.B. <code>"Aufnahme
-                    beenden"</code> stoppt sofort). Das Diktat-Audio selbst geht parallel an
+                    beenden"</code>stoppt sofort). Das Diktat-Audio selbst geht parallel an
                     Whisper für die Transkription.
                 </p>
                 <ul>
-                    <li><strong>Robust gegen Umgebungsgeräusche:</strong> Vosk ist deutlich
+                    <li><strong>Robust gegen Umgebungsgeräusche:</strong>Vosk ist deutlich
                         rauscharmer als Cloud-ASR — Funkverkehr im Hintergrund stört nicht.</li>
-                    <li><strong>Mehrere Trigger pro Aktion:</strong> Sanitäter spricht oft
+                    <li><strong>Mehrere Trigger pro Aktion:</strong>Sanitäter spricht oft
                         unterschiedlich („Aufnahme beenden", „stopp Aufnahme", „Patient
                         fertig") — alle Varianten lösen dieselbe Aktion aus.</li>
-                    <li><strong>Editierbar ohne Code:</strong> Eigene Alternativen direkt
-                        in <em>Einstellungen → Sprachbefehle</em> ergänzen.</li>
+                    <li><strong>Editierbar ohne Code:</strong>Eigene Alternativen direkt
+                        in <em>Einstellungen → Sprachbefehle</em>ergänzen.</li>
                 </ul>
 
                 <h2>5.2 Standard-Workflow (Multi-Patient-Diktat)</h2>
@@ -817,7 +817,7 @@
                     <li><code>"Patienten melden"</code> → Übertragung an die Leitstelle.</li>
                 </ol>
                 <p style="color:var(--text-dim);font-size:0.95em">
-                    Triage wird im Feld <strong>nicht</strong> gesetzt — das macht der Arzt
+                    Triage wird im Feld <strong>nicht</strong>gesetzt — das macht der Arzt
                     in der Rettungsstation (Role 1). Auf dem BAT (Phase 0) sind die Triage-
                     Befehle deshalb absichtlich deaktiviert.
                 </p>
@@ -901,19 +901,19 @@
                     <thead><tr><th style="width:32%">Aktion</th><th>Trigger (alle Varianten)</th></tr></thead>
                     <tbody>
                         <tr>
-                            <td><span style="color:var(--cgi-red);font-weight:700">&#9679;</span> <strong>Triage Rot (T1)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Sofortbehandlung — Verlust von Leben/Glied/Augenlicht in &lt; 2 h</span></td>
+                            <td><span style="color:var(--cgi-red);font-weight:700"></span> <strong>Triage Rot (T1)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Sofortbehandlung — Verlust von Leben/Glied/Augenlicht in &lt; 2 h</span></td>
                             <td><code>triage rot</code> · <code>triage eins</code> · <code>patient rot</code></td>
                         </tr>
                         <tr>
-                            <td><span style="color:#d4871a;font-weight:700">&#9679;</span> <strong>Triage Gelb (T2)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Verzögerte Behandlung — innerhalb 4 h</span></td>
+                            <td><span style="color:#d4871a;font-weight:700"></span> <strong>Triage Gelb (T2)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Verzögerte Behandlung — innerhalb 4 h</span></td>
                             <td><code>triage gelb</code> · <code>triage zwei</code> · <code>patient gelb</code></td>
                         </tr>
                         <tr>
-                            <td><span style="color:#5a9e3a;font-weight:700">&#9679;</span> <strong>Triage Grün (T3)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Spätbehandlung — gehfähig, &lt; 24 h</span></td>
+                            <td><span style="color:#5a9e3a;font-weight:700"></span> <strong>Triage Grün (T3)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Spätbehandlung — gehfähig, &lt; 24 h</span></td>
                             <td><code>triage grün</code> · <code>triage gruen</code> · <code>triage drei</code> · <code>patient grün</code></td>
                         </tr>
                         <tr>
-                            <td><span style="color:#5DADE2;font-weight:700">&#9679;</span> <strong>Triage Blau (T4)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Erwartend — palliativ, keine Erfolgsaussicht</span></td>
+                            <td><span style="color:#5DADE2;font-weight:700"></span> <strong>Triage Blau (T4)</strong><br><span style="color:var(--text-dim);font-size:0.9em">Erwartend — palliativ, keine Erfolgsaussicht</span></td>
                             <td><code>triage blau</code> · <code>triage vier</code> · <code>patient blau</code></td>
                         </tr>
                     </tbody>
@@ -944,7 +944,7 @@
 
                 <div class="hb-note info">
                     <div class="hb-note-title">Eigene Trigger ergänzen</div>
-                    Alle Befehle sind in <em>Einstellungen → Sprachbefehle</em> editierbar. Pro
+                    Alle Befehle sind in <em>Einstellungen → Sprachbefehle</em>editierbar. Pro
                     Aktion lassen sich beliebig viele Alternativ-Phrasen hinzufügen — ohne
                     Code-Änderungen. Empfehlung: kurze, klar artikulierbare Phrasen wählen,
                     keine Anglizismen (Vosk-Modell ist deutsch).
@@ -957,11 +957,11 @@
                     der Trigger-Liste entfernt</strong>. Sie kommen im normalen
                     medizinischen Sprachfluss zu häufig vor und feuern Aktionen
                     versehentlich aus — z.B. mitten im Diktat <em>„der Patient braucht
-                    dringend Blutkonserven"</em> hätte sonst einen Triage-Gelb-Popup
+                    dringend Blutkonserven"</em>hätte sonst einen Triage-Gelb-Popup
                     ausgelöst. Stattdessen sind alle Triage- und Abbruch-Trigger jetzt
                     mehrwortig und kontextgebunden („triage gelb", „schreiben
                     abbrechen"). Wer trotzdem Single-Wort-Shortcuts braucht, kann sie
-                    in <em>Einstellungen → Sprachbefehle</em> wieder hinzufügen — aber
+                    in <em>Einstellungen → Sprachbefehle</em>wieder hinzufügen — aber
                     auf eigene Gefahr.
                 </div>
 
@@ -975,7 +975,7 @@
 
             <!-- ========== 6. RFID-Karten ========== -->
             <section id="hb-rfid">
-                <h1><span class="hb-num">6</span> RFID-Karten</h1>
+                <h1><span class="hb-num">6</span>RFID-Karten</h1>
                 <p class="hb-section-lead">Jeder Patient bekommt eine MIFARE-Classic-Karte mit seiner Patient-ID. Die Karte dient als physische Identifikation entlang der Rettungskette.</p>
 
                 <h2>Wie wird geschrieben?</h2>
@@ -1007,17 +1007,17 @@
                 <h2>Was steht auf der Karte?</h2>
                 <ul>
                     <li><strong>Magic-Bytes</strong> — damit SAFIR erkennt dass die Karte zu unserem System gehört</li>
-                    <li><strong>Patient-ID</strong> (16 Byte) — eindeutiger Primärschlüssel</li>
-                    <li><strong>Triage + Alter + Geschlecht + Vitals</strong> (Block 6, 16 Byte) — kompakt als Bytes kodiert</li>
-                    <li><strong>Name</strong> (Block 8-9, 32 Byte UTF-8)</li>
+                    <li><strong>Patient-ID</strong>(16 Byte) — eindeutiger Primärschlüssel</li>
+                    <li><strong>Triage + Alter + Geschlecht + Vitals</strong>(Block 6, 16 Byte) — kompakt als Bytes kodiert</li>
+                    <li><strong>Name</strong>(Block 8-9, 32 Byte UTF-8)</li>
                     <li><strong>Zeitstempel</strong> — wann wurde die Karte geschrieben</li>
                 </ul>
 
                 <h2>Kartenzuordnung aufheben (Erase)</h2>
                 <p>Zwei Use-Cases:</p>
                 <ul>
-                    <li><strong>Security-Wipe:</strong> Nach der Demo keine Patientendaten auf Karten zurücklassen.</li>
-                    <li><strong>Karte wiederverwenden:</strong> Ein fertig behandelter Patient — seine Karte soll für den nächsten Einsatz leer sein.</li>
+                    <li><strong>Security-Wipe:</strong>Nach der Demo keine Patientendaten auf Karten zurücklassen.</li>
+                    <li><strong>Karte wiederverwenden:</strong>Ein fertig behandelter Patient — seine Karte soll für den nächsten Einsatz leer sein.</li>
                 </ul>
                 <p><strong>Ablauf:</strong></p>
                 <ol>
@@ -1030,13 +1030,13 @@
 
                 <div class="hb-note ok">
                     <div class="hb-note-title">Sicherheit</div>
-                    Operator-Karten (Sanitäter-Login) werden erkannt und <strong>NIE</strong> gelöscht. Es erscheint TTS „Keine Operator-Karte. Nur Patienten-Karten können gelöscht werden."
+                    Operator-Karten (Sanitäter-Login) werden erkannt und <strong>NIE</strong>gelöscht. Es erscheint TTS „Keine Operator-Karte. Nur Patienten-Karten können gelöscht werden."
                 </div>
             </section>
 
             <!-- ========== 7. Melden an Rettungsstation ========== -->
             <section id="hb-sync">
-                <h1><span class="hb-num">7</span> Melden an die Rettungsstation</h1>
+                <h1><span class="hb-num">7</span>Melden an die Rettungsstation</h1>
                 <p class="hb-section-lead">Patienten werden per HTTP-Push und WebSocket-Broadcast an die Rettungsstation gespiegelt — bidirektional und verschlüsselt.</p>
 
                 <h2>Wie wird gemeldet?</h2>
@@ -1044,11 +1044,11 @@
                     <li><strong>Voice:</strong> „Patient melden" oder „Daten senden"</li>
                     <li><strong>Button:</strong> „Alle melden" (grüner Button)</li>
                 </ol>
-                <p>Nur Patienten mit <code>analyzed=True</code> und <code>synced=False</code> werden gesendet. Jeder einzelne Patient geht als eigener POST <code>/api/ingest</code>-Request raus. Bei Erfolg: <code>synced=True</code> gesetzt + TTS „Daten gesendet".</p>
+                <p>Nur Patienten mit <code>analyzed=True</code>und <code>synced=False</code>werden gesendet. Jeder einzelne Patient geht als eigener POST <code>/api/ingest</code>-Request raus. Bei Erfolg: <code>synced=True</code>gesetzt + TTS „Daten gesendet".</p>
 
                 <h2>Was passiert auf der Surface-Seite?</h2>
                 <ul>
-                    <li>Patient erscheint <strong>sofort</strong> in der Patientendatenbank</li>
+                    <li>Patient erscheint <strong>sofort</strong>in der Patientendatenbank</li>
                     <li>Triage-Count wird aktualisiert (T1/T2/T3/T4 Balken)</li>
                     <li>BAT-Marker auf der Lagekarte mit Unit-Name erscheint</li>
                     <li>Ein Event im Live-Ticker: „Neuer Patient vom BAT Alpha42"</li>
@@ -1056,7 +1056,7 @@
                 </ul>
 
                 <h2>Live-Sync zurück zum BAT</h2>
-                <p>Der Jetson hat einen <strong>persistenten WebSocket-Client</strong> zum Surface. Wenn der Arzt auf der Surface den Patient bearbeitet (Triage setzen, Status ändern), wird der Update automatisch zurück an den Jetson broadcastet. So hat auch der Sanitäter im Feld immer den aktuellen Stand.</p>
+                <p>Der Jetson hat einen <strong>persistenten WebSocket-Client</strong>zum Surface. Wenn der Arzt auf der Surface den Patient bearbeitet (Triage setzen, Status ändern), wird der Update automatisch zurück an den Jetson broadcastet. So hat auch der Sanitäter im Feld immer den aktuellen Stand.</p>
 
                 <div class="hb-note info">
                     <div class="hb-note-title">Bidirektional, aber nicht kollisions-frei</div>
@@ -1066,15 +1066,15 @@
 
             <!-- ========== 8. Rettungsstation ========== -->
             <section id="hb-role1">
-                <h1><span class="hb-num">8</span> Rettungsstation (Role 1)</h1>
+                <h1><span class="hb-num">8</span>Rettungsstation (Role 1)</h1>
                 <p class="hb-section-lead">Was der Arzt auf dem Surface sieht — und was er tun kann.</p>
 
                 <h2>Taktische Lagekarte</h2>
                 <p>Leaflet-basierte Karte zentriert auf die eigene Rettungsstation (Bonn-Hardthöhe oder konfigurierbar). Zeigt:</p>
                 <ul>
-                    <li><strong>Rettungsstations-Marker</strong> (eigene Position)</li>
-                    <li><strong>BAT-Marker</strong> (alle aktiven Feldgeräte) — aktualisiert sich live bei Standort-Wechsel</li>
-                    <li><strong>Distanz + ETA</strong> pro BAT, berechnet per Haversine-Formel</li>
+                    <li><strong>Rettungsstations-Marker</strong>(eigene Position)</li>
+                    <li><strong>BAT-Marker</strong>(alle aktiven Feldgeräte) — aktualisiert sich live bei Standort-Wechsel</li>
+                    <li><strong>Distanz + ETA</strong>pro BAT, berechnet per Haversine-Formel</li>
                     <li><strong>Transport-Cluster</strong> — wenn ein BAT Patienten an die Rettungsstation bringt</li>
                 </ul>
 
@@ -1108,16 +1108,16 @@
                 </div>
 
                 <h2>Triage setzen</h2>
-                <p>Triage wird <strong>erst hier</strong> in Role 1 gesetzt — nicht schon am Feldgerät. Warum? Weil die Triage eine medizinische Entscheidung des Arztes ist, nicht eine ML-Extraktion aus dem Sanitäter-Diktat.</p>
+                <p>Triage wird <strong>erst hier</strong>in Role 1 gesetzt — nicht schon am Feldgerät. Warum? Weil die Triage eine medizinische Entscheidung des Arztes ist, nicht eine ML-Extraktion aus dem Sanitäter-Diktat.</p>
                 <ul>
                     <li><strong>Voice:</strong> „Triage rot" / „Triage gelb" / „Triage grün" / „Triage blau"</li>
-                    <li><strong>GUI:</strong> 4 farbige Buttons T1–T4 in der Patientenkarte</li>
+                    <li><strong>GUI:</strong>4 farbige Buttons T1–T4 in der Patientenkarte</li>
                 </ul>
             </section>
 
             <!-- ========== 9. OLED-Display ========== -->
             <section id="hb-oled">
-                <h1><span class="hb-num">9</span> OLED-Display erklärt</h1>
+                <h1><span class="hb-num">9</span>OLED-Display erklärt</h1>
                 <p class="hb-section-lead">128×64 Pixel monochrom — vier Informations-Seiten, navigierbar mit Taster A.</p>
 
                 <div class="hb-grid-2">
@@ -1168,64 +1168,64 @@
 
                 <h2>Navigation</h2>
                 <ul>
-                    <li><strong>Taster A kurz:</strong> Nächste Seite (zyklisch Modelle → Netzwerk → Operator → Patient → ...)</li>
-                    <li><strong>Taster A lang:</strong> Hauptmenü öffnen (Analysieren, Karten schreiben, Shutdown, etc.)</li>
+                    <li><strong>Taster A kurz:</strong>Nächste Seite (zyklisch Modelle → Netzwerk → Operator → Patient → ...)</li>
+                    <li><strong>Taster A lang:</strong>Hauptmenü öffnen (Analysieren, Karten schreiben, Shutdown, etc.)</li>
                     <li><strong>Taster B kurz (auf Patient-Seite):</strong> „Patient wählen"-Modus — durch Liste scrollen</li>
                 </ul>
             </section>
 
             <!-- ========== 10. Einstellungen-Tour ========== -->
             <section id="hb-settings">
-                <h1><span class="hb-num">10</span> Einstellungen-Tour</h1>
+                <h1><span class="hb-num">10</span>Einstellungen-Tour</h1>
                 <p class="hb-section-lead">Ein Überblick der wichtigsten Konfigurationspunkte — in der Reihenfolge, in der sie im Settings-Menü erscheinen.</p>
 
-                <h2>🎙 Spracherkennung</h2>
+                <h2>Spracherkennung</h2>
                 <ul>
-                    <li><strong>Whisper-Modell</strong> — <code>large-v3-turbo</code> ist Standard (beste Genauigkeit)</li>
+                    <li><strong>Whisper-Modell</strong> — <code>large-v3-turbo</code>ist Standard (beste Genauigkeit)</li>
                     <li><strong>Sprache</strong> — Deutsch (Default)</li>
                     <li><strong>Audio-Eingang</strong> — Mikrofon-Device-Auswahl mit Live-Rescan-Button</li>
                     <li><strong>TTS-Stimme</strong> — Piper-Voice (Thorsten-high, Thorsten-medium, Kerstin-low)</li>
                 </ul>
 
-                <h2>🧠 KI-Modell (LLM)</h2>
+                <h2>KI-Modell (LLM)</h2>
                 <ul>
                     <li><strong>Ollama-URL</strong> — <code>http://127.0.0.1:11434</code></li>
-                    <li><strong>Modell</strong> — <code>gemma3:4b</code> (Default seit 17.04.2026)</li>
-                    <li><strong>📝 Prompt-Editor</strong> — alle vier LLM-Prompts (Defense-Preamble,
+                    <li><strong>Modell</strong> — <code>gemma3:4b</code>(Default seit 17.04.2026)</li>
+                    <li><strong>Prompt-Editor</strong> — alle vier LLM-Prompts (Defense-Preamble,
                         Multi-Patient-Segmentierung, 9-Liner-Extraktion, ATMIST-Extraktion,
                         Patient-Feld-Extraktion) sind direkt in der UI editierbar.
-                        Änderungen wirken <strong>sofort</strong> beim nächsten LLM-Aufruf
+                        Änderungen wirken <strong>sofort</strong>beim nächsten LLM-Aufruf
                         — kein Service-Restart nötig. „Auf Default zurücksetzen"-Button
                         macht Experimente sicher.</li>
                 </ul>
 
-                <h2>⚙ Gerät</h2>
+                <h2>Gerät</h2>
                 <ul>
                     <li>Unit-Name („BAT Alpha42") — wird auf der Surface-Karte als Label angezeigt</li>
                     <li>Device-ID, Default-Medic</li>
                     <li>Backend-URL (Tailscale-IP der Rettungsstation)</li>
                 </ul>
 
-                <h2>🔐 Sicherheit</h2>
+                <h2>Sicherheit</h2>
                 <ul>
                     <li>Auto-Lock nach X Minuten Inaktivität</li>
                     <li>Tailscale-Status-Karte (live)</li>
                 </ul>
 
-                <h2>🛈 Philosophie</h2>
+                <h2>Philosophie</h2>
                 <p>Erklärt die Designprinzipien von SAFIR: „Eher vergessen als erfinden", „Menschliche Nachkontrolle", „On-Device statt Cloud". Nützlich für Messe-Besucher die Fragen stellen.</p>
 
-                <h2>📋 System</h2>
+                <h2>System</h2>
                 <ul>
-                    <li><strong>🔁 Dienst-Steuerung</strong> (NEU 2026-04-29) — wenn das
+                    <li><strong>Dienst-Steuerung</strong>(NEU 2026-04-29) — wenn das
                         System in komischen Zuständen hängt (z.B. 9-Liner-Modus
                         aktiviert obwohl normales Diktat gewollt):
                         <ul>
-                            <li><strong>⚡ Soft-Reset</strong> — sofort, keine Downtime.
+                            <li><strong>Soft-Reset</strong> — sofort, keine Downtime.
                                 Setzt nur transient-Flags zurück (9-Liner/ATMIST-Modus,
                                 Recording-Status, Audio-Buffer, Vosk-Queue).
                                 Patienten/Sessions/Operator-Login bleiben.</li>
-                            <li><strong>🔁 Service neu starten</strong> — Voll-Restart via
+                            <li><strong>Service neu starten</strong> — Voll-Restart via
                                 systemd, ~30-60 s Downtime. Whisper + Ollama + Vosk
                                 werden neu geladen. Use-Case: Ollama-OOM, RC522-Reader hängt.
                                 Daten bleiben persistent.</li>
@@ -1237,15 +1237,15 @@
                     <li>RFID-Karte löschen</li>
                 </ul>
 
-                <h2>📄 Dokumente-Seite (Sidebar)</h2>
+                <h2>Dokumente-Seite (Sidebar)</h2>
                 <ul>
                     <li><strong>Patientendatenbank exportieren</strong> — DOCX / PDF / JSON / XML aller Patienten</li>
                     <li><strong>Einzelpatient exportieren</strong> — gezielt einen Patient als DOCX/PDF</li>
-                    <li><strong>Vision &amp; Handbuch — Standalone-HTML</strong> (NEU 2026-04-30):
+                    <li><strong>Vision &amp; Handbuch — Standalone-HTML</strong>(NEU 2026-04-30):
                         <ul>
-                            <li>📦 <strong>Vision-Paket (ZIP)</strong> — komplette Vision-Page + 6 Use-Case-Mockups (Feuerwehr, Polizei, THW, Logistik, Sanitätsdienste, Forschung). Funktioniert offline. Ideal zum Verschicken.</li>
-                            <li>🌍 <strong>Vision (HTML)</strong> — nur die Vision-Page als einzelne Datei</li>
-                            <li>📖 <strong>Handbuch (HTML)</strong> — komplettes Handbuch als einzelne Datei</li>
+                            <li> <strong>Vision-Paket (ZIP)</strong> — komplette Vision-Page + 6 Use-Case-Mockups (Feuerwehr, Polizei, THW, Logistik, Sanitätsdienste, Forschung). Funktioniert offline. Ideal zum Verschicken.</li>
+                            <li> <strong>Vision (HTML)</strong> — nur die Vision-Page als einzelne Datei</li>
+                            <li> <strong>Handbuch (HTML)</strong> — komplettes Handbuch als einzelne Datei</li>
                         </ul>
                     </li>
                     <li><strong>Export-Historie</strong> — bereits erzeugte Dokumente, Download / Löschen</li>
@@ -1259,21 +1259,21 @@
 
                 <h2>Was kann editiert werden?</h2>
                 <ul>
-                    <li><strong>Vitals</strong> (Puls, Blutdruck, SpO2) — direkt im
+                    <li><strong>Vitals</strong>(Puls, Blutdruck, SpO2) — direkt im
                         Card-Footer editierbar (Fahrzeug-Modus)</li>
                     <li><strong>Name + Dienstgrad</strong> — Card-Footer-Inputs</li>
                     <li><strong>Triage</strong> — T1/T2/T3/T4-Buttons (nur Role 1+, nicht in Phase 0)</li>
-                    <li><strong>Transkript-Text</strong> — pro Aufnahme-Eintrag der „✎ Bearbeiten"-Button (NUR im Fahrzeug-Modus, im Feld bewusst gesperrt)</li>
+                    <li><strong>Transkript-Text</strong> — pro Aufnahme-Eintrag der „ Bearbeiten"-Button (NUR im Fahrzeug-Modus, im Feld bewusst gesperrt)</li>
                 </ul>
 
                 <h2>Audit-Log</h2>
                 <p>
-                    Jede Änderung wird in <code>patient.audit_log</code> mitgeschrieben.
+                    Jede Änderung wird in <code>patient.audit_log</code>mitgeschrieben.
                     Append-only — keine Löschmöglichkeit, keine Rückgängig-Funktion.
                     Forensisch wichtig: wer hat was wann manipuliert.
                 </p>
                 <p>
-                    <strong>Eintrags-Format:</strong> Timestamp, Operator-UID/Name/Rolle,
+                    <strong>Eintrags-Format:</strong>Timestamp, Operator-UID/Name/Rolle,
                     Field-Path (z.&nbsp;B. <code>vitals.pulse</code>, <code>transcripts[0].text</code>),
                     alter Wert → neuer Wert, Change-Type (manual_edit, voice_command,
                     llm_extraction, sync_inbound, rfid_scan), Geräte-ID.
@@ -1281,12 +1281,12 @@
 
                 <h2>Wo sehe ich es?</h2>
                 <ul>
-                    <li><strong>Patient-Card-Header:</strong> Badge „✎ Nx ed. Maier" wenn
+                    <li><strong>Patient-Card-Header:</strong>Badge „ Nx ed. Maier" wenn
                         manuelle Bearbeitungen vorhanden sind. Klick öffnet Detail-View
                         mit voller Historie.</li>
-                    <li><strong>Patient-Detail-View:</strong> eigene Sektion „📝 Änderungs-Historie"
+                    <li><strong>Patient-Detail-View:</strong>eigene Sektion „ Änderungs-Historie"
                         mit Tabelle (Zeitstempel, Wer, Feld, Vorher, Nachher, Type).</li>
-                    <li><strong>Pro Transkript-Eintrag:</strong> kleiner „✎ editiert"-Marker
+                    <li><strong>Pro Transkript-Eintrag:</strong>kleiner „ editiert"-Marker
                         wenn der Text nachträglich korrigiert wurde.</li>
                 </ul>
 
@@ -1300,7 +1300,7 @@
 
             <!-- ========== 11. Troubleshooting ========== -->
             <section id="hb-troubleshoot">
-                <h1><span class="hb-num">11</span> Troubleshooting</h1>
+                <h1><span class="hb-num">11</span>Troubleshooting</h1>
                 <p class="hb-section-lead">Häufige Situationen und wie man sie behebt.</p>
 
                 <h3>TTS spielt keine Ansage mehr ab</h3>
@@ -1313,21 +1313,21 @@
                 <p>Die Patienten haben alle ein <code>rfid_tag_id</code>-Feld gesetzt. Wenn du eine neue Karte schreiben willst, entweder das Tag zuvor löschen (Voice: „Karte löschen") oder den Patient löschen und neu anlegen.</p>
 
                 <h3>Surface erkennt die gelöschte Karte immer noch</h3>
-                <p>Der Surface-Backend-Prozess läuft möglicherweise mit einem alten Code-Stand. Einmal neu starten: Terminal schließen und <code>start-surface.cmd</code> neu ausführen. Danach ist Auto-Reload aktiv und zukünftige Änderungen werden automatisch gepicked.</p>
+                <p>Der Surface-Backend-Prozess läuft möglicherweise mit einem alten Code-Stand. Einmal neu starten: Terminal schließen und <code>start-surface.cmd</code>neu ausführen. Danach ist Auto-Reload aktiv und zukünftige Änderungen werden automatisch gepicked.</p>
 
                 <h3>Ein Patient wurde beim Diktieren „vergessen"</h3>
                 <p>Das LLM ist konservativ — es erfindet keine Patienten. Bei unterbrochener Rede („Name hab ich vergessen... ach ja, Müller") kann ein Patient-Start übersehen werden. Lösung: Transkript-Preview öffnen, Text prüfen, Patient manuell anlegen (+ Neuer Patient, Name eintragen).</p>
 
                 <h3>Whisper läuft langsam oder schlägt fehl</h3>
-                <p>Memory-Druck prüfen: <code>tegrastats</code> auf dem Jetson. Wenn RAM voll ist, Gemma temporär entladen („Swap-Mode"). Im normalen Betrieb wechseln Whisper und Gemma sich im Speicher ab — nach jedem Diktat wird Gemma vor der Analyse geladen und nach Abschluss wieder entladen.</p>
+                <p>Memory-Druck prüfen: <code>tegrastats</code>auf dem Jetson. Wenn RAM voll ist, Gemma temporär entladen („Swap-Mode"). Im normalen Betrieb wechseln Whisper und Gemma sich im Speicher ab — nach jedem Diktat wird Gemma vor der Analyse geladen und nach Abschluss wieder entladen.</p>
 
                 <h3>Operator-Login funktioniert nicht</h3>
-                <p>Die Operator-Karten-UID muss in <code>config.json</code> unter <code>rfid.operators</code> eingetragen sein. Ohne Eintrag wird die Karte als „Unbekannte Karte" behandelt. Voice: „Operator-Liste" zeigt alle eingetragenen IDs.</p>
+                <p>Die Operator-Karten-UID muss in <code>config.json</code>unter <code>rfid.operators</code>eingetragen sein. Ohne Eintrag wird die Karte als „Unbekannte Karte" behandelt. Voice: „Operator-Liste" zeigt alle eingetragenen IDs.</p>
             </section>
 
             <!-- ========== 12. Glossar ========== -->
             <section id="hb-glossar">
-                <h1><span class="hb-num">12</span> Glossar</h1>
+                <h1><span class="hb-num">12</span>Glossar</h1>
 
                 <table class="hb-vc-table">
                     <thead><tr><th style="width:25%">Begriff</th><th>Bedeutung</th></tr></thead>
@@ -1356,7 +1356,7 @@
 
                 <div class="hb-note info" style="margin-top: 32px;">
                     <div class="hb-note-title">Weiterführend</div>
-                    Diese In-App-Bedienungsanleitung ist auch als standalone HTML-Datei in <code>docs/project.html</code> verfügbar (vollständige Projekt-Dokumentation) und als Paper-Style-Doku unter <code>docs/SCIENTIFIC.md</code> (wissenschaftlich orientiert).
+                    Diese In-App-Bedienungsanleitung ist auch als standalone HTML-Datei in <code>docs/project.html</code>verfügbar (vollständige Projekt-Dokumentation) und als Paper-Style-Doku unter <code>docs/SCIENTIFIC.md</code>(wissenschaftlich orientiert).
                 </div>
             </section>
 
@@ -1379,7 +1379,7 @@
                 if (s.offsetTop <= scrollTop) active = s.id;
             });
             if (active) {
-                toc.querySelectorAll('a').forEach(a => a.classList.remove('hb-toc-active'));
+                toc.querySelectorAll('a').forEach(a =>a.classList.remove('hb-toc-active'));
                 const link = toc.querySelector(`a[href="#${active}"]`);
                 if (link) link.classList.add('hb-toc-active');
             }
