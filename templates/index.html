@@ -4885,6 +4885,198 @@
     }
 
     // ============================================================
+    // 9-Liner MEDEVAC Vollformat-Renderer — entspricht der NATO-
+    // Tabelle aus Anhang A. 2-Spalten Tabelle mit voll ausgeschriebenen
+    // Zeilen-Labels + Code-Aufschluesselung pro Zeile (z.B. statt "1 B"
+    // wird die volle 5-zeilige Patient-Precedence-Tabelle gezeigt).
+    // ============================================================
+
+    // Englische Vollformat-Labels (Anhang A) und Code -> Klartext-Map
+    const NINE_LINER_LABELS_EN = {
+        line1: 'LINE 1 — LOCATION OF PICKUP SITE',
+        line2: 'LINE 2 — RADIO FREQUENCY / CALL SIGN',
+        line3: 'LINE 3 — NUMBER OF PATIENTS BY PRECEDENCE',
+        line4: 'LINE 4 — SPECIAL EQUIPMENT REQUIRED',
+        line5: 'LINE 5 — NUMBER OF PATIENTS BY TYPE',
+        line6: 'LINE 6 — SECURITY OF PICKUP SITE',
+        line7: 'LINE 7 — METHOD OF MARKING PICKUP SITE',
+        line8: 'LINE 8 — PATIENT NATIONALITY AND STATUS',
+        line9: 'LINE 9 — NBC / CBRN CONTAMINATION',
+    };
+    const NINE_LINER_LABELS_DE = {
+        line1: 'ZEILE 1 — AUFNAHMESTELLE',
+        line2: 'ZEILE 2 — FUNKKANAL / RUFNAME',
+        line3: 'ZEILE 3 — ANZAHL PATIENTEN NACH PRIORITAET',
+        line4: 'ZEILE 4 — SONDERAUSRUESTUNG',
+        line5: 'ZEILE 5 — ANZAHL PATIENTEN NACH TRANSPORTART',
+        line6: 'ZEILE 6 — SICHERHEIT DER AUFNAHMESTELLE',
+        line7: 'ZEILE 7 — MARKIERUNG DER AUFNAHMESTELLE',
+        line8: 'ZEILE 8 — NATIONALITAET / STATUS',
+        line9: 'ZEILE 9 — CBRN-KONTAMINATION',
+    };
+    const PRECEDENCE_EN = { A:'URGENT', B:'URGENT SURGICAL', C:'PRIORITY', D:'ROUTINE', E:'CONVENIENCE' };
+    const PRECEDENCE_DE = { A:'DRINGEND', B:'DRINGEND CHIRURGISCH', C:'PRIORITAET', D:'ROUTINE', E:'AUFSCHIEBBAR' };
+    const SPECIAL_EQ_EN = { A:'NONE', B:'HOIST', C:'EXTRACTION EQUIPMENT', D:'VENTILATOR' };
+    const SPECIAL_EQ_DE = { A:'KEINE', B:'WINDE', C:'BERGEAUSRUESTUNG', D:'BEATMUNGSGERAET' };
+    const TYPE_EN = { L:'LITTER', A:'AMBULATORY' };
+    const TYPE_DE = { L:'TRAGEND', A:'GEHFAEHIG' };
+    const SECURITY_EN = { N:'NO ENEMY TROOPS IN AREA', P:'POSSIBLE ENEMY TROOPS IN AREA', E:'ENEMY TROOPS IN AREA, APPROACH WITH CAUTION', X:'ENEMY IN AREA — ARMED ESCORT REQUIRED' };
+    const SECURITY_DE = { N:'KEINE FEINDLICHEN KRAEFTE', P:'MOEGLICHE FEINDLICHE KRAEFTE', E:'FEINDLICHE KRAEFTE — VORSICHT', X:'FEIND VOR ORT — BEWAFFNETE ESKORTE NOETIG' };
+    const MARKING_EN = { A:'PANEL', B:'PYROTECHNIC SIGNAL', C:'SMOKE SIGNAL', D:'NONE', E:'OTHER' };
+    const MARKING_DE = { A:'PANEL', B:'PYROTECHNIK', C:'RAUCH', D:'KEINE', E:'ANDERE' };
+    const NATIONALITY_EN = { A:'US MILITARY', B:'US CIVILIAN', C:'NON-US MILITARY', D:'NON-US CIVILIAN', E:'EPW (ENEMY PRISONER OF WAR)' };
+    const NATIONALITY_DE = { A:'US-MILITAER', B:'US-ZIVIL', C:'NICHT-US-MILITAER (z.B. BUNDESWEHR)', D:'NICHT-US-ZIVIL', E:'KRIEGSGEFANGENER' };
+    const NBC_EN = { N:'NUCLEAR', B:'BIOLOGICAL', C:'CHEMICAL', R:'RADIOLOGICAL' };
+    const NBC_DE = { N:'NUKLEAR', B:'BIOLOGISCH', C:'CHEMISCH', R:'RADIOLOGISCH' };
+
+    // Liefert HTML-Block fuer eine einzelne 9-Liner-Zeile mit voller
+    // Code-Aufschluesselung. Beispiel line3="1 B" ergibt 5 Zeilen mit
+    // A-URGENT:0, B-URGENT SURGICAL:1, C-PRIORITY:0, D-ROUTINE:0, E-CONVENIENCE:0.
+    function _expandNineLinerValue(key, raw, lang) {
+        const isEn = lang === 'en';
+        const val = (raw || '').toString().trim();
+        if (!val) return '<span style="color:#888;font-style:italic">—</span>';
+        const _esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+        // Helfer: zaehlt Codes mit ihrer Anzahl. "1 B" -> {B: 1}, "B1 C2" -> {B:1, C:2}
+        const parseCounts = (s) => {
+            const out = {};
+            // Format A: "<n> <X>" pro Block, durch BREAK / Komma getrennt
+            // Format B: "<X><n>" konkateniert, durch Leerzeichen getrennt
+            const tokens = s.replace(/[,;]|BREAK/gi, ' ').split(/\s+/).filter(Boolean);
+            for (let i = 0; i < tokens.length; i++) {
+                const t = tokens[i];
+                // "B1" oder "L2" -> Letter+Digit
+                const m1 = t.match(/^([A-Z])(\d+)$/i);
+                if (m1) { out[m1[1].toUpperCase()] = (out[m1[1].toUpperCase()] || 0) + parseInt(m1[2], 10); continue; }
+                // "1B" -> Digit+Letter
+                const m2 = t.match(/^(\d+)([A-Z])$/i);
+                if (m2) { out[m2[2].toUpperCase()] = (out[m2[2].toUpperCase()] || 0) + parseInt(m2[1], 10); continue; }
+                // "B" allein -> Anzahl=1
+                const m3 = t.match(/^([A-Z])$/i);
+                if (m3) { out[m3[1].toUpperCase()] = (out[m3[1].toUpperCase()] || 0) + 1; continue; }
+                // "1" allein gefolgt von Letter im naechsten Token
+                const m4 = t.match(/^(\d+)$/);
+                if (m4 && i + 1 < tokens.length) {
+                    const next = tokens[i + 1].match(/^([A-Z])$/i);
+                    if (next) {
+                        out[next[1].toUpperCase()] = (out[next[1].toUpperCase()] || 0) + parseInt(m4[1], 10);
+                        i++; continue;
+                    }
+                }
+            }
+            return out;
+        };
+
+        if (key === 'line3') {
+            const map = isEn ? PRECEDENCE_EN : PRECEDENCE_DE;
+            const counts = parseCounts(val);
+            return ['A','B','C','D','E'].map(k =>
+                `<div style="display:flex;justify-content:space-between;gap:8px"><span>${k} — ${map[k]}</span><strong>${counts[k] || 0}</strong></div>`
+            ).join('');
+        }
+        if (key === 'line4') {
+            const map = isEn ? SPECIAL_EQ_EN : SPECIAL_EQ_DE;
+            const code = val.match(/^([A-D])/i);
+            if (code) {
+                const k = code[1].toUpperCase();
+                return `<div><strong>${k}</strong> — ${map[k] || _esc(val)}</div>`;
+            }
+            return _esc(val);
+        }
+        if (key === 'line5') {
+            const map = isEn ? TYPE_EN : TYPE_DE;
+            const counts = parseCounts(val);
+            return ['L','A'].map(k =>
+                `<div style="display:flex;justify-content:space-between;gap:8px"><span>${k} — ${map[k]}</span><strong>${counts[k] || 0}</strong></div>`
+            ).join('');
+        }
+        if (key === 'line6') {
+            const map = isEn ? SECURITY_EN : SECURITY_DE;
+            const code = val.match(/^([NPEX])/i);
+            if (code) {
+                const k = code[1].toUpperCase();
+                return `<div><strong>${k}</strong> — ${map[k] || _esc(val)}</div>`;
+            }
+            return _esc(val);
+        }
+        if (key === 'line7') {
+            const map = isEn ? MARKING_EN : MARKING_DE;
+            const code = val.match(/^([A-E])/i);
+            if (code) {
+                const k = code[1].toUpperCase();
+                return `<div><strong>${k}</strong> — ${map[k] || _esc(val)}</div>`;
+            }
+            return _esc(val);
+        }
+        if (key === 'line8') {
+            const map = isEn ? NATIONALITY_EN : NATIONALITY_DE;
+            // Mehrere Codes moeglich (selten), erste Zeile + extra Detail
+            const code = val.match(/^([A-E])/i);
+            const extra = val.includes('\n') ? val.split('\n').slice(1).join('\n').trim() : '';
+            if (code) {
+                const k = code[1].toUpperCase();
+                let html = `<div><strong>${k}</strong> — ${map[k] || _esc(val)}</div>`;
+                if (extra) html += `<div style="color:#444;font-style:italic;margin-top:2px">${_esc(extra)}</div>`;
+                return html;
+            }
+            return _esc(val);
+        }
+        if (key === 'line9') {
+            const map = isEn ? NBC_EN : NBC_DE;
+            // Leerer Wert oder explizit "no contamination"-Text
+            if (!val || /^no\b|keine\b/i.test(val)) {
+                return isEn
+                    ? '<div>No known nuclear, biological, chemical, or CBRN contamination.</div>'
+                    : '<div>Keine bekannte CBRN-Kontamination.</div>';
+            }
+            const code = val.match(/^([NBCR])/i);
+            if (code) {
+                const k = code[1].toUpperCase();
+                return `<div><strong>${k}</strong> — ${map[k]}</div>`;
+            }
+            return _esc(val);
+        }
+        // line1, line2: Freitext, einfach durchreichen
+        return _esc(val).replace(/\|/g, '<br>').replace(/\n/g, '<br>');
+    }
+
+    // Komplette 9-Liner-Tabelle nach NATO-Format (Anhang A). 2 Spalten,
+    // Labels links, expandierte Werte rechts. Optional kompakter Mode
+    // fuer die Patient-Card (kleine Schrift).
+    function buildNineLinerTableHtml(p, opts) {
+        opts = opts || {};
+        const compact = !!opts.compact;
+        const nl = p.nine_liner || {};
+        const lang = (p.language === 'en' || p.language === 'de') ? p.language
+                   : (/^line\s*\d|pickup|casualty|smoke signal|cbrn/i.test((nl.line1||'') + ' ' + (nl.line2||'')) ? 'en' : 'de');
+        const labels = lang === 'en' ? NINE_LINER_LABELS_EN : NINE_LINER_LABELS_DE;
+        const filledKeys = Object.keys(labels).filter(k => nl[k]);
+        const titleEn = lang === 'en' ? '9-LINE MEDEVAC REQUEST' : '9-LINER MEDEVAC ANFORDERUNG';
+        const fontSize = compact ? '11.5px' : '13px';
+        const labelSize = compact ? '10px' : '11px';
+        const rows = Object.keys(labels).map(k => {
+            const filled = !!nl[k];
+            const expanded = _expandNineLinerValue(k, nl[k], lang);
+            return `<tr style="${filled ? '' : 'opacity:0.45'}">
+                <td style="border:1px solid #111;padding:5px 8px;background:#ebe7d6;font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:0.06em;font-size:${labelSize};vertical-align:top;width:38%">${labels[k]}</td>
+                <td style="border:1px solid #111;padding:5px 10px;background:#fff;font-family:'Share Tech Mono',monospace;font-size:${fontSize};line-height:1.45;color:#111">${expanded}</td>
+            </tr>`;
+        }).join('');
+        const remarks = nl.remarks
+            ? `<tr><td style="border:1px solid #111;padding:5px 8px;background:#ebe7d6;font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:0.06em;font-size:${labelSize};vertical-align:top">REMARKS</td>
+                   <td style="border:1px solid #111;padding:5px 10px;background:#fff;font-size:${fontSize};color:#111;font-family:'Share Tech Mono',monospace">${(nl.remarks||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td></tr>`
+            : '';
+        return `
+        <div style="background:#f5f3eb;border:2px solid var(--mil-tan,#c8b878);padding:0;margin-top:8px">
+            <div style="background:#111;color:#f5f3eb;padding:4px 10px;font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase">
+                &#9992; ${titleEn} &nbsp;<span style="opacity:0.7;font-weight:400">(${filledKeys.length}/9 filled · NATO ATP-3.7.2)</span>
+            </div>
+            <table style="width:100%;border-collapse:collapse">${rows}${remarks}</table>
+        </div>`;
+    }
+
+    // ============================================================
     // NATO Field Medical Card — SVG-Replik nach AMedP-8.1 Annex A.
     // Wird im Patient-Detail-Modal gerendert wenn template_type='fmc'.
     // Body-Diagramm Vorder + Rueckseite, Marker bei main_injury_region.
@@ -8641,15 +8833,11 @@
                 const nl = p.nine_liner || {};
                 const nlFilled = ['line1','line2','line3','line4','line5','line6','line7','line8','line9'].filter(k => nl[k]).length;
                 const isNlPatient = p.template_type === '9liner' || nlFilled > 0 || !!nl.remarks;
+                // Vollformat-Tabelle nach NATO Anhang A (Code-Aufschluesselung
+                // statt nur "B"). Compact-Mode = kleinere Schrift weil
+                // in der Patient-Card weniger Platz ist.
                 const nineLinerHtml = isNlPatient
-                    ? `<div style="margin-top:8px;padding:6px 8px;background:var(--bg-elevated);border-left:3px solid var(--info,#5DADE2);font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm)">
-                        <div style="font-size:var(--fs-body-sm);color:var(--text-dim);margin-bottom:4px;letter-spacing:0.1em;text-transform:uppercase">&#9992; 9-Liner MEDEVAC (${nlFilled}/9)</div>
-                        ${[1,2,3,4,5,6,7,8,9].map(i => {
-                            const v = nl[`line${i}`] || '';
-                            return `<div style="display:flex;gap:6px;${v?'':'opacity:0.35'}"><span style="color:var(--info,#5DADE2);min-width:22px">L${i}</span><span>${v || '—'}</span></div>`;
-                        }).join('')}
-                        ${nl.remarks ? `<div style="display:flex;gap:6px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--border)"><span style="color:var(--mil-tan,#c8b878);min-width:22px">RE</span><span>${nl.remarks}</span></div>` : ''}
-                    </div>`
+                    ? `<div onclick="event.stopPropagation()">${buildNineLinerTableHtml(p, {compact: true})}</div>`
                     : '';
 
                 // FMC Kompakt-Anzeige in der Patient-Card. Klick auf Header
@@ -9812,41 +10000,15 @@
             </div>`;
         }
 
-        // 9-Liner MEDEVAC — NATO ATP-3.7.2 Schema (deutsche Bezeichnungen).
-        // Labels mit Code-Hints fuer Demo-Besucher.
+        // 9-Liner MEDEVAC — Vollformat nach NATO Anhang A (s. buildNineLinerTableHtml).
         let nineLinerHtml = '';
-        const nineLinerLabels = {
-            line1: 'L1 Pickup-Site / Aufnahmestelle',
-            line2: 'L2 Funkkanal + Rufname',
-            line3: 'L3 Anzahl + Priorität (A/B/C/D/E)',
-            line4: 'L4 Sonderausrüstung (A/B/C/D)',
-            line5: 'L5 Transportart (L/A)',
-            line6: 'L6 Sicherheit (N/P/E/X)',
-            line7: 'L7 Markierung (A/B/C/D/E)',
-            line8: 'L8 Nationalität (A/B/C/D/E)',
-            line9: 'L9 CBRN (C/B/R/N)',
-        };
-        const filledLines = Object.keys(nineLinerLabels).filter(k => nineLiner[k]);
+        const filledLines = ['line1','line2','line3','line4','line5','line6','line7','line8','line9'].filter(k => nineLiner[k]);
         const hasRemarks = !!nineLiner.remarks;
         const isNineLiner = p.template_type === '9liner' || filledLines.length > 0 || hasRemarks;
         if (isNineLiner) {
-            const rows = Object.keys(nineLinerLabels).map(k => {
-                const val = nineLiner[k] || '—';
-                const filled = !!nineLiner[k];
-                return `<div class="r1-detail-field" style="${filled ? '' : 'opacity:0.4'}">
-                    <div class="field-label" style="font-size:var(--fs-body-sm)">${nineLinerLabels[k]}</div>
-                    <div class="field-value" style="font-family:'Share Tech Mono',monospace;font-size:var(--fs-body)">${val}</div>
-                </div>`;
-            }).join('');
-            const remarksHtml = hasRemarks ? `
-                <div style="margin-top:10px;padding:8px 10px;background:var(--bg-elevated);border-left:2px solid var(--mil-tan,#c8b878)">
-                    <div class="field-label" style="font-size:var(--fs-body-sm);margin-bottom:4px">RE Remarks / Anmerkungen</div>
-                    <div class="field-value" style="font-size:var(--fs-body)">${nineLiner.remarks}</div>
-                </div>` : '';
             nineLinerHtml = `<div class="r1-detail-section" style="border-left:3px solid var(--info,#5DADE2);padding-left:10px">
-                <div class="r1-detail-section-title">&#9992; 9-Liner MEDEVAC <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(${filledLines.length}/9 Felder · NATO ATP-3.7.2)</span></div>
-                <div class="r1-detail-grid">${rows}</div>
-                ${remarksHtml}
+                <div class="r1-detail-section-title">&#9992; 9-Liner MEDEVAC <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(NATO ATP-3.7.2)</span></div>
+                ${buildNineLinerTableHtml(p)}
             </div>`;
         }
 
