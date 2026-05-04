@@ -9048,8 +9048,10 @@
                 // Fahrzeug-Menue zeigt nichts.
                 const hasRfidWritten = (p.timeline || []).some(ev =>ev.event === 'rfid_written');
 
-                // Fahrzeug-Modus: Löschen-Icon
-                const deleteIcon = isFz ? `<span onclick="event.stopPropagation();deletePatient('${p.patient_id}')" style="cursor:pointer;color:var(--text-dim);font-size:14px;padding:0 4px" title="Patient löschen"></span>` : '';
+                // Fahrzeug-Modus: Loeschen-Icon (Lucide trash-2). Hover
+                // hebt die Farbe auf --warning damit der Klick-Effekt
+                // sichtbar ist; sonst ist's ein dezent-grauer Mini-Icon.
+                const deleteIcon = isFz ? `<span onclick="event.stopPropagation();deletePatient('${p.patient_id}')" style="cursor:pointer;color:var(--text-dim);padding:0 4px;display:inline-flex;align-items:center" onmouseover="this.style.color='var(--warning)'" onmouseout="this.style.color='var(--text-dim)'" title="Patient loeschen"><svg class="ico" style="width:16px;height:16px"><use href="#icon-trash-2"/></svg></span>` : '';
                 // Fahrzeug-Modus: Per-Patient-RFID-Button — schreibt nur
                 // diesen einen Patient auf die naechste aufgelegte Karte.
                 // Use-Case: BAT-Sanitaeter auf Rueckfahrt mit begrenztem
