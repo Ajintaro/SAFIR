@@ -2233,6 +2233,21 @@
                 animation-duration: 60s !important;
             }
         }
+
+        /* Inbox: Drag-Over-Highlight */
+        #inbox-drop.drag-over {
+            background: rgba(90,158,58,0.18) !important;
+            border-color: #7ec55a !important;
+        }
+        .inbox-list-table { width: 100%; border-collapse: collapse; font-size: var(--fs-body-sm); }
+        .inbox-list-table th {
+            text-align: left; padding: 6px 10px;
+            color: var(--mil-tan,#c8b878);
+            letter-spacing: 0.08em; text-transform: uppercase;
+            border-bottom: 1px solid var(--border);
+        }
+        .inbox-list-table td { padding: 6px 10px; border-bottom: 1px solid rgba(200,184,120,0.08); }
+        .inbox-list-table tr:hover td { background: rgba(200,184,120,0.04); }
     </style>
 </head>
 <body data-theme="dark">
@@ -2663,6 +2678,37 @@
                         <button class="btn" onclick="exportPatientsFormat('pdf')" style="padding:8px 16px">&#128196; PDF</button>
                         <button class="btn" onclick="exportPatientsFormat('json')" style="padding:8px 16px;background:var(--bg-elevated);color:var(--text-primary)">&#123;&#125; JSON</button>
                         <button class="btn" onclick="exportPatientsFormat('xml')" style="padding:8px 16px;background:var(--bg-elevated);color:var(--text-primary)">&lt;/&gt; XML</button>
+                    </div>
+                </div>
+
+                <!-- Inbox: beliebiger Datei-Upload (Briefings, Vorlagen, NATO-Doks, ...).
+                     Reine Dateischleuse — keine Auto-Verarbeitung. Liegt in docs/inbox/. -->
+                <div class="settings-card" style="border-left:3px solid var(--mil-green,#5a9e3a)" id="inbox-card">
+                    <div class="settings-card-title" style="color:var(--mil-green,#5a9e3a)">&#128229; Dateien hochladen (Inbox)</div>
+                    <div style="font-size:var(--fs-body);color:var(--text-secondary);margin-bottom:10px;line-height:1.5">
+                        Beliebige Dateien (PDF, DOCX, JSON, XML, Bilder, ZIP, &hellip;) zum Geraet schicken.
+                        Werden in <code style="background:var(--bg-elevated);padding:1px 6px;font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm)">docs/inbox/</code> abgelegt &mdash; kein Auto-Import in die Patientendatenbank, max. 25 MB pro Datei.
+                    </div>
+                    <div id="inbox-drop"
+                         ondragover="event.preventDefault();this.classList.add('drag-over')"
+                         ondragleave="this.classList.remove('drag-over')"
+                         ondrop="inboxHandleDrop(event)"
+                         onclick="document.getElementById('inbox-file-input').click()"
+                         style="border:2px dashed var(--mil-green,#5a9e3a);padding:24px;text-align:center;cursor:pointer;background:rgba(90,158,58,0.04);transition:background 0.15s">
+                        <div style="font-size:32px;line-height:1">&#128228;</div>
+                        <div style="margin-top:8px;font-size:var(--fs-body);color:var(--text-secondary)">
+                            <strong>Dateien hierher ziehen</strong> oder klicken, um auszuwaehlen
+                        </div>
+                        <input type="file" id="inbox-file-input" multiple style="display:none" onchange="inboxHandleSelect(event)">
+                    </div>
+                    <div id="inbox-upload-progress" style="margin-top:8px;font-size:var(--fs-body-sm);color:var(--text-dim);min-height:18px"></div>
+
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;margin-bottom:8px">
+                        <div style="font-family:'Rajdhani',sans-serif;letter-spacing:0.1em;color:var(--mil-tan,#c8b878);text-transform:uppercase;font-size:var(--fs-body-sm);font-weight:700">Inbox-Inhalt</div>
+                        <button class="btn" onclick="loadInboxList()" style="padding:4px 12px;font-size:var(--fs-body-sm)">&#8635; Aktualisieren</button>
+                    </div>
+                    <div id="inbox-list-wrap" style="overflow-x:auto">
+                        <div style="padding:12px;text-align:center;color:var(--text-dim);font-style:italic">Laden &hellip;</div>
                     </div>
                 </div>
 
@@ -4662,6 +4708,7 @@
             if (cntEl) cntEl.textContent = 'Fehler beim Laden';
         }
         loadExportList();
+        loadInboxList();
     }
 
     async function exportSinglePatient(fmt) {
@@ -4694,6 +4741,114 @@
             loadExportList();
         } catch (e) {
             showToast(`Export-Fehler: ${e.message}`, '&#9888;');
+        }
+    }
+
+    // ============================================================
+    // Inbox: Datei-Upload (Drag&Drop + Picker), Liste, Download, Loeschen
+    // ============================================================
+    function inboxHandleDrop(ev) {
+        ev.preventDefault();
+        const drop = document.getElementById('inbox-drop');
+        if (drop) drop.classList.remove('drag-over');
+        const files = ev.dataTransfer && ev.dataTransfer.files;
+        if (files && files.length) inboxUploadFiles(files);
+    }
+    function inboxHandleSelect(ev) {
+        const files = ev.target.files;
+        if (files && files.length) inboxUploadFiles(files);
+        // Reset, damit dieselbe Datei nochmal ausgewaehlt werden kann
+        ev.target.value = '';
+    }
+    async function inboxUploadFiles(files) {
+        const status = document.getElementById('inbox-upload-progress');
+        const list = Array.from(files);
+        let okCount = 0, failCount = 0;
+        for (let i = 0; i < list.length; i++) {
+            const f = list[i];
+            if (status) status.textContent = `Lade ${i + 1}/${list.length}: ${f.name} (${(f.size/1048576).toFixed(2)} MB) ...`;
+            try {
+                const fd = new FormData();
+                fd.append('file', f);
+                const res = await fetch('/api/inbox/upload', { method: 'POST', body: fd });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.error || `HTTP ${res.status}`);
+                }
+                okCount++;
+            } catch (e) {
+                failCount++;
+                showToast(`Upload fehlgeschlagen: ${f.name} — ${e.message}`, '&#9888;');
+            }
+        }
+        if (status) {
+            status.textContent = failCount === 0
+                ? `${okCount} Datei(en) hochgeladen.`
+                : `${okCount} OK, ${failCount} Fehler.`;
+            setTimeout(() => { if (status) status.textContent = ''; }, 5000);
+        }
+        if (okCount > 0) showToast(`${okCount} Datei(en) in Inbox abgelegt`, '&#128229;');
+        loadInboxList();
+    }
+    async function loadInboxList() {
+        const wrap = document.getElementById('inbox-list-wrap');
+        if (!wrap) return;
+        try {
+            const res = await api('/api/inbox/list');
+            const files = res.files || [];
+            if (files.length === 0) {
+                wrap.innerHTML = `<div style="padding:12px;text-align:center;color:var(--text-dim);font-style:italic">Inbox ist leer.</div>`;
+                return;
+            }
+            const extColors = {
+                pdf: '#cc2222', docx: '#2B579A', json: '#5DADE2', xml: '#9f68d5',
+                png: '#5a9e3a', jpg: '#5a9e3a', jpeg: '#5a9e3a', zip: '#d4871a',
+                txt: '#888', md: '#888',
+            };
+            const fmtSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(2)} MB`;
+            const fmtDate = (iso) => {
+                try { return new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+                catch (_) { return iso.slice(0, 16).replace('T', ' '); }
+            };
+            wrap.innerHTML = `
+                <table class="inbox-list-table">
+                    <thead><tr>
+                        <th>Typ</th><th>Datei</th><th style="text-align:right">Groesse</th><th>Hochgeladen</th><th style="text-align:right">Aktionen</th>
+                    </tr></thead>
+                    <tbody>
+                    ${files.map(f => {
+                        const color = extColors[f.extension] || '#888';
+                        const safeName = f.filename.replace(/"/g, '&quot;');
+                        return `<tr>
+                            <td><span style="display:inline-block;padding:2px 8px;background:${color}20;color:${color};border:1px solid ${color}80;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase">${f.extension || '?'}</span></td>
+                            <td style="font-family:'Share Tech Mono',monospace;color:var(--text-primary)">${f.filename}</td>
+                            <td style="text-align:right;color:var(--text-secondary)">${fmtSize(f.size)}</td>
+                            <td style="color:var(--text-secondary)">${fmtDate(f.mtime_iso)}</td>
+                            <td style="text-align:right;white-space:nowrap">
+                                <a class="btn" href="/api/inbox/download/${encodeURIComponent(f.filename)}" download="${safeName}" style="padding:3px 10px;font-size:11px;text-decoration:none">&#11015; DL</a>
+                                <button class="btn" onclick="inboxDelete('${safeName}')" style="padding:3px 10px;font-size:11px;background:rgba(204,34,34,0.15);color:#ff6b6b;border-color:#cc2222">&#10006; Del</button>
+                            </td>
+                        </tr>`;
+                    }).join('')}
+                    </tbody>
+                </table>
+            `;
+        } catch (e) {
+            wrap.innerHTML = `<div style="padding:12px;color:#cc2222">Fehler beim Laden: ${e.message}</div>`;
+        }
+    }
+    async function inboxDelete(filename) {
+        if (!confirm(`Datei "${filename}" wirklich loeschen?`)) return;
+        try {
+            const res = await fetch(`/api/inbox/delete/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            showToast(`Geloescht: ${filename}`, '&#128465;');
+            loadInboxList();
+        } catch (e) {
+            showToast(`Loeschen fehlgeschlagen: ${e.message}`, '&#9888;');
         }
     }
 

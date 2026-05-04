@@ -31,7 +31,7 @@ from docx.shared import Pt, Mm, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
@@ -8479,6 +8479,159 @@ async def export_pdf_all():
         media_type="application/pdf",
         filename=filepath.name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Inbox: beliebiger Datei-Upload (PDF / DOCX / Bilder / JSON / ...).
+# Dient als Dateischleuse: Kollegen schicken Dokumente (Briefings, NATO-Vorlagen,
+# Lagebilder), die dann auf dem Geraet liegen — fuer manuelle Sichtung oder
+# fuer Claude-Code-Sessions, die das Repo lesen.
+# Kein Auto-Import in Patient-DB. Path-Traversal-Schutz wie bei Export.
+# ---------------------------------------------------------------------------
+INBOX_DIR = PROJECT_DIR / "docs" / "inbox"
+INBOX_DIR.mkdir(exist_ok=True, parents=True)
+INBOX_MAX_BYTES = 25 * 1024 * 1024   # 25 MB pro Datei
+
+
+def _inbox_safe_name(filename: str) -> str:
+    """Path-Traversal-Schutz: nur den Basename behalten und auf ASCII +
+    Punkt/Strich/Underscore reduzieren. Leerstring wenn nichts uebrig
+    bleibt (Aufrufer reagiert mit 400)."""
+    base = Path(filename or "").name
+    cleaned = "".join(c if (c.isalnum() or c in "._-") else "_" for c in base)
+    # Verhindere reine Dot-Files / leere Namen
+    cleaned = cleaned.lstrip(".")
+    return cleaned[:200]  # Hard-Limit Filename-Laenge
+
+
+@app.post("/api/inbox/upload")
+async def inbox_upload(file: UploadFile = File(...)):
+    """Nimmt eine Datei entgegen und legt sie in docs/inbox/ ab. Max 25 MB.
+    Bei Namens-Kollision wird ein Counter angehaengt (foo.pdf -> foo_2.pdf).
+    Gibt Metadaten der gespeicherten Datei zurueck."""
+    safe = _inbox_safe_name(file.filename or "")
+    if not safe:
+        return Response(
+            content=json.dumps({"error": "Ungueltiger Dateiname"}),
+            status_code=400, media_type="application/json",
+        )
+    # Kollisions-Auflosung: foo.pdf -> foo_2.pdf -> foo_3.pdf ...
+    target = INBOX_DIR / safe
+    if target.exists():
+        stem = target.stem
+        suffix = target.suffix
+        i = 2
+        while (INBOX_DIR / f"{stem}_{i}{suffix}").exists():
+            i += 1
+            if i > 999:
+                return Response(
+                    content=json.dumps({"error": "Zu viele Namens-Kollisionen"}),
+                    status_code=409, media_type="application/json",
+                )
+        target = INBOX_DIR / f"{stem}_{i}{suffix}"
+    # Streaming-Read mit Groessenlimit
+    written = 0
+    try:
+        with target.open("wb") as fh:
+            while True:
+                chunk = await file.read(64 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > INBOX_MAX_BYTES:
+                    fh.close()
+                    target.unlink(missing_ok=True)
+                    return Response(
+                        content=json.dumps({
+                            "error": f"Datei zu gross (>25 MB)",
+                        }),
+                        status_code=413, media_type="application/json",
+                    )
+                fh.write(chunk)
+    except Exception as e:
+        target.unlink(missing_ok=True)
+        return Response(
+            content=json.dumps({"error": f"Upload fehlgeschlagen: {e}"}),
+            status_code=500, media_type="application/json",
+        )
+    print(f"[INBOX] upload: {target.name} ({written} bytes)", flush=True)
+    return {
+        "status": "ok",
+        "filename": target.name,
+        "size": written,
+        "path": str(target),
+    }
+
+
+@app.get("/api/inbox/list")
+async def inbox_list():
+    """Liste aller Dateien in docs/inbox/, sortiert nach mtime absteigend."""
+    items = []
+    if INBOX_DIR.exists():
+        for fp in INBOX_DIR.iterdir():
+            if not fp.is_file():
+                continue
+            stat = fp.stat()
+            items.append({
+                "filename": fp.name,
+                "size": stat.st_size,
+                "mtime": stat.st_mtime,
+                "mtime_iso": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "extension": fp.suffix.lstrip(".").lower(),
+            })
+    items.sort(key=lambda x: x["mtime"], reverse=True)
+    return {"files": items, "total": len(items)}
+
+
+@app.get("/api/inbox/download/{filename}")
+async def inbox_download(filename: str):
+    """Download einer Datei aus der Inbox. Path-Traversal-Schutz."""
+    safe = Path(filename).name
+    fp = INBOX_DIR / safe
+    if not fp.exists() or not fp.is_file():
+        return Response(
+            content=json.dumps({"error": f"Datei {safe} nicht gefunden"}),
+            status_code=404, media_type="application/json",
+        )
+    ext = fp.suffix.lstrip(".").lower()
+    media_types = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "json": "application/json",
+        "xml": "application/xml",
+        "txt": "text/plain",
+        "md": "text/markdown",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "zip": "application/zip",
+    }
+    return FileResponse(
+        str(fp),
+        media_type=media_types.get(ext, "application/octet-stream"),
+        filename=fp.name,
+    )
+
+
+@app.delete("/api/inbox/delete/{filename}")
+async def inbox_delete(filename: str):
+    """Loescht eine Inbox-Datei. Path-Traversal-Schutz."""
+    safe = Path(filename).name
+    fp = INBOX_DIR / safe
+    if not fp.exists() or not fp.is_file():
+        return Response(
+            content=json.dumps({"error": f"Datei {safe} nicht gefunden"}),
+            status_code=404, media_type="application/json",
+        )
+    try:
+        fp.unlink()
+    except Exception as e:
+        return Response(
+            content=json.dumps({"error": f"Loeschen fehlgeschlagen: {e}"}),
+            status_code=500, media_type="application/json",
+        )
+    print(f"[INBOX] delete: {safe}", flush=True)
+    return {"status": "ok", "deleted": safe}
 
 
 @app.get("/api/files")
