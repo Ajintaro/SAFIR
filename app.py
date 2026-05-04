@@ -538,6 +538,10 @@ def _handle_oled_action(action: dict):
             return _oled_hotspot_stop()
         if action_id == "wifi_disconnect":
             return _oled_wifi_disconnect()
+        if action_id == "wifi_pick":
+            return _oled_wifi_pick_open()
+        if action_id == "wifi_pick_confirm":
+            return _oled_wifi_pick_confirm(action.get("ssid", ""))
 
     # Alle anderen Page-Aktionen nur wenn System entsperrt ist
     if state.locked:
@@ -960,6 +964,96 @@ async def _oled_wifi_disconnect():
         oled_menu.show_status("FEHLER", msg[:16])
     await asyncio.sleep(1.5)
     oled_menu.clear_status()
+
+
+async def _oled_wifi_pick_open():
+    """OLED-Action: WLAN-Picker oeffnen. Triggert frischen Scan, schneidet
+    gegen die in NetworkManager bekannten Verbindungen, und uebergibt die
+    Liste an oled_menu. Der Picker-Mode wurde im OLED-Code bereits beim
+    button_b_long auf 'wifi_pick' geoeffnet — wir muessen nur die Liste
+    nachreichen und ggf. Status-Texte zeigen waehrend gescannt wird."""
+    oled_menu.show_status("WLAN", "suche...")
+    loop = asyncio.get_event_loop()
+    try:
+        networks = await loop.run_in_executor(None, _list_known_visible_wifis)
+    except Exception as e:
+        print(f"[OLED] wifi_pick scan fehler: {e}", flush=True)
+        networks = []
+    try:
+        oled_menu.update_wifi_list(networks)
+    except Exception:
+        pass
+    oled_menu.clear_status()
+    print(f"[OLED] wifi_pick: {len(networks)} bekannte Netze in Reichweite", flush=True)
+
+
+async def _oled_wifi_pick_confirm(ssid: str):
+    """OLED-Action: User hat im Picker B lang gedrueckt -> SSID verbinden.
+    Passwort wird leer gelassen, NetworkManager nutzt den gespeicherten
+    Eintrag. Wenn das Netz nicht bekannt ist (Edge-Case), schlaegt es fehl
+    und der User bekommt eine Fehler-Statusmeldung."""
+    if not ssid:
+        return
+    oled_menu.show_status("WLAN", f"verb. {ssid[:10]}")
+    try:
+        tts.speak(f"Verbinde mit {ssid}")
+    except Exception:
+        pass
+    loop = asyncio.get_event_loop()
+    success, msg = await loop.run_in_executor(None, _wifi_connect, ssid, "")
+    if success:
+        oled_menu.show_status("WLAN", f"OK {ssid[:10]}")
+        try:
+            tts.speak("Verbunden")
+        except Exception:
+            pass
+        await broadcast({"type": "wifi_connected", "ssid": ssid})
+    else:
+        oled_menu.show_status("FEHLER", msg[:16])
+        try:
+            tts.speak("Verbindung fehlgeschlagen")
+        except Exception:
+            pass
+    await asyncio.sleep(2.0)
+    oled_menu.clear_status()
+
+
+def _list_known_visible_wifis() -> list[dict]:
+    """Schnitt aus 'in NetworkManager gespeicherten WLAN-Verbindungen' und
+    'aktuell sichtbaren Netzen'. Liefert die gleiche Struktur wie
+    _wifi_scan() — nur reduziert auf SSIDs die der Jetson kennt.
+
+    Hintergrund: Der OLED-Picker soll dem Sani erlauben, ohne Passwort-
+    Eingabe zwischen bekannten Netzen umzuschalten (Firmen-WLAN <-> iPhone-
+    Hotspot). Unbekannte Netze brauchen Passwort -> die laufen weiterhin
+    ueber die Setup-Hotspot-Web-UI."""
+    try:
+        out = subprocess.run(
+            ["nmcli", "-t", "-f", "NAME,TYPE", "con", "show"],
+            capture_output=True, text=True, timeout=5.0,
+        )
+        if out.returncode != 0:
+            return []
+        known: set[str] = set()
+        for line in out.stdout.splitlines():
+            parts = line.split(":")
+            if len(parts) < 2:
+                continue
+            name, typ = parts[0].strip(), parts[1].strip()
+            if typ == "802-11-wireless" and name and name != HOTSPOT_CON_NAME:
+                known.add(name)
+    except Exception as e:
+        print(f"[WIFI-KNOWN] nmcli con show Fehler: {e}", flush=True)
+        return []
+
+    if not known:
+        return []
+
+    visible = _wifi_scan(use_cache_if_hotspot=True)
+    matched = [n for n in visible if n["ssid"] in known]
+    print(f"[WIFI-KNOWN] {len(known)} gespeichert, {len(visible)} sichtbar, "
+          f"{len(matched)} im Schnitt", flush=True)
+    return matched
 
 
 async def _oled_register_chip():

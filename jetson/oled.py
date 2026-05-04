@@ -46,6 +46,7 @@ PAGE_SUBMENUS = {
         ("hotspot_start", "Hotspot AN"),
         ("hotspot_stop",  "Hotspot AUS"),
         ("wifi_disconnect", "WLAN trennen"),
+        ("wifi_pick", "WLAN waehlen"),
     ],
     "operator": [
         ("register_chip", "Chip Regis."),
@@ -105,6 +106,11 @@ class OledMenu:
         self.patient_pick_open = False
         self.patient_pick_index = 0
         self.patient_list: list[dict] = []  # [{"patient_id":..,"name":..,"triage":..}]
+        # WLAN-Pick-Mode (analog Patient-Pick): Liste der bekannten + sichtbaren
+        # WLANs, B kurz scrollt, B lang verbindet (Passwort kommt aus NM).
+        self.wifi_pick_open = False
+        self.wifi_pick_index = 0
+        self.wifi_list: list[dict] = []  # [{"ssid":..,"signal":int,"in_use":bool}]
         self.stats = {}              # System-Stats (CPU, RAM, GPU, Temperaturen, ...)
         self.network_info = {}       # Netzwerk-Info (Hostname, IP)
         self.patient_info = {}       # Patienten-Übersicht (Anzahl, etc.)
@@ -265,7 +271,7 @@ class OledMenu:
         # In Patient-Pick- und Submenu-Modi ist A kurz reserviert fuer
         # Page-Wechsel -> deshalb hier blocken, user muss A lang drueck
         # um zurueckzugehen.
-        if self.patient_pick_open or self.submenu_open:
+        if self.patient_pick_open or self.wifi_pick_open or self.submenu_open:
             return
         self.current_page = (self.current_page + 1) % len(PAGES)
 
@@ -280,6 +286,11 @@ class OledMenu:
         if self.patient_pick_open:
             self.patient_pick_open = False
             self.patient_pick_index = 0
+            return
+        # 1b. WLAN-Pick -> abbrechen
+        if self.wifi_pick_open:
+            self.wifi_pick_open = False
+            self.wifi_pick_index = 0
             return
         # 2. Submenu offen -> schliessen
         if self.submenu_open:
@@ -302,6 +313,10 @@ class OledMenu:
         if self.patient_pick_open:
             if self.patient_list:
                 self.patient_pick_index = (self.patient_pick_index + 1) % len(self.patient_list)
+            return
+        if self.wifi_pick_open:
+            if self.wifi_list:
+                self.wifi_pick_index = (self.wifi_pick_index + 1) % len(self.wifi_list)
             return
         if not self.submenu_open:
             return
@@ -329,6 +344,18 @@ class OledMenu:
                 return {"page": "patient", "action": "patient_pick_confirm",
                         "label": chosen["name"], "patient_id": chosen["patient_id"]}
             return None
+        # WLAN-Pick aktiv -> verbinden
+        if self.wifi_pick_open:
+            if self.wifi_list and 0 <= self.wifi_pick_index < len(self.wifi_list):
+                chosen = self.wifi_list[self.wifi_pick_index]
+                ssid = chosen.get("ssid", "")
+                print(f"[OLED] wifi_pick: FIRE ssid={ssid!r}", flush=True)
+                self.wifi_pick_open = False
+                self.wifi_pick_index = 0
+                self.submenu_open = False
+                return {"page": "network", "action": "wifi_pick_confirm",
+                        "label": ssid, "ssid": ssid}
+            return None
         if not self.submenu_open:
             print(f"[OLED] button_b_long: submenu geschlossen (page={PAGES[self.current_page]}) — ignoriert", flush=True)
             return None
@@ -344,6 +371,14 @@ class OledMenu:
             self.patient_pick_index = 0
             print(f"[OLED] patient_pick: OPEN ({len(self.patient_list)} Patienten)", flush=True)
             return None
+        # Action "wifi_pick" -> Picker-Mode oeffnen, app.py triggert Scan
+        # und ruft danach update_wifi_list() auf.
+        if action_id == "wifi_pick":
+            self.submenu_open = False
+            self.wifi_pick_open = True
+            self.wifi_pick_index = 0
+            print(f"[OLED] wifi_pick: OPEN (Scan wird angestossen)", flush=True)
+            return {"page": "network", "action": "wifi_pick", "label": label}
         print(f"[OLED] button_b_long: FIRE page={page} idx={self.submenu_index} action={action_id} label={label!r}", flush=True)
         return {"page": page, "action": action_id, "label": label}
 
@@ -412,6 +447,25 @@ class OledMenu:
     def update_hotspot(self, info: dict):
         self.hotspot_info = info
 
+    def update_wifi_list(self, networks: list[dict]):
+        """Wird von app.py aufgerufen wenn der WLAN-Picker oeffnet bzw. wenn
+        sich die Liste der bekannten + sichtbaren Netze aendert.
+        Erwartet Liste mit {ssid, signal (0-100), in_use (bool)}.
+        Index wird zurueckgesetzt falls Liste schrumpft."""
+        self.wifi_list = [
+            {
+                "ssid": str(n.get("ssid", "")),
+                "signal": int(n.get("signal", 0) or 0),
+                "in_use": bool(n.get("in_use", False)),
+            }
+            for n in (networks or [])
+            if n.get("ssid")
+        ]
+        if self.wifi_pick_index >= len(self.wifi_list) and self.wifi_list:
+            self.wifi_pick_index = 0
+        elif not self.wifi_list:
+            self.wifi_pick_index = 0
+
     def update_models_status(self, info: dict):
         self.models_status = info
 
@@ -443,6 +497,8 @@ class OledMenu:
         #   3. Content-Ansicht der jeweiligen Seite
         if self.patient_pick_open:
             self._render_patient_pick(draw)
+        elif self.wifi_pick_open:
+            self._render_wifi_pick(draw)
         elif self.submenu_open:
             self._render_submenu(draw, page)
         elif page == "models":
@@ -721,6 +777,62 @@ class OledMenu:
             y += 14
         # Hilfe-Zeile unten
         draw.text((2, 55), "B=weiter B-lang=waehl", font=FONT_SM, fill=1)
+
+    def _render_wifi_pick(self, draw: ImageDraw):
+        """WLAN-Liste im Pick-Mode. Zeigt SSID + 4-Stufen-Signalbalken pro
+        Zeile, selektierter Eintrag invertiert. Beim 'in_use'-Eintrag
+        (aktuell verbunden) Marker '*' vorne."""
+        if not self.wifi_list:
+            draw.text((2, 2),  "KEINE", font=FONT_LG, fill=1)
+            draw.text((2, 24), "BEKANNTEN", font=FONT_MD, fill=1)
+            draw.text((2, 38), "NETZE SICHTBAR", font=FONT_MD, fill=1)
+            draw.text((2, 55), "A lang=zurueck", font=FONT_SM, fill=1)
+            return
+
+        total = len(self.wifi_list)
+        idx = self.wifi_pick_index
+        draw.text((2, 2), f"WLAN {idx + 1}/{total}", font=FONT_SM, fill=1)
+        # Window: 3 sichtbare Eintraege, Auswahl moeglichst mittig
+        window_size = 3
+        start = max(0, min(idx - 1, total - window_size))
+        y = 16
+        for i in range(start, min(start + window_size, total)):
+            net = self.wifi_list[i]
+            ssid = net["ssid"]
+            signal = net["signal"]
+            in_use = net["in_use"]
+            # SSID auf 14 Zeichen kuerzen damit Platz fuer Signal-Balken bleibt
+            marker = "*" if in_use else " "
+            label = f"{marker}{ssid[:14]}"
+            if i == idx:
+                draw.rectangle([0, y - 1, WIDTH - 1, y + 12], fill=1)
+                draw.text((3, y), f"> {label}", font=FONT_MD, fill=0)
+                self._draw_signal_bars(draw, WIDTH - 18, y + 2, signal, color=0)
+            else:
+                draw.text((3, y), f"  {label}", font=FONT_MD, fill=1)
+                self._draw_signal_bars(draw, WIDTH - 18, y + 2, signal, color=1)
+            y += 14
+        draw.text((2, 55), "B=weiter B-lang=verb.", font=FONT_SM, fill=1)
+
+    def _draw_signal_bars(self, draw: ImageDraw, x, y, signal_pct, color=1):
+        """Zeichnet 4 ansteigende Balken (Mobilfunk-Stil). signal_pct 0-100,
+        Schwellen: <25 -> 1 Balken, <50 -> 2, <75 -> 3, sonst 4."""
+        if signal_pct >= 75:
+            bars = 4
+        elif signal_pct >= 50:
+            bars = 3
+        elif signal_pct >= 25:
+            bars = 2
+        else:
+            bars = 1 if signal_pct > 0 else 0
+        for b in range(4):
+            bx = x + b * 4
+            bh = 2 + b * 2  # 2,4,6,8 px
+            by = y + (8 - bh)
+            if b < bars:
+                draw.rectangle([bx, by, bx + 2, y + 8], fill=color)
+            else:
+                draw.rectangle([bx, by, bx + 2, y + 8], outline=color)
 
     # ---- Untermenü-Liste (2-Level-Menü) ----
     def _render_submenu(self, draw: ImageDraw, page: str):
