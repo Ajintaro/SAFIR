@@ -2234,6 +2234,138 @@
             }
         }
 
+        /* ====================================================================
+           NATO Field Medical Card — Replik nach AMedP-8.1 Annex A
+           Schwarz/Weiss-Look wie das Original-Formular, aber mit dem
+           Mil-HUD-Akzent (Bracket-Corners, Tan-Header).
+           ==================================================================== */
+        .fmc-form {
+            background: #f5f3eb;
+            color: #111;
+            font-family: 'Share Tech Mono', monospace;
+            border: 2px solid var(--mil-tan, #c8b878);
+            padding: 0;
+            max-width: 1100px;
+            margin: 14px 0;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+        }
+        .fmc-form * { box-sizing: border-box; }
+        .fmc-header {
+            display: flex; align-items: center; justify-content: center;
+            gap: 18px;
+            background: #fff;
+            border-bottom: 2px solid #111;
+            padding: 8px 14px;
+        }
+        .fmc-header-title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 22px; font-weight: 700; letter-spacing: 0.18em;
+            color: #111; text-transform: uppercase;
+        }
+        .fmc-rose {
+            display: inline-block; width: 26px; height: 26px;
+            border: 1.5px solid #111; border-radius: 50%;
+            position: relative;
+        }
+        .fmc-rose::before, .fmc-rose::after {
+            content: ""; position: absolute; left: 50%; top: 50%;
+            transform: translate(-50%, -50%); background: #111;
+        }
+        .fmc-rose::before { width: 1.5px; height: 22px; }
+        .fmc-rose::after { width: 22px; height: 1.5px; }
+        .fmc-section { border-bottom: 1px solid #111; }
+        .fmc-section:last-child { border-bottom: 0; }
+        .fmc-row { display: flex; border-bottom: 1px solid #111; }
+        .fmc-row:last-child { border-bottom: 0; }
+        .fmc-cell {
+            border-right: 1px solid #111; padding: 4px 8px; flex: 1;
+            min-height: 32px; display: flex; flex-direction: column; gap: 2px;
+        }
+        .fmc-cell:last-child { border-right: 0; }
+        .fmc-label {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 10px; font-weight: 700;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: #444;
+        }
+        .fmc-value {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 13px; color: #111; font-weight: 500;
+            min-height: 16px; line-height: 1.25;
+        }
+        .fmc-value.empty { color: #aaa; font-style: italic; }
+        .fmc-section-band {
+            background: #111; color: #f5f3eb;
+            padding: 4px 10px; font-family: 'Rajdhani', sans-serif;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.18em;
+            text-transform: uppercase;
+        }
+        .fmc-body-row {
+            display: flex; gap: 0;
+        }
+        .fmc-body-svg-cell {
+            width: 320px; padding: 8px; border-right: 1px solid #111;
+            background: #fff;
+        }
+        .fmc-assessments-cell { flex: 1; padding: 0; }
+        .fmc-asmt-row {
+            display: flex; border-bottom: 1px solid #111;
+            min-height: 38px; align-items: center;
+            padding: 4px 10px;
+        }
+        .fmc-asmt-row:last-child { border-bottom: 0; }
+        .fmc-asmt-label {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; min-width: 130px; color: #444;
+        }
+        .fmc-asmt-val { flex: 1; font-size: 12px; color: #111; }
+
+        .fmc-vitals-table { width: 100%; border-collapse: collapse;
+                            font-size: 12px; }
+        .fmc-vitals-table th, .fmc-vitals-table td {
+            border: 1px solid #111; padding: 3px 8px; text-align: left;
+        }
+        .fmc-vitals-table th {
+            background: #ebe7d6; font-family: 'Rajdhani', sans-serif;
+            font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+            font-weight: 700;
+        }
+        .fmc-treat-table { width: 100%; border-collapse: collapse;
+                           font-size: 12px; }
+        .fmc-treat-table th, .fmc-treat-table td {
+            border: 1px solid #111; padding: 3px 8px; text-align: left;
+        }
+        .fmc-treat-table th {
+            background: #ebe7d6; font-family: 'Rajdhani', sans-serif;
+            font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+            font-weight: 700;
+        }
+        .fmc-legend {
+            font-size: 10px; color: #333; padding: 4px 8px;
+            background: #ebe7d6;
+        }
+        .fmc-legend-line { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+        .fmc-legend-glyph {
+            display: inline-block; min-width: 22px; text-align: center;
+            font-family: 'Share Tech Mono', monospace; font-weight: 700;
+        }
+        .fmc-injury-marker {
+            fill: #cc2222; stroke: #800; stroke-width: 1.5;
+            opacity: 0.85;
+        }
+        .fmc-injury-marker-pulse {
+            animation: fmcPulse 1.6s ease-in-out infinite;
+        }
+        @keyframes fmcPulse {
+            0%, 100% { opacity: 0.85; transform: scale(1); transform-origin: center; }
+            50%      { opacity: 1.0; transform: scale(1.25); }
+        }
+        .fmc-injury-callout {
+            font-family: 'Share Tech Mono', monospace; font-size: 9.5px;
+            fill: #cc2222;
+        }
+
         /* Inbox: Drag-Over-Highlight */
         #inbox-drop.drag-over {
             background: rgba(90,158,58,0.18) !important;
@@ -4750,6 +4882,313 @@
         } catch (e) {
             showToast(`Export-Fehler: ${e.message}`, '&#9888;');
         }
+    }
+
+    // ============================================================
+    // NATO Field Medical Card — SVG-Replik nach AMedP-8.1 Annex A.
+    // Wird im Patient-Detail-Modal gerendert wenn template_type='fmc'.
+    // Body-Diagramm Vorder + Rueckseite, Marker bei main_injury_region.
+    // ============================================================
+
+    // Region-Koordinaten auf der Front- bzw. Back-Silhouette (viewBox 0 0 140 320).
+    // {view: 'front'|'back', x, y} — Pixel-Position des roten Verletzungs-Markers.
+    const FMC_REGION_COORDS = {
+        head:         { view: 'front', x: 70,  y: 28  },
+        neck:         { view: 'front', x: 70,  y: 56  },
+        chest_l:      { view: 'front', x: 84,  y: 100 },
+        chest_r:      { view: 'front', x: 56,  y: 100 },
+        shoulder_l:   { view: 'front', x: 100, y: 78  },
+        shoulder_r:   { view: 'front', x: 40,  y: 78  },
+        upper_arm_l:  { view: 'front', x: 110, y: 110 },
+        upper_arm_r:  { view: 'front', x: 30,  y: 110 },
+        forearm_l:    { view: 'front', x: 116, y: 152 },
+        forearm_r:    { view: 'front', x: 24,  y: 152 },
+        hand_l:       { view: 'front', x: 118, y: 188 },
+        hand_r:       { view: 'front', x: 22,  y: 188 },
+        abdomen_l:    { view: 'front', x: 84,  y: 138 },
+        abdomen_r:    { view: 'front', x: 56,  y: 138 },
+        flank_l:      { view: 'front', x: 92,  y: 142 },
+        flank_r:      { view: 'front', x: 48,  y: 142 },
+        thigh_l:      { view: 'front', x: 82,  y: 196 },
+        thigh_r:      { view: 'front', x: 58,  y: 196 },
+        lower_leg_l:  { view: 'front', x: 82,  y: 254 },
+        lower_leg_r:  { view: 'front', x: 58,  y: 254 },
+        foot_l:       { view: 'front', x: 82,  y: 300 },
+        foot_r:       { view: 'front', x: 58,  y: 300 },
+        back:         { view: 'back',  x: 70,  y: 130 },
+    };
+
+    function _fmcSilhouette(view, regionTag) {
+        // SVG einer halbschematischen Soldaten-Silhouette (Front oder Back).
+        // viewBox 140x320. Linien-Stil schwarz auf transparent — passt zum
+        // schwarz-weissen Original-Look der NATO-Vorlage.
+        // Marker: roter Kreis + Callout-Linie wenn regionTag eine Region
+        // dieser Ansicht trifft.
+        const coord = FMC_REGION_COORDS[regionTag];
+        const showMarker = coord && coord.view === view;
+        const markerSvg = showMarker
+            ? `<g class="fmc-injury-marker-pulse">
+                  <circle cx="${coord.x}" cy="${coord.y}" r="5" class="fmc-injury-marker"/>
+                  <line x1="${coord.x}" y1="${coord.y}" x2="${coord.x > 70 ? 138 : 2}" y2="${coord.y - 6}" stroke="#cc2222" stroke-width="0.8" stroke-dasharray="2 2"/>
+               </g>` : '';
+        // Halbschematische Silhouette: Kopf (Kreis), Hals, Schultern,
+        // Torso, Arme, Beine. Rueckseite identisch — der User unterscheidet
+        // ueber das R/L-Label unten.
+        const path = view === 'front'
+            ? `<g fill="none" stroke="#111" stroke-width="1.2" stroke-linejoin="round">
+                 <circle cx="70" cy="28" r="16"/>
+                 <path d="M 60 44 L 60 50 Q 50 54 42 64 L 22 100 L 18 200 L 22 180 L 28 110 L 36 90"/>
+                 <path d="M 80 44 L 80 50 Q 90 54 98 64 L 118 100 L 122 200 L 118 180 L 112 110 L 104 90"/>
+                 <path d="M 36 90 L 36 162 L 50 220 L 50 308 L 60 308 L 64 220 L 70 218 L 76 220 L 80 308 L 90 308 L 90 220 L 104 162 L 104 90 Z"/>
+                 <line x1="70" y1="90"  x2="70" y2="160" stroke="#bbb" stroke-dasharray="3 3"/>
+               </g>`
+            : `<g fill="none" stroke="#111" stroke-width="1.2" stroke-linejoin="round">
+                 <circle cx="70" cy="28" r="16"/>
+                 <path d="M 60 44 L 60 50 Q 50 54 42 64 L 22 100 L 18 200 L 22 180 L 28 110 L 36 90"/>
+                 <path d="M 80 44 L 80 50 Q 90 54 98 64 L 118 100 L 122 200 L 118 180 L 112 110 L 104 90"/>
+                 <path d="M 36 90 L 36 162 L 50 220 L 50 308 L 60 308 L 64 220 L 70 218 L 76 220 L 80 308 L 90 308 L 90 220 L 104 162 L 104 90 Z"/>
+                 <line x1="44" y1="100" x2="96" y2="100" stroke="#bbb" stroke-dasharray="3 3"/>
+                 <line x1="46" y1="160" x2="94" y2="160" stroke="#bbb" stroke-dasharray="3 3"/>
+               </g>`;
+        return `<svg viewBox="0 0 140 320" preserveAspectRatio="xMidYMid meet"
+                     style="width:140px;height:320px;display:block">
+                  ${path}
+                  <text x="60" y="318" font-family="Share Tech Mono,monospace"
+                        font-size="9" fill="#111">${view === 'front' ? 'R' : 'L'}</text>
+                  <text x="78" y="318" font-family="Share Tech Mono,monospace"
+                        font-size="9" fill="#111">${view === 'front' ? 'L' : 'R'}</text>
+                  <text x="50" y="12"  font-family="Rajdhani,sans-serif"
+                        font-size="9" fill="#444" letter-spacing="1">${view === 'front' ? 'FRONT' : 'BACK'}</text>
+                  ${markerSvg}
+                </svg>`;
+    }
+
+    function _fmcEsc(s) {
+        if (s === null || s === undefined) return '';
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function _fmcCell(label, value, flex) {
+        const v = (value === null || value === undefined || value === '');
+        return `<div class="fmc-cell" style="${flex ? 'flex:'+flex : ''}">
+                  <div class="fmc-label">${label}</div>
+                  <div class="fmc-value ${v ? 'empty' : ''}">${v ? '—' : _fmcEsc(value)}</div>
+                </div>`;
+    }
+
+    function buildFmcFormHtml(p) {
+        // Erwartet patient-Object mit p.fmc = {section_a..g}.
+        // Liefert komplettes inline-HTML/SVG-String fuer die Replik des
+        // NATO-Field-Medical-Card-Formulars.
+        const fmc = p.fmc || {};
+        const A = fmc.section_a || {};
+        const B = fmc.section_b || {};
+        const C = fmc.section_c || {};
+        const D = Array.isArray(fmc.section_d) ? fmc.section_d : [];
+        const E = fmc.section_e || {};
+        const F = fmc.section_f || {};
+        const G = fmc.section_g || {};
+
+        const region = (C.main_injury_region || '').toLowerCase();
+
+        // Identification-Kopfzeile (5 Felder)
+        const idRow1 = `<div class="fmc-row">
+            ${_fmcCell('Last Name / First Name',
+                      [A.last_name, A.first_name].filter(Boolean).join(', '), 3)}
+            ${_fmcCell('Sex', A.sex, 1)}
+            ${_fmcCell('ID Number', A.service_number, 2)}
+            ${_fmcCell('Date of Birth', A.dob, 2)}
+        </div>`;
+        const idRow2 = `<div class="fmc-row">
+            ${_fmcCell('Unit of Origin', A.unit, 3)}
+            ${_fmcCell('Armed Forces / Nationality', A.nationality, 3)}
+        </div>`;
+
+        // Cause-Zeile
+        const causeRow = `<div class="fmc-row">
+            ${_fmcCell('Mechanism of Injury / Illness', B.mechanism, 3)}
+            ${_fmcCell('Date / Time of Injury', B.datetime_injury, 2)}
+            ${_fmcCell('Time of Examination', C.time_first_assessment, 2)}
+            ${_fmcCell('Allergies', C.allergies, 2)}
+        </div>`;
+
+        // Body-Diagramm + Assessments
+        const assessmentsRows = [
+            { label: 'Massive Bleeding',     val: C.main_injury },
+            { label: 'Airway',               val: C.airway },
+            { label: 'Respirations / Breathing', val: C.breathing },
+            { label: 'Circulation',          val: C.chest },
+            { label: 'Head / Hypothermia',   val: C.additional_injury },
+        ].map(a => `
+            <div class="fmc-asmt-row">
+                <div class="fmc-asmt-label">${a.label}</div>
+                <div class="fmc-asmt-val ${a.val ? '' : 'empty'} fmc-value">${a.val ? _fmcEsc(a.val) : '—'}</div>
+            </div>`).join('');
+        const legendHtml = `
+            <div class="fmc-legend">
+                <div style="font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:0.08em;font-size:10px;margin-bottom:4px">LEGEND</div>
+                <div class="fmc-legend-line"><span class="fmc-legend-glyph">/ /</span>FRACTURE</div>
+                <div class="fmc-legend-line"><span class="fmc-legend-glyph">X</span>INJURY (NO PERFORATION)</div>
+                <div class="fmc-legend-line"><span class="fmc-legend-glyph">○</span>INJURY (PERFORATION)</div>
+                <div class="fmc-legend-line"><span class="fmc-legend-glyph">△</span>HAEMORRHAGE</div>
+                <div class="fmc-legend-line"><span class="fmc-legend-glyph">▽</span>BURNED AREA</div>
+            </div>`;
+        const bodyRow = `<div class="fmc-body-row">
+            <div class="fmc-body-svg-cell">
+                <div style="display:flex;gap:6px;justify-content:center">
+                    ${_fmcSilhouette('front', region)}
+                    ${_fmcSilhouette('back', region)}
+                </div>
+                ${legendHtml}
+            </div>
+            <div class="fmc-assessments-cell">
+                ${assessmentsRows}
+                <div class="fmc-asmt-row" style="background:#ebe7d6">
+                    <div class="fmc-asmt-label">Blood Group</div>
+                    <div class="fmc-asmt-val ${A.blood_type || C.blood_group ? '' : 'empty'} fmc-value">
+                        ${_fmcEsc(C.blood_group || A.blood_type || '—')}
+                    </div>
+                </div>
+                <div class="fmc-asmt-row">
+                    <div class="fmc-asmt-label">LOC</div>
+                    <div class="fmc-asmt-val ${C.loss_of_consciousness ? '' : 'empty'} fmc-value">
+                        ${_fmcEsc(C.loss_of_consciousness || '—')}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+        // Vitals-Tabelle (D)
+        const vitalsHeader = `<tr>
+            <th>Time</th><th>Pulse</th><th>BP</th><th>Resp</th>
+            <th>SpO2</th><th>AVPU/GCS</th><th>Pain (1-10)</th>
+        </tr>`;
+        const vitalRows = (D.length ? D : [{}]).map(v => `<tr>
+            <td>${_fmcEsc(v.time || '')}</td>
+            <td>${_fmcEsc(v.pulse || '')}</td>
+            <td>${_fmcEsc(v.bp || '')}</td>
+            <td>${_fmcEsc(v.resp_rate || '')}</td>
+            <td>${_fmcEsc(v.spo2 || '')}</td>
+            <td>${_fmcEsc(v.gcs || '')}</td>
+            <td>${_fmcEsc(v.pain || '')}</td>
+        </tr>`).join('');
+
+        // Treatment-Tabelle (E)
+        const meds = Array.isArray(E.medications) ? E.medications : [];
+        const fluids = Array.isArray(E.fluids) ? E.fluids : [];
+        const treatHeader = `<tr>
+            <th>Treatment</th><th>Name</th><th>Dose / Volume</th>
+            <th>Route</th><th>Time</th>
+        </tr>`;
+        const treatRows = [];
+        fluids.forEach(f => treatRows.push(`<tr>
+            <td>FLUID</td>
+            <td>${_fmcEsc(f.name || '')}</td>
+            <td>${_fmcEsc(f.volume || '')}</td>
+            <td>${_fmcEsc(f.route || '')}</td>
+            <td>${_fmcEsc(f.time || '')}</td>
+        </tr>`));
+        meds.forEach(m => {
+            const rx = (m.name || '').toLowerCase();
+            const cat = rx.includes('keta') || rx.includes('morph') || rx.includes('fent')
+                ? 'ANALGESIA'
+                : (rx.includes('cef') || rx.includes('amox') || rx.includes('cipro')
+                   ? 'ANTIBIOTICS'
+                   : (rx.includes('txa') ? 'OTHER (TXA)' : 'MED'));
+            treatRows.push(`<tr>
+                <td>${cat}</td>
+                <td>${_fmcEsc(m.name || m.drug || '')}</td>
+                <td>${_fmcEsc(m.dose || '')}</td>
+                <td>${_fmcEsc(m.route || '')}</td>
+                <td>${_fmcEsc(m.time || '')}</td>
+            </tr>`);
+        });
+        if (E.tourniquet) treatRows.push(`<tr>
+            <td>TOURNIQUET</td>
+            <td colspan="3">${_fmcEsc(E.tourniquet)}</td>
+            <td>${_fmcEsc(E.tourniquet_time || '')}</td>
+        </tr>`);
+        if (E.hypothermia_prevention) treatRows.push(`<tr>
+            <td>HYPOTHERMIA</td>
+            <td colspan="4">${_fmcEsc(E.hypothermia_prevention)}</td>
+        </tr>`);
+        if (E.iv_access) treatRows.push(`<tr>
+            <td>IV ACCESS</td>
+            <td colspan="4">${_fmcEsc(E.iv_access)}</td>
+        </tr>`);
+        if (E.immobilization) treatRows.push(`<tr>
+            <td>IMMOBILIZATION</td>
+            <td colspan="4">${_fmcEsc(E.immobilization)}</td>
+        </tr>`);
+        if (treatRows.length === 0) {
+            treatRows.push(`<tr><td colspan="5" style="color:#aaa;font-style:italic">— no treatment recorded —</td></tr>`);
+        }
+
+        // Movement / Evacuation
+        const movRow = `<div class="fmc-row">
+            ${_fmcCell('Evacuation Priority', F.evacuation_priority, 2)}
+            ${_fmcCell('Transport Category', F.transport_category, 2)}
+            ${_fmcCell('Recommended Destination', F.destination, 3)}
+        </div>`;
+        const considerations = Array.isArray(F.considerations) ? F.considerations : [];
+        const consHtml = considerations.length
+            ? `<div class="fmc-cell" style="padding:6px 8px">
+                  <div class="fmc-label">Additional Notes</div>
+                  <div class="fmc-value">
+                    ${considerations.map(c => '• ' + _fmcEsc(c)).join('<br>')}
+                  </div>
+               </div>`
+            : '';
+
+        // Documentation
+        const docRow = `<div class="fmc-row">
+            ${_fmcCell('First Responder', G.recorded_by, 3)}
+            ${_fmcCell('Function', G.function, 2)}
+            ${_fmcCell('ID Number', A.service_number, 2)}
+        </div>`;
+
+        return `
+        <div class="fmc-form" id="fmc-form-${_fmcEsc(p.patient_id)}">
+            <div class="fmc-header">
+                <span class="fmc-rose"></span>
+                <span class="fmc-header-title">NATO Field Medical Card</span>
+                <span class="fmc-rose"></span>
+            </div>
+            <div class="fmc-section">
+                <div class="fmc-section-band">A &nbsp;·&nbsp; Identification</div>
+                ${idRow1}
+                ${idRow2}
+            </div>
+            <div class="fmc-section">
+                <div class="fmc-section-band">B &nbsp;·&nbsp; Cause &nbsp;&middot;&nbsp; C &nbsp;·&nbsp; Initial Assessment</div>
+                ${causeRow}
+                ${bodyRow}
+            </div>
+            <div class="fmc-section">
+                <div class="fmc-section-band">D &nbsp;·&nbsp; Vital Signs</div>
+                <table class="fmc-vitals-table">
+                    <thead>${vitalsHeader}</thead>
+                    <tbody>${vitalRows}</tbody>
+                </table>
+            </div>
+            <div class="fmc-section">
+                <div class="fmc-section-band">E &nbsp;·&nbsp; Treatment</div>
+                <table class="fmc-treat-table">
+                    <thead>${treatHeader}</thead>
+                    <tbody>${treatRows.join('')}</tbody>
+                </table>
+            </div>
+            <div class="fmc-section">
+                <div class="fmc-section-band">F &nbsp;·&nbsp; Movement / Evacuation</div>
+                ${movRow}
+                ${consHtml}
+            </div>
+            <div class="fmc-section">
+                <div class="fmc-section-band">G &nbsp;·&nbsp; Documentation</div>
+                ${docRow}
+            </div>
+        </div>`;
     }
 
     // ============================================================
@@ -7965,6 +8404,7 @@
             // klar als Dokument bzw. Uebergabe erkennbar ist.
             if (p.template_type === '9liner') statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(93,173,226,0.2);color:#5DADE2;border-radius:3px;margin-right:3px" title="9-Liner MEDEVAC-Dokument (kein klassischer Patient)">&#9992; 9-Liner</span>');
             if (p.template_type === 'atmist') statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(200,184,120,0.2);color:#c8b878;border-radius:3px;margin-right:3px" title="ATMIST-Patientenuebergabe">&#127973; ATMIST</span>');
+            if (p.template_type === 'fmc') statusBadges.push('<span style="display:inline-block;padding:1px 6px;font-size:var(--fs-body-sm);background:rgba(204,34,34,0.2);color:#cc2222;border-radius:3px;margin-right:3px" title="NATO Field Medical Card (AMedP-8.1)">&#127973; FMC</span>');
 
             const rfidShort = (p.rfid_tag_id || '').slice(0, 10) || '—';
             // Display-Name: 9-Liner bekommen "MEDEVAC-Anforderung",
@@ -8212,6 +8652,30 @@
                     </div>`
                     : '';
 
+                // FMC Kompakt-Anzeige in der Patient-Card. Klick auf Header
+                // klappt das volle SVG-Formular mit Body-Diagramm aus.
+                const isFmcPatient = p.template_type === 'fmc' || (p.fmc && Object.keys(p.fmc).length > 0);
+                let fmcCardHtml = '';
+                if (isFmcPatient) {
+                    const fmcA = (p.fmc && p.fmc.section_a) || {};
+                    const fmcC = (p.fmc && p.fmc.section_c) || {};
+                    const fmcF = (p.fmc && p.fmc.section_f) || {};
+                    const dCount = Array.isArray(p.fmc && p.fmc.section_d) ? p.fmc.section_d.length : 0;
+                    const eMeds = ((p.fmc && p.fmc.section_e) || {}).medications || [];
+                    fmcCardHtml = `<details style="margin-top:8px;border-left:3px solid var(--mil-red,#cc2222);background:var(--bg-elevated)">
+                        <summary style="padding:6px 8px;cursor:pointer;font-size:var(--fs-body-sm);color:var(--mil-tan,#c8b878);letter-spacing:0.1em;text-transform:uppercase">
+                            &#127973; NATO Field Medical Card &mdash;
+                            <span style="color:var(--text-dim);text-transform:none;letter-spacing:0">
+                                ${(fmcA.last_name || '').toString()}, ${(fmcA.first_name || '').toString()}
+                                &middot; Vitals ${dCount} &middot; Meds ${eMeds.length}
+                                &middot; Evac: ${(fmcF.evacuation_priority || '—')}
+                            </span>
+                            <span style="float:right;color:var(--text-dim);font-size:11px">Klick fuer Formular</span>
+                        </summary>
+                        ${buildFmcFormHtml(p)}
+                    </details>`;
+                }
+
                 // ATMIST Kompakt-Anzeige — sechs-zeilige Patientenuebergabe.
                 // A-T-M-I-S-T mit Buchstaben-Labels statt Lx.
                 const atm = p.atmist || {};
@@ -8329,6 +8793,7 @@
                         <div class="p-badges">
                             ${isNlPatient ? '<span class="badge-sm" style="background:rgba(93,173,226,0.2);color:#5DADE2">&#9992; 9-Liner</span>' : ''}
                             ${isAtmistPatient ? '<span class="badge-sm" style="background:rgba(200,184,120,0.2);color:#c8b878">&#127973; ATMIST</span>' : ''}
+                            ${isFmcPatient ? '<span class="badge-sm" style="background:rgba(204,34,34,0.2);color:#cc2222">&#127973; FMC</span>' : ''}
                             ${warningsBadge}
                             ${auditBadge}
                             ${p.analyzed ? '<span class="badge-sm" style="background:rgba(93,173,226,0.15);color:#5DADE2">analysiert</span>' : ''}
@@ -8341,6 +8806,7 @@
                     </summary>
                     <div class="patient-card-body">
                         <div class="patient-transcripts" data-pid="${p.patient_id}">${transcriptsHtml}</div>
+                        ${fmcCardHtml}
                         ${nineLinerHtml}
                         ${atmistHtml}
                         ${warnings.length ? `<div style="margin-top:8px;padding:6px 8px;background:rgba(212,135,26,0.1);border-left:3px solid var(--mil-amber,#d4871a);font-size:var(--fs-body-sm);color:var(--mil-amber,#d4871a)"><strong>&#9888; Plausibility-Warnungen (${warnings.length}):</strong><ul style="margin:4px 0 0 16px;padding:0">${warnings.map(w => `<li>${(w||'').replace(/</g,'&lt;')}</li>`).join('')}</ul></div>` : ''}
@@ -9331,6 +9797,17 @@
             </div>`;
         }
 
+        // FMC — NATO Field Medical Card. Komplette Replik des
+        // AMedP-8.1-Annex-A-Formulars mit Body-Diagramm.
+        let fmcHtml = '';
+        const isFmcPatient = p.template_type === 'fmc' || (p.fmc && Object.keys(p.fmc).length > 0);
+        if (isFmcPatient) {
+            fmcHtml = `<div class="r1-detail-section" style="border-left:3px solid var(--mil-red,#cc2222);padding-left:10px">
+                <div class="r1-detail-section-title">&#127973; NATO Field Medical Card <span style="font-size:var(--fs-body-sm);color:var(--text-dim);font-weight:400">(AMedP-8.1 Annex A)</span></div>
+                ${buildFmcFormHtml(p)}
+            </div>`;
+        }
+
         // 9-Liner MEDEVAC — NATO ATP-3.7.2 Schema (deutsche Bezeichnungen).
         // Labels mit Code-Hints fuer Demo-Besucher.
         let nineLinerHtml = '';
@@ -9468,6 +9945,7 @@
                             ${p.current_role ? `<div class="r1-detail-field"><div class="field-label">Aktuelle Phase</div><div class="field-value">${p.current_role}</div></div>` : ''}
                         </div>
                     </div>
+                    ${fmcHtml}
                     ${nineLinerHtml}
                     ${atmistDetailHtml}
                     ${injuriesHtml}
