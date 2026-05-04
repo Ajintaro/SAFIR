@@ -2067,6 +2067,172 @@
             margin-bottom: 6px;
         }
         .vf-subtitle { font-size: var(--fs-body-sm); font-style: italic; }
+
+        /* ====================================================================
+           Sicherheits-Animation (3 Akte: Klartext / WireGuard / Zero-Trust)
+           30s Loop, pure CSS-Keyframes, pause/replay via animation-play-state
+           bzw. Re-Mount des Containers (siehe secAnimReplay()).
+           ==================================================================== */
+        .sec-anim-card { padding-bottom: 14px; }
+        .sec-anim-stage {
+            position: relative;
+            width: 100%;
+            background: #06080a;
+            border: 1px solid var(--mil-tan, #c8b878);
+            overflow: hidden;
+        }
+        .sec-anim-svg { display: block; width: 100%; height: auto; }
+        .sec-anim-stage:fullscreen,
+        .sec-anim-stage:-webkit-full-screen {
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+        }
+        .sec-anim-stage:fullscreen .sec-anim-svg { max-height: 90vh; }
+
+        .sec-anim-caption {
+            position: relative;
+            min-height: 78px;
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(200,184,120,0.18);
+            background: linear-gradient(180deg, rgba(15,18,9,0.9), rgba(6,8,10,0.0));
+        }
+        .sec-anim-cap {
+            position: absolute;
+            inset: 12px 16px auto 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            opacity: 0;
+            animation: secCapCycle 30s linear infinite;
+        }
+        .sec-anim-cap-1 { animation-delay: 0s; }
+        .sec-anim-cap-2 { animation-delay: 10s; }
+        .sec-anim-cap-3 { animation-delay: 20s; }
+        @keyframes secCapCycle {
+            0%   { opacity: 0; transform: translateY(6px); }
+            3%   { opacity: 1; transform: translateY(0); }
+            30%  { opacity: 1; }
+            33%  { opacity: 0; transform: translateY(-6px); }
+            100% { opacity: 0; }
+        }
+        .sec-anim-act {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px; letter-spacing: 0.18em; color: #cc2222;
+            text-transform: uppercase;
+        }
+        .sec-anim-act-green { color: #5a9e3a; }
+        .sec-anim-act-tan { color: var(--mil-tan, #c8b878); }
+        .sec-anim-headline {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 18px; letter-spacing: 0.14em; color: #f0e8c4;
+            text-transform: uppercase; font-weight: 700;
+        }
+        .sec-anim-sub {
+            font-size: 12.5px; line-height: 1.45;
+            color: #b8b39a; max-width: 760px;
+        }
+
+        /* Akt-Container: pro Akt 10s sichtbar, dann ausgeblendet */
+        .sec-act-1, .sec-act-2, .sec-act-3 {
+            opacity: 0;
+            animation: secActCycle 30s linear infinite;
+        }
+        .sec-act-1 { animation-delay: 0s; }
+        .sec-act-2 { animation-delay: 10s; }
+        .sec-act-3 { animation-delay: 20s; }
+        @keyframes secActCycle {
+            0%   { opacity: 0; }
+            2%   { opacity: 1; }
+            32%  { opacity: 1; }
+            34%  { opacity: 0; }
+            100% { opacity: 0; }
+        }
+
+        /* AKT 1 — Klartext-Pakete fliegen von links nach rechts */
+        .sec-pkt-clear { animation: secPktFly 3s linear infinite; }
+        .sec-pkt-1 { animation-delay: 0.2s; }
+        .sec-pkt-2 { animation-delay: 1.4s; }
+        .sec-pkt-3 { animation-delay: 2.6s; }
+        @keyframes secPktFly {
+            0%   { transform: translateX(150px); opacity: 0; }
+            8%   { opacity: 1; }
+            92%  { opacity: 1; }
+            100% { transform: translateX(700px); opacity: 0; }
+        }
+        .sec-attacker { animation: secPulse 1.6s ease-in-out infinite; transform-origin: 400px 260px; }
+        @keyframes secPulse {
+            0%, 100% { opacity: 1; }
+            50%      { opacity: 0.55; }
+        }
+
+        /* AKT 2 — Handshake fade-in, Tunnel scale-in, verschluesselte Pakete */
+        .sec-handshake { animation: secHandshake 30s linear infinite; animation-delay: 10s; opacity: 0; }
+        @keyframes secHandshake {
+            0%   { opacity: 0; }
+            2%   { opacity: 1; }
+            12%  { opacity: 1; }
+            18%  { opacity: 0; }
+            100% { opacity: 0; }
+        }
+        .sec-tunnel { animation: secTunnelIn 30s linear infinite; animation-delay: 10s; opacity: 0; transform-origin: 400px 170px; }
+        @keyframes secTunnelIn {
+            0%   { opacity: 0; transform: scaleX(0.05); }
+            10%  { opacity: 1; transform: scaleX(1); }
+            33%  { opacity: 1; transform: scaleX(1); }
+            34%  { opacity: 0; }
+            100% { opacity: 0; }
+        }
+        .sec-pkt-enc { animation: secPktFlyEnc 2.8s linear infinite; animation-delay: 12s; }
+        .sec-pkt-e1 { animation-delay: 12.5s; }
+        .sec-pkt-e2 { animation-delay: 13.6s; }
+        .sec-pkt-e3 { animation-delay: 14.8s; }
+        @keyframes secPktFlyEnc {
+            0%   { transform: translateX(150px); opacity: 0; }
+            8%   { opacity: 1; }
+            92%  { opacity: 1; }
+            100% { transform: translateX(700px); opacity: 0; }
+        }
+        .sec-attacker-puzzled { animation: secCapCycle 30s linear infinite; animation-delay: 10s; }
+        .sec-rekey { animation: secCapCycle 30s linear infinite; animation-delay: 11s; }
+
+        /* AKT 3 — Cloud + Public-Key-Linien + Direct-P2P */
+        .sec-cloud { animation: secCloudIn 30s linear infinite; animation-delay: 20s; opacity: 0; transform-origin: 400px 50px; }
+        @keyframes secCloudIn {
+            0%   { opacity: 0; transform: translateY(-20px) scale(0.6); }
+            8%   { opacity: 1; transform: translateY(0) scale(1); }
+            32%  { opacity: 1; }
+            34%  { opacity: 0; }
+            100% { opacity: 0; }
+        }
+        .sec-pubkey-lines { animation: secCapCycle 30s linear infinite; animation-delay: 21s; }
+        .sec-direct { animation: secCapCycle 30s linear infinite; animation-delay: 22s; }
+        .sec-cloud-note { animation: secCapCycle 30s linear infinite; animation-delay: 23s; }
+
+        /* Phasen-Indikator-Balken */
+        .sec-progress-bar {
+            transform-origin: left center;
+            animation: secProgress 30s linear infinite;
+        }
+        @keyframes secProgress {
+            0%   { transform: scaleX(0); }
+            100% { transform: scaleX(1); }
+        }
+
+        /* Pause-State: alle Animationen anhalten */
+        .sec-anim-card.paused .sec-anim-svg *,
+        .sec-anim-card.paused .sec-anim-caption * {
+            animation-play-state: paused !important;
+        }
+
+        /* Reduced-Motion respektieren */
+        @media (prefers-reduced-motion: reduce) {
+            .sec-anim-svg *, .sec-anim-caption * {
+                animation-duration: 60s !important;
+            }
+        }
     </style>
 </head>
 <body data-theme="dark">
@@ -3021,7 +3187,190 @@
                         <div class="settings-title">&#128273; Sicherheit</div>
                         <div class="settings-desc">Wie SAFIR Patientendaten zwischen Feldgerät und Leitstelle schützt.</div>
 
-                        <div class="settings-card">
+                        <!-- Animierte Visualisierung des Sicherheitskonzepts.
+                             3 Akte (Klartext / WireGuard / Zero-Trust-Cloud), 30 s Loop.
+                             Pure SVG + CSS-Keyframes, keine Libraries. Pause/Replay/Fullscreen. -->
+                        <div class="settings-card sec-anim-card" id="sec-anim-card">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+                                <div class="settings-card-title" style="margin:0">&#127916; Sicherheit in 30 Sekunden</div>
+                                <div style="display:flex;gap:6px">
+                                    <button class="btn" id="sec-anim-toggle" onclick="secAnimToggle()" style="padding:4px 10px;font-size:var(--fs-body-sm);min-width:90px">&#9208;&#65039; Pause</button>
+                                    <button class="btn" onclick="secAnimReplay()" style="padding:4px 10px;font-size:var(--fs-body-sm)">&#8634; Replay</button>
+                                    <button class="btn" onclick="secAnimFullscreen()" style="padding:4px 10px;font-size:var(--fs-body-sm)">&#9974; Vollbild</button>
+                                </div>
+                            </div>
+
+                            <div class="sec-anim-stage" id="sec-anim-stage">
+                                <!-- Caption-Bar (synchron mit Animation) -->
+                                <div class="sec-anim-caption">
+                                    <div class="sec-anim-cap sec-anim-cap-1">
+                                        <span class="sec-anim-act">AKT 1 / 3</span>
+                                        <span class="sec-anim-headline">OHNE SCHUTZ</span>
+                                        <span class="sec-anim-sub">Patientendaten würden im Klartext durchs Funknetz laufen — jeder im selben WLAN könnte mitlesen.</span>
+                                    </div>
+                                    <div class="sec-anim-cap sec-anim-cap-2">
+                                        <span class="sec-anim-act sec-anim-act-green">AKT 2 / 3</span>
+                                        <span class="sec-anim-headline">WIREGUARD-TUNNEL</span>
+                                        <span class="sec-anim-sub">ChaCha20-Poly1305 verschlüsselt jedes Paket Ende-zu-Ende. Was der Angreifer sieht: kryptografisches Rauschen.</span>
+                                    </div>
+                                    <div class="sec-anim-cap sec-anim-cap-3">
+                                        <span class="sec-anim-act sec-anim-act-tan">AKT 3 / 3</span>
+                                        <span class="sec-anim-headline">ZERO-TRUST CLOUD</span>
+                                        <span class="sec-anim-sub">Tailscale koordiniert nur über Public Keys. Patientendaten gehen direkt Peer-to-Peer — die Cloud sieht sie nie.</span>
+                                    </div>
+                                </div>
+
+                                <!-- SVG Animation -->
+                                <svg viewBox="0 0 800 340" class="sec-anim-svg" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                                    <!-- Hintergrund-Grid (taktischer Look) -->
+                                    <defs>
+                                        <pattern id="secGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+                                            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(200,184,120,0.05)" stroke-width="1"/>
+                                        </pattern>
+                                        <!-- Glow-Filter fuer aktive Elemente -->
+                                        <filter id="secGlowGreen" x="-50%" y="-50%" width="200%" height="200%">
+                                            <feGaussianBlur stdDeviation="3" result="blur"/>
+                                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                        </filter>
+                                        <filter id="secGlowRed" x="-50%" y="-50%" width="200%" height="200%">
+                                            <feGaussianBlur stdDeviation="2" result="blur"/>
+                                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                        </filter>
+                                    </defs>
+                                    <rect width="800" height="340" fill="url(#secGrid)"/>
+
+                                    <!-- Endgeraete: Jetson links, Surface rechts -->
+                                    <g class="sec-node sec-node-jetson">
+                                        <rect x="40" y="130" width="110" height="80" rx="0" fill="#0f1209" stroke="#c8b878" stroke-width="2"/>
+                                        <!-- Bracket-Corners im Mil-Look -->
+                                        <path d="M 40 138 L 40 130 L 48 130 M 142 130 L 150 130 L 150 138 M 40 202 L 40 210 L 48 210 M 142 210 L 150 210 L 150 202" fill="none" stroke="#c8b878" stroke-width="2"/>
+                                        <text x="95" y="160" text-anchor="middle" fill="#c8b878" font-family="Rajdhani,sans-serif" font-size="14" font-weight="700" letter-spacing="2">JETSON BAT</text>
+                                        <text x="95" y="180" text-anchor="middle" fill="#5a9e3a" font-family="Share Tech Mono,monospace" font-size="11">FELDGERAET</text>
+                                        <!-- Sani-Icon -->
+                                        <circle cx="95" cy="200" r="5" fill="#5a9e3a"/>
+                                    </g>
+                                    <g class="sec-node sec-node-surface">
+                                        <rect x="650" y="130" width="110" height="80" rx="0" fill="#0f1209" stroke="#c8b878" stroke-width="2"/>
+                                        <path d="M 650 138 L 650 130 L 658 130 M 752 130 L 760 130 L 760 138 M 650 202 L 650 210 L 658 210 M 752 210 L 760 210 L 760 202" fill="none" stroke="#c8b878" stroke-width="2"/>
+                                        <text x="705" y="160" text-anchor="middle" fill="#c8b878" font-family="Rajdhani,sans-serif" font-size="14" font-weight="700" letter-spacing="2">SURFACE R1</text>
+                                        <text x="705" y="180" text-anchor="middle" fill="#5a9e3a" font-family="Share Tech Mono,monospace" font-size="11">LEITSTELLE</text>
+                                        <circle cx="705" cy="200" r="5" fill="#5a9e3a"/>
+                                    </g>
+
+                                    <!-- Funk-Strecke Linie -->
+                                    <line x1="150" y1="170" x2="650" y2="170" stroke="#3a3a2a" stroke-width="1" stroke-dasharray="4 4"/>
+
+                                    <!-- AKT 1: Klartext-Pakete + Angreifer -->
+                                    <g class="sec-act-1">
+                                        <!-- 3 Pakete fliegen rueber, jeweils versetzt animiert -->
+                                        <g class="sec-pkt sec-pkt-clear sec-pkt-1">
+                                            <rect x="-50" y="155" width="100" height="30" fill="#2a1010" stroke="#cc2222" stroke-width="1.5"/>
+                                            <text x="0" y="175" text-anchor="middle" fill="#ff5555" font-family="Share Tech Mono,monospace" font-size="11">SCHUSSVERL.</text>
+                                        </g>
+                                        <g class="sec-pkt sec-pkt-clear sec-pkt-2">
+                                            <rect x="-50" y="155" width="100" height="30" fill="#2a1010" stroke="#cc2222" stroke-width="1.5"/>
+                                            <text x="0" y="175" text-anchor="middle" fill="#ff5555" font-family="Share Tech Mono,monospace" font-size="11">PULS 120</text>
+                                        </g>
+                                        <g class="sec-pkt sec-pkt-clear sec-pkt-3">
+                                            <rect x="-50" y="155" width="100" height="30" fill="#2a1010" stroke="#cc2222" stroke-width="1.5"/>
+                                            <text x="0" y="175" text-anchor="middle" fill="#ff5555" font-family="Share Tech Mono,monospace" font-size="11">SO2 88%</text>
+                                        </g>
+                                        <!-- Angreifer unter der Strecke -->
+                                        <g class="sec-attacker" transform="translate(400,260)">
+                                            <circle r="22" fill="#1a0a0a" stroke="#cc2222" stroke-width="2" filter="url(#secGlowRed)"/>
+                                            <text y="6" text-anchor="middle" font-size="22">&#128373;</text>
+                                            <text y="42" text-anchor="middle" fill="#cc2222" font-family="Rajdhani,sans-serif" font-size="11" font-weight="700" letter-spacing="1.5">ANGREIFER LIEST MIT</text>
+                                            <!-- Pfeile von Strecke zu Angreifer -->
+                                            <line x1="0" y1="-22" x2="0" y2="-90" stroke="#cc2222" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>
+                                        </g>
+                                    </g>
+
+                                    <!-- AKT 2: Tunnel + verschluesselte Pakete -->
+                                    <g class="sec-act-2">
+                                        <!-- Handshake-Pfeile (kurz im Uebergang) -->
+                                        <g class="sec-handshake">
+                                            <text x="400" y="105" text-anchor="middle" fill="#5a9e3a" font-family="Share Tech Mono,monospace" font-size="11">CURVE25519 KEY-EXCHANGE</text>
+                                            <path d="M 160 120 Q 400 90 640 120" fill="none" stroke="#5a9e3a" stroke-width="1.5" stroke-dasharray="6 4"/>
+                                        </g>
+                                        <!-- Tunnel-Box (gruen, geschlossen) -->
+                                        <g class="sec-tunnel" filter="url(#secGlowGreen)">
+                                            <rect x="155" y="148" width="490" height="44" fill="rgba(90,158,58,0.08)" stroke="#5a9e3a" stroke-width="2" stroke-dasharray="8 4"/>
+                                            <text x="400" y="142" text-anchor="middle" fill="#5a9e3a" font-family="Rajdhani,sans-serif" font-size="12" font-weight="700" letter-spacing="2">WIREGUARD TUNNEL · CHACHA20-POLY1305</text>
+                                            <!-- Schloss-Symbol -->
+                                            <text x="400" y="178" text-anchor="middle" font-size="22">&#128274;</text>
+                                        </g>
+                                        <!-- 3 verschluesselte Pakete -->
+                                        <g class="sec-pkt sec-pkt-enc sec-pkt-e1">
+                                            <rect x="-50" y="155" width="100" height="30" fill="#0a1a0a" stroke="#5a9e3a" stroke-width="1.5"/>
+                                            <text x="0" y="175" text-anchor="middle" fill="#5a9e3a" font-family="Share Tech Mono,monospace" font-size="11">A3F8 9C2E</text>
+                                        </g>
+                                        <g class="sec-pkt sec-pkt-enc sec-pkt-e2">
+                                            <rect x="-50" y="155" width="100" height="30" fill="#0a1a0a" stroke="#5a9e3a" stroke-width="1.5"/>
+                                            <text x="0" y="175" text-anchor="middle" fill="#5a9e3a" font-family="Share Tech Mono,monospace" font-size="11">7B11 D4E0</text>
+                                        </g>
+                                        <g class="sec-pkt sec-pkt-enc sec-pkt-e3">
+                                            <rect x="-50" y="155" width="100" height="30" fill="#0a1a0a" stroke="#5a9e3a" stroke-width="1.5"/>
+                                            <text x="0" y="175" text-anchor="middle" fill="#5a9e3a" font-family="Share Tech Mono,monospace" font-size="11">5C92 0F3A</text>
+                                        </g>
+                                        <!-- Angreifer ratlos -->
+                                        <g class="sec-attacker-puzzled" transform="translate(400,260)">
+                                            <circle r="22" fill="#1a1410" stroke="#666" stroke-width="2"/>
+                                            <text y="6" text-anchor="middle" font-size="22" opacity="0.4">&#128373;</text>
+                                            <text x="22" y="-12" text-anchor="middle" fill="#d4871a" font-family="Rajdhani,sans-serif" font-size="20" font-weight="700">?</text>
+                                            <text y="42" text-anchor="middle" fill="#888" font-family="Rajdhani,sans-serif" font-size="11" font-weight="700" letter-spacing="1.5">ANGREIFER SIEHT NUR RAUSCHEN</text>
+                                        </g>
+                                        <!-- Re-Key Counter -->
+                                        <g class="sec-rekey">
+                                            <rect x="320" y="220" width="160" height="22" fill="#0f1209" stroke="#5a9e3a" stroke-width="1"/>
+                                            <text x="400" y="236" text-anchor="middle" fill="#5a9e3a" font-family="Share Tech Mono,monospace" font-size="11">RE-KEY ALLE 2 MIN &#9203;</text>
+                                        </g>
+                                    </g>
+
+                                    <!-- AKT 3: Tailscale-Cloud / Zero-Trust -->
+                                    <g class="sec-act-3">
+                                        <!-- Tailscale-Cloud oben -->
+                                        <g class="sec-cloud">
+                                            <ellipse cx="400" cy="50" rx="90" ry="28" fill="#0f1209" stroke="#c8b878" stroke-width="2"/>
+                                            <text x="400" y="46" text-anchor="middle" fill="#c8b878" font-family="Rajdhani,sans-serif" font-size="13" font-weight="700" letter-spacing="2">TAILSCALE CLOUD</text>
+                                            <text x="400" y="62" text-anchor="middle" fill="#888" font-family="Share Tech Mono,monospace" font-size="10">KOORDINATION</text>
+                                        </g>
+                                        <!-- Public-Key-Linien zur Cloud (gepunktet, dim) -->
+                                        <g class="sec-pubkey-lines">
+                                            <line x1="95" y1="130" x2="340" y2="65" stroke="#888" stroke-width="1" stroke-dasharray="3 4" opacity="0.6"/>
+                                            <line x1="705" y1="130" x2="460" y2="65" stroke="#888" stroke-width="1" stroke-dasharray="3 4" opacity="0.6"/>
+                                            <text x="220" y="92" fill="#888" font-family="Share Tech Mono,monospace" font-size="10" transform="rotate(-15 220 92)">NUR PUBLIC KEY</text>
+                                            <text x="580" y="92" fill="#888" font-family="Share Tech Mono,monospace" font-size="10" transform="rotate(15 580 92)">NUR PUBLIC KEY</text>
+                                        </g>
+                                        <!-- Direct-P2P-Pfeil zwischen Endgeraeten (durchgezogen, gruen) -->
+                                        <g class="sec-direct">
+                                            <path d="M 150 170 L 650 170" fill="none" stroke="#5a9e3a" stroke-width="3" filter="url(#secGlowGreen)"/>
+                                            <polygon points="640,164 650,170 640,176" fill="#5a9e3a"/>
+                                            <polygon points="160,164 150,170 160,176" fill="#5a9e3a"/>
+                                            <rect x="320" y="180" width="160" height="22" fill="#0a1a0a" stroke="#5a9e3a" stroke-width="1"/>
+                                            <text x="400" y="196" text-anchor="middle" fill="#5a9e3a" font-family="Share Tech Mono,monospace" font-size="11">DIRECT PEER-TO-PEER</text>
+                                        </g>
+                                        <!-- Cloud-Annotation (das was sie NICHT sieht) -->
+                                        <g class="sec-cloud-note">
+                                            <text x="400" y="230" text-anchor="middle" fill="#cc2222" font-family="Rajdhani,sans-serif" font-size="12" font-weight="700" letter-spacing="1.5">&#10060; CLOUD SIEHT KEINE PATIENTENDATEN</text>
+                                            <text x="400" y="248" text-anchor="middle" fill="#888" font-family="Share Tech Mono,monospace" font-size="10">Schluesselpaare bleiben ausschliesslich auf den Endgeraeten</text>
+                                        </g>
+                                    </g>
+
+                                    <!-- Phasen-Indikator unten rechts -->
+                                    <g class="sec-phase-bar">
+                                        <rect x="640" y="320" width="40" height="6" fill="#1a1a10" stroke="#3a3a2a"/>
+                                        <rect x="640" y="320" width="40" height="6" fill="#5a9e3a" class="sec-progress-bar"/>
+                                        <text x="635" y="326" text-anchor="end" fill="#888" font-family="Share Tech Mono,monospace" font-size="9">ANIM</text>
+                                    </g>
+                                </svg>
+                            </div>
+
+                            <div style="margin-top:10px;padding:8px 10px;background:var(--bg-elevated);border-left:3px solid var(--mil-tan,#c8b878);font-size:var(--fs-body-sm);color:var(--text-secondary);line-height:1.55">
+                                <strong>Für Mitarbeiter-Pitches:</strong> Die Animation läuft als 30-Sekunden-Loop und zeigt den Schutzmechanismus in drei Akten — Bedrohung, WireGuard-Tunnel, Zero-Trust-Cloud. Im Vollbild als Pitch-Hilfe für Demos und Kundengespräche nutzbar.
+                            </div>
+                        </div>
+
+                        <div class="settings-card"><!-- bestehender Architektur-ueberblick -->
                             <div class="settings-card-title">Architektur-Überblick</div>
                             <pre style="margin:0;padding:14px;background:var(--bg-elevated);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:var(--fs-body-sm);line-height:1.5;color:var(--text-secondary);white-space:pre;overflow-x:auto">
 [Jetson BAT] ──┐                                    ┌── [Surface R1]
@@ -4899,6 +5248,45 @@
             return d.toLocaleString('de-DE', {dateStyle: 'short', timeStyle: 'short'});
         } catch(e) { return iso; }
     }
+
+    // ---- Sicherheits-Animation: Pause / Replay / Fullscreen ----------------
+    function secAnimToggle() {
+        const card = document.getElementById('sec-anim-card');
+        const btn  = document.getElementById('sec-anim-toggle');
+        if (!card || !btn) return;
+        card.classList.toggle('paused');
+        btn.innerHTML = card.classList.contains('paused')
+            ? '▶️ Play'
+            : '⏸️ Pause';
+    }
+    function secAnimReplay() {
+        // Trick: wir entfernen alle CSS-Animationen, erzwingen einen Reflow
+        // und setzen sie wieder — das startet jede Animation neu von 0.
+        const card = document.getElementById('sec-anim-card');
+        if (!card) return;
+        card.classList.remove('paused');
+        const btn = document.getElementById('sec-anim-toggle');
+        if (btn) btn.innerHTML = '⏸️ Pause';
+        const animated = card.querySelectorAll('.sec-anim-svg *, .sec-anim-caption *');
+        animated.forEach(el => {
+            const orig = el.style.animation;
+            el.style.animation = 'none';
+            // Reflow
+            void el.offsetWidth;
+            el.style.animation = '';
+        });
+    }
+    function secAnimFullscreen() {
+        const stage = document.getElementById('sec-anim-stage');
+        if (!stage) return;
+        const fn = stage.requestFullscreen || stage.webkitRequestFullscreen;
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        } else if (fn) {
+            fn.call(stage).catch(() => {});
+        }
+    }
+
     async function refreshTailscaleStatus() {
         const body = document.getElementById('tailscale-status-body');
         if (!body) return;
