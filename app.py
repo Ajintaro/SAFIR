@@ -6811,10 +6811,16 @@ async def data_test_generate(body: dict | None = None):
     B4 Preset-Demo-Szenarien: body.scenario waehlt ein vordefiniertes
     Setup (fuer Messe-Demos wenn Live-Diktat schiefgeht). Unterstuetzte
     Werte:
-      "standard"    (Default) - Mix aus registriert/analysiert/gemeldet
-      "mass_cas"    Massenanfall 10 Patienten, Triage-Mix rot/gelb/gruen
-      "nine_liner"  9-Liner MEDEVAC-Demo (1 Patient mit vollem 9-Liner)
-      "role1"       2 Patienten schon analyzed + synced (Uebergabe-Szene)
+      "standard"               (Default) Mix aus registriert/analysiert/gemeldet
+      "mass_cas"               Massenanfall 10 Patienten, Triage-Mix
+      "nine_liner"             9-Liner MEDEVAC-Demo (analysierter Patient)
+      "nine_liner_pending"     Deutscher 9-Liner als unanalysierter Pending
+      "nine_liner_pending_en"  Englischer 9-Liner (NATO-Format) als Pending
+      "fmc_pending"            NATO Field Medical Card als Pending
+      "atmist_pending"         ATMIST-Uebergabe als Pending
+      "role1"                  2 Patienten analyzed + synced (Uebergabe)
+    Alle Werte (Namen, Vitals, MGRS, Callsigns) sind randomisiert,
+    Struktur und Demo-Story bleiben pro Szenario identisch.
     """
     require_unlocked()  # Phase 11
     import copy as _copy
@@ -6963,6 +6969,34 @@ async def data_test_generate(body: dict | None = None):
                 f"Zeile acht: Charlie, Non-U.S. military, Bundeswehr-Patient. "
                 f"Zeile neun: November, keine bekannte CBRN-Kontamination."
             ),
+        }]
+
+    elif scenario == "nine_liner_pending_en":
+        # Englischer 9-Liner als Pending-Diktat (Anhang A, Demo fuer
+        # multinationale Einsaetze). Voll randomisiert (MGRS, Pickup-Site,
+        # Callsign, Anzahl, Prioritaet, Sicherheit, Markierung, Nationalitaet,
+        # NBC). Jeder Klick liefert ein anderes Szenario, Struktur bleibt.
+        text_en, fields_en = _rnd.render_nine_liner_en()
+        test_patients = []
+        pending_texts = [{
+            "is_nine_liner_en": True,
+            "language": "en",
+            "text": text_en,
+            "preview_fields": fields_en,  # zum Anzeigen vor der Analyse
+        }]
+
+    elif scenario == "fmc_pending":
+        # NATO Field Medical Card als Pending-Diktat (Anhang B + AMedP-8.1).
+        # Voll randomisiert (Identitaet, Mechanismus, Vitals, Behandlungs-
+        # zeitleiste, Medikation, Evak-Prioritaet). Felder im preview_fmc-
+        # Block sind die Soll-Extraktion fuer Sektionen A-G.
+        text_fmc, fmc_fields = _rnd.render_fmc_en()
+        test_patients = []
+        pending_texts = [{
+            "is_fmc": True,
+            "language": "en",
+            "text": text_fmc,
+            "preview_fmc": fmc_fields,
         }]
 
     elif scenario == "atmist_pending":
@@ -7151,15 +7185,24 @@ async def data_test_generate(body: dict | None = None):
     created_pending = []
     for idx, item in enumerate(pending_texts, start=1):
         # item ist entweder ein String (alte Szenarien) ODER ein Dict mit
-        # zusaetzlichen Template-Flags (nine_liner_pending / atmist_pending).
+        # zusaetzlichen Template-Flags (nine_liner_pending / atmist_pending /
+        # nine_liner_pending_en / fmc_pending).
         if isinstance(item, dict):
             full_text = item.get("text", "")
             is_nl = bool(item.get("is_nine_liner"))
             is_atm = bool(item.get("is_atmist"))
+            is_nl_en = bool(item.get("is_nine_liner_en"))
+            is_fmc = bool(item.get("is_fmc"))
+            language = item.get("language", "de")
+            preview_fields = item.get("preview_fields") or item.get("preview_fmc")
         else:
             full_text = str(item)
             is_nl = False
             is_atm = False
+            is_nl_en = False
+            is_fmc = False
+            language = "de"
+            preview_fields = None
         pending_id = f"TEST-P{idx:02d}-{_uuid_p.uuid4().hex[:6].upper()}"
         entry = {
             "id": pending_id,
@@ -7173,7 +7216,12 @@ async def data_test_generate(body: dict | None = None):
             "created_patient_ids": [],
             "is_nine_liner": is_nl,
             "is_atmist": is_atm,
+            "is_nine_liner_en": is_nl_en,
+            "is_fmc": is_fmc,
+            "language": language,
         }
+        if preview_fields:
+            entry["preview_fields"] = preview_fields
         state.pending_transcripts.append(entry)
         created_pending.append(pending_id)
 
