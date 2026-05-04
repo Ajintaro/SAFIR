@@ -8882,6 +8882,7 @@
                             const lbl = ATMIST_LABELS[i-1];
                             return `<div style="display:flex;gap:6px;${v?'':'opacity:0.35'}"><span style="color:var(--mil-tan,#c8b878);min-width:22px;font-weight:700">${lbl}</span><span>${v || '—'}</span></div>`;
                         }).join('')}
+                        ${nl.remarks ? `<div style="display:flex;gap:6px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--border)"><span style="color:var(--mil-tan,#c8b878);min-width:22px">RE</span><span>${nl.remarks}</span></div>` : ''}
                     </div>`
                     : '';
 
