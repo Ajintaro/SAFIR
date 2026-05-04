@@ -91,6 +91,7 @@
             <a href="#hb-settings">10. Einstellungen-Tour</a>
             <a href="#hb-troubleshoot">11. Troubleshooting</a>
             <a href="#hb-glossar">12. Glossar</a>
+            <a href="#hb-techstack">13. Tech-Stack (Messe)</a>
         </aside>
 
         <!-- ================== CONTENT ================== -->
@@ -123,7 +124,7 @@
                         <rect x="150" y="60" width="110" height="90" fill="#1a2012" stroke="#c8b878" stroke-width="2" rx="4"/>
                         <text x="205" y="80" text-anchor="middle" fill="#c8b878" font-size="11" font-weight="700">ROLE 1</text>
                         <text x="205" y="98" text-anchor="middle" fill="#c8b878" font-size="10">Rettungsstation</text>
-                        <text x="205" y="116" text-anchor="middle" fill="#9aa09a" font-size="9">MS Surface</text>
+                        <text x="205" y="116" text-anchor="middle" fill="#9aa09a" font-size="9">SINA Workstation</text>
                         <text x="205" y="130" text-anchor="middle" fill="#9aa09a" font-size="9">Erste aerztl.</text>
                         <text x="205" y="144" text-anchor="middle" fill="#9aa09a" font-size="9">Behandlung</text>
                         <!-- Role 2 -->
@@ -161,7 +162,7 @@
                 <h2>Wer nutzt welches Gerät?</h2>
                 <ul>
                     <li><strong>Sanitäter im Feld (Phase 0):</strong>Jetson Orin Nano — batteriebetrieben, headless, mit 2 physischen Tastern, OLED-Display und RFID-Reader. Diktat erfolgt per Mikrofon direkt am Feldgerät.</li>
-                    <li><strong>Arzt in der Rettungsstation (Role 1):</strong>Microsoft Surface — Web-UI mit taktischer Lagekarte, Patientendatenbank, Triage-Counts und Omnikey-Kartenleser für direkte Patientenaufrufung.</li>
+                    <li><strong>Arzt in der Rettungsstation (Role 1):</strong>SINA Workstation (Windows) — Web-UI mit taktischer Lagekarte, Patientendatenbank, Triage-Counts und Omnikey-Kartenleser für direkte Patientenaufrufung. Vorgaenger war eine Microsoft Surface, ersetzt im Mai 2026 wegen BSI-VS-NfD-Anforderung.</li>
                 </ul>
 
                 <h2>Was macht SAFIR NICHT?</h2>
@@ -192,7 +193,7 @@
                     </div>
                     <div>
                         <h3>Leitstelle (Role 1)</h3>
-                        <p><strong>Microsoft Surface</strong>mit Windows, Tailscale-Hostname <code>ai-station</code>.</p>
+                        <p><strong>SINA Workstation</strong>(secunet, BSI-zugelassen für VS-NfD) mit Windows, im Tailnet als <code>desktop-45t6p3p</code>(Default-Windows-Name). Im Mai 2026 als Ersatz für die alte Microsoft Surface (Hostname <code>ai-station</code>) eingeführt.</p>
                         <ul>
                             <li>Web-Dashboard mit taktischer Lagekarte (Leaflet)</li>
                             <li>Patientendatenbank mit Volltext-Durchsuchung</li>
@@ -228,10 +229,10 @@
                         <text x="270" y="172" text-anchor="middle" fill="#6a6e68" font-size="11">BAT-N</text>
                         <text x="270" y="192" text-anchor="middle" fill="#6a6e68" font-size="9" font-style="italic">weitere</text>
                         <text x="270" y="205" text-anchor="middle" fill="#6a6e68" font-size="9" font-style="italic">Feldgeraete</text>
-                        <!-- Surface -->
+                        <!-- SINA -->
                         <rect x="500" y="150" width="160" height="80" fill="#1a2012" stroke="#c8b878" stroke-width="2" rx="4"/>
-                        <text x="580" y="172" text-anchor="middle" fill="#c8b878" font-size="12" font-weight="700">Surface</text>
-                        <text x="580" y="190" text-anchor="middle" fill="#c8b878" font-size="9">ai-station · 100.101.80.64</text>
+                        <text x="580" y="172" text-anchor="middle" fill="#c8b878" font-size="12" font-weight="700">SINA Workstation</text>
+                        <text x="580" y="190" text-anchor="middle" fill="#c8b878" font-size="9">100.95.246.25</text>
                         <text x="580" y="205" text-anchor="middle" fill="#9aa09a" font-size="9">Role 1 Leitstelle</text>
                         <text x="580" y="220" text-anchor="middle" fill="#9aa09a" font-size="9">:8080</text>
                         <!-- Pfeile -->
@@ -239,7 +240,7 @@
                         <line x1="270" y1="150" x2="330" y2="102" stroke="#5DADE2" stroke-width="1" stroke-dasharray="3,3"/>
                         <line x1="580" y1="150" x2="450" y2="102" stroke="#5DADE2" stroke-width="1.5" marker-end="url(#arrow-net)"/>
                         <!-- Label -->
-                        <text x="350" y="255" text-anchor="middle" fill="#7a8478" font-size="10" font-style="italic">Bidirektional: Jetson pusht via POST /api/ingest, Surface broadcastet Updates via WebSocket</text>
+                        <text x="350" y="255" text-anchor="middle" fill="#7a8478" font-size="10" font-style="italic">Bidirektional: Jetson pusht via POST /api/ingest, SINA broadcastet Updates via WebSocket</text>
                     </svg>
                     <div class="hb-mock-caption">Abb. 2 — Netzwerk-Topologie mit Tailscale-Mesh</div>
                 </div>
@@ -264,8 +265,8 @@
                             <td><code>http://localhost:8080</code></td>
                         </tr>
                         <tr>
-                            <td>Surface (Leitstelle)</td>
-                            <td><code>https://ai-station.tail0fe60f.ts.net/</code></td>
+                            <td>SINA Workstation (Leitstelle)</td>
+                            <td><code>https://desktop-45t6p3p.tail0fe60f.ts.net/</code></td>
                             <td><code>http://localhost:8080</code></td>
                         </tr>
                     </tbody>
@@ -352,13 +353,13 @@
                     <div class="hb-mock-caption">Abb. 3 — Jetson-Hardware-Layout (schematisch)</div>
                 </div>
 
-                <h2>Rettungsstation öffnen (Surface)</h2>
+                <h2>Rettungsstation öffnen (SINA Workstation)</h2>
                 <div class="hb-steps">
                     <div class="hb-step">
                         <div class="hb-step-num">1</div>
                         <div class="hb-step-body">
-                            <div class="hb-step-title">Surface-Backend starten</div>
-                            <div class="hb-step-desc">Doppelklick auf <code>backend\start-surface.cmd</code>. Das Terminal-Fenster bleibt offen und loggt Anfragen. Auto-Reload ist aktiv — Code-Änderungen im Repository sind ~1 s später live.</div>
+                            <div class="hb-step-title">Backend starten</div>
+                            <div class="hb-step-desc">Doppelklick auf <code>start-safir.bat</code>auf dem Desktop. Das Backend laeuft via Win32_Process.Create detached (überlebt SSH-Disconnect). Logs in <code>logs\backend.log</code>.</div>
                         </div>
                     </div>
                     <div class="hb-step">
@@ -712,10 +713,10 @@
                     Schreibversuch) — selbst flackerige Karten kommen meist durch.
                 </p>
                 <p>
-                    <strong>RFID-Write meldet Patient nicht automatisch ans Surface</strong>
+                    <strong>RFID-Write meldet Patient nicht automatisch an die Leitstelle</strong>
                     (User-Wunsch: getrennte Aktionen). Ausnahme: wenn der Patient bereits
-                    gemeldet (synced) ist, wird die neue UID-Mapping sofort an Surface
-                    geschickt — sonst kennt das Surface die Karte beim Omnikey-Scan nicht.
+                    gemeldet (synced) ist, wird die neue UID-Mapping sofort an die Leitstelle
+                    geschickt — sonst kennt sie die Karte beim Omnikey-Scan nicht.
                 </p>
                 <p>Volle Details siehe <a href="#hb-rfid">Sektion 6 — RFID-Karten</a>.</p>
 
@@ -743,7 +744,7 @@
 
                 <h2>4.12 Was sieht die Rettungsstation?</h2>
                 <p>
-                    Auf dem Surface in der Leitstelle erscheint sofort (WebSocket-Push):
+                    In der Leitstelle (SINA) erscheint sofort (WebSocket-Push):
                 </p>
                 <ul>
                     <li><strong>Lagekarte:</strong>BAT-Marker mit Anzahl Patienten als Badge</li>
@@ -766,7 +767,7 @@
                         <li><code>"Alle analysieren"</code>(einmal für alle)</li>
                         <li>Confidence-Badges sichten, ggf. korrigieren</li>
                         <li><code>"Karte schreiben"</code>(RFID-Batch, optional)</li>
-                        <li><code>"Patienten melden"</code> → Surface-Dashboard zeigt sofort</li>
+                        <li><code>"Patienten melden"</code> → Leitstellen-Dashboard zeigt sofort</li>
                     </ol>
                     Bei 3 Patienten mit Standard-Diktat: ca. <strong>2–3 Minuten</strong>
                     von Aufnahme-Start bis Übergabe an die Leitstelle.
@@ -1024,7 +1025,7 @@
                     <li>Sprachbefehl „Karte löschen" oder Button „Karte löschen" in Einstellungen → System</li>
                     <li>TTS: „Karte löschen. Bitte auflegen."</li>
                     <li>Eine einzelne Karte auflegen → alle SAFIR-Nutzblöcke werden auf Null gesetzt</li>
-                    <li>Die Zuordnung zu dem Patient wird lokal und auf der Surface aufgelöst</li>
+                    <li>Die Zuordnung zu dem Patient wird lokal und auf der Leitstelle aufgelöst</li>
                     <li>TTS: „Karte gelöscht. [Patientenname]"</li>
                 </ol>
 
@@ -1046,17 +1047,17 @@
                 </ol>
                 <p>Nur Patienten mit <code>analyzed=True</code>und <code>synced=False</code>werden gesendet. Jeder einzelne Patient geht als eigener POST <code>/api/ingest</code>-Request raus. Bei Erfolg: <code>synced=True</code>gesetzt + TTS „Daten gesendet".</p>
 
-                <h2>Was passiert auf der Surface-Seite?</h2>
+                <h2>Was passiert auf der Leitstellen-Seite?</h2>
                 <ul>
                     <li>Patient erscheint <strong>sofort</strong>in der Patientendatenbank</li>
                     <li>Triage-Count wird aktualisiert (T1/T2/T3/T4 Balken)</li>
                     <li>BAT-Marker auf der Lagekarte mit Unit-Name erscheint</li>
                     <li>Ein Event im Live-Ticker: „Neuer Patient vom BAT Alpha42"</li>
-                    <li>Falls Triage T1 gesetzt — akustisches Signal auf der Surface (optional)</li>
+                    <li>Falls Triage T1 gesetzt — akustisches Signal auf der Leitstelle (optional)</li>
                 </ul>
 
                 <h2>Live-Sync zurück zum BAT</h2>
-                <p>Der Jetson hat einen <strong>persistenten WebSocket-Client</strong>zum Surface. Wenn der Arzt auf der Surface den Patient bearbeitet (Triage setzen, Status ändern), wird der Update automatisch zurück an den Jetson broadcastet. So hat auch der Sanitäter im Feld immer den aktuellen Stand.</p>
+                <p>Der Jetson hat einen <strong>persistenten WebSocket-Client</strong>zur Leitstelle. Wenn der Arzt dort den Patient bearbeitet (Triage setzen, Status ändern), wird der Update automatisch zurück an den Jetson broadcastet. So hat auch der Sanitäter im Feld immer den aktuellen Stand.</p>
 
                 <div class="hb-note info">
                     <div class="hb-note-title">Bidirektional, aber nicht kollisions-frei</div>
@@ -1067,7 +1068,7 @@
             <!-- ========== 8. Rettungsstation ========== -->
             <section id="hb-role1">
                 <h1><span class="hb-num">8</span>Rettungsstation (Role 1)</h1>
-                <p class="hb-section-lead">Was der Arzt auf dem Surface sieht — und was er tun kann.</p>
+                <p class="hb-section-lead">Was der Arzt auf der Leitstelle (SINA) sieht — und was er tun kann.</p>
 
                 <h2>Taktische Lagekarte</h2>
                 <p>Leaflet-basierte Karte zentriert auf die eigene Rettungsstation (Bonn-Hardthöhe oder konfigurierbar). Zeigt:</p>
@@ -1082,7 +1083,7 @@
                 <p>Tabellarische Übersicht aller Patienten (analysierte und Entwürfe). Filter „Nur gemeldete Patienten anzeigen" (Standard) blendet Entwürfe aus.</p>
 
                 <h2>RFID-Scan am Omnikey</h2>
-                <p>Der Arzt hat einen HID Omnikey-Kartenleser am Surface. Wenn ein Verwundeter ankommt, legt der Arzt dessen Karte auf den Leser:</p>
+                <p>Der Arzt hat einen HID Omnikey-Kartenleser an der SINA. Wenn ein Verwundeter ankommt, legt der Arzt dessen Karte auf den Leser:</p>
                 <div class="hb-steps">
                     <div class="hb-step">
                         <div class="hb-step-num">1</div>
@@ -1201,7 +1202,7 @@
 
                 <h2>Gerät</h2>
                 <ul>
-                    <li>Unit-Name („BAT Alpha42") — wird auf der Surface-Karte als Label angezeigt</li>
+                    <li>Unit-Name („BAT Alpha42") — wird auf der Leitstellen-Karte als Label angezeigt</li>
                     <li>Device-ID, Default-Medic</li>
                     <li>Backend-URL (Tailscale-IP der Rettungsstation)</li>
                 </ul>
@@ -1312,8 +1313,8 @@
                 <h3>„Alle Patienten schon auf Karten"</h3>
                 <p>Die Patienten haben alle ein <code>rfid_tag_id</code>-Feld gesetzt. Wenn du eine neue Karte schreiben willst, entweder das Tag zuvor löschen (Voice: „Karte löschen") oder den Patient löschen und neu anlegen.</p>
 
-                <h3>Surface erkennt die gelöschte Karte immer noch</h3>
-                <p>Der Surface-Backend-Prozess läuft möglicherweise mit einem alten Code-Stand. Einmal neu starten: Terminal schließen und <code>start-surface.cmd</code>neu ausführen. Danach ist Auto-Reload aktiv und zukünftige Änderungen werden automatisch gepicked.</p>
+                <h3>Leitstelle erkennt die gelöschte Karte immer noch</h3>
+                <p>Das SINA-Backend laeuft moeglicherweise mit einem alten Code-Stand. Einmal neu starten: Doppelklick auf <code>stop-safir.bat</code>auf dem Desktop, dann <code>start-safir.bat</code>. Alternativ vom Jetson aus: <code>scripts/deploy-all.sh</code>.</p>
 
                 <h3>Ein Patient wurde beim Diktieren „vergessen"</h3>
                 <p>Das LLM ist konservativ — es erfindet keine Patienten. Bei unterbrochener Rede („Name hab ich vergessen... ach ja, Müller") kann ein Patient-Start übersehen werden. Lösung: Transkript-Preview öffnen, Text prüfen, Patient manuell anlegen (+ Neuer Patient, Name eintragen).</p>
@@ -1346,7 +1347,8 @@
                         <tr><td><strong>RC522</strong></td><td>SPI-RFID-Modul am Jetson (13.56 MHz, MIFARE-kompatibel)</td></tr>
                         <tr><td><strong>Role 1–4</strong></td><td>Stufen der militärischen Rettungskette (s. Kapitel 1)</td></tr>
                         <tr><td><strong>TCCC</strong></td><td>Tactical Combat Casualty Care — NATO-Standard für taktische Verwundetenversorgung</td></tr>
-                        <tr><td><strong>Tailscale</strong></td><td>Mesh-VPN auf WireGuard-Basis, verbindet Jetson und Surface End-to-End-verschlüsselt</td></tr>
+                        <tr><td><strong>Tailscale</strong></td><td>Mesh-VPN auf WireGuard-Basis, verbindet Jetson und Leitstelle (SINA) End-to-End-verschlüsselt</td></tr>
+                        <tr><td><strong>SINA Workstation</strong></td><td>secunet-Hardware, BSI-zugelassen für Verschlusssache-NfD. Seit Mai 2026 Ersatz für die alte Microsoft Surface als Leitstelle</td></tr>
                         <tr><td><strong>Triage</strong></td><td>Priorisierung nach Behandlungsdringlichkeit: T1 rot (sofort), T2 gelb (dringlich), T3 grün (leicht), T4 blau (hoffnungslos/warten)</td></tr>
                         <tr><td><strong>Vosk</strong></td><td>Offline-ASR-Engine speziell für Kurz-Befehle, läuft auf CPU mit ~15 ms Latenz</td></tr>
                         <tr><td><strong>Whisper</strong></td><td>OpenAI-ASR-Modell, bei uns über whisper.cpp auf Jetson-GPU</td></tr>
@@ -1357,6 +1359,123 @@
                 <div class="hb-note info" style="margin-top: 32px;">
                     <div class="hb-note-title">Weiterführend</div>
                     Diese In-App-Bedienungsanleitung ist auch als standalone HTML-Datei in <code>docs/project.html</code>verfügbar (vollständige Projekt-Dokumentation) und als Paper-Style-Doku unter <code>docs/SCIENTIFIC.md</code>(wissenschaftlich orientiert).
+                </div>
+            </section>
+
+            <!-- ========== 13. Tech-Stack für Standmitarbeiter ========== -->
+            <section id="hb-techstack">
+                <h1><span class="hb-num">13</span>Tech-Stack für Standmitarbeiter</h1>
+                <p class="hb-section-lead">Schnell-Briefing für Kolleginnen und Kollegen am Messe-Stand: was steckt unter der Haube von SAFIR? Antworten auf die Fragen, die Besucher typischerweise stellen — kompakt, technisch korrekt, ohne Marketing-Nebel.</p>
+
+                <h2>13.1 Hardware</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:25%">Komponente</th><th>Spezifikation</th></tr></thead>
+                    <tbody>
+                        <tr><td><strong>Feldgerät (BAT)</strong></td><td>NVIDIA Jetson Orin Nano Super — ARM-CPU + integrierte Ampere-GPU (1024 CUDA-Cores), 7.4 GB Unified Memory (CPU+GPU shared), CUDA 12.6, Linux. Akku-betrieben über Powerbank (20.000 mAh / 65 W) für ~20 h Laufzeit</td></tr>
+                        <tr><td><strong>Leitstelle</strong></td><td>SINA Workstation (secunet, BSI-zugelassen für VS-NfD), Windows 11. Schlanke Variante des Backends ohne lokales Whisper/Vosk — nur FastAPI, Lagekarte, Patient-Sync, Export, RFID-Empfang</td></tr>
+                        <tr><td><strong>RFID Feld</strong></td><td>RC522 SPI-Modul am Jetson (13.56 MHz, MIFARE Classic 1K — 16 Sektoren à 4 Blöcken à 16 Byte)</td></tr>
+                        <tr><td><strong>RFID Leitstelle</strong></td><td>HID Omnikey 5022 USB-Desktop-Reader, PC/SC via <code>pyscard</code></td></tr>
+                        <tr><td><strong>Bedienelemente Feld</strong></td><td>2 physische Hardware-Taster (GPIO Pin 11 + 26), OLED SSD1306 128×64 (I2C Bus 7), 3 Status-LEDs</td></tr>
+                        <tr><td><strong>Audio</strong></td><td>USB-Headset oder Plattenspeaker am Jetson; Multi-Output-fähig (paralleles Playback auf allen erkannten ALSA-Devices)</td></tr>
+                    </tbody>
+                </table>
+
+                <h2>13.2 KI-Stack — alles on-device, nichts in der Cloud</h2>
+                <p>Drei spezialisierte Modelle laufen <strong>ausschließlich lokal</strong> auf den Geräten — kein Internet, kein API-Roundtrip, keine Cloud. Verwundetendaten verlassen das Tailnet niemals.</p>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:22%">Modell</th><th>Aufgabe</th><th style="width:18%">Wo läuft es</th></tr></thead>
+                    <tbody>
+                        <tr><td><strong>Whisper small</strong><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">whisper.cpp, GPU</span></td><td>Echtzeit-Transkription des deutschen Sanitäter-Diktats (ASR)</td><td>Jetson, ~862 MB VRAM</td></tr>
+                        <tr><td><strong>Vosk</strong><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Kaldi-basiert, CPU</span></td><td>Offline-Sprachbefehle (z.B. „Aufnahme starten"), ~15 ms Latenz, mit Per-Wort-Confidence für den Recording-Guard</td><td>Jetson, ~50 MB RAM</td></tr>
+                        <tr><td><strong>Gemma 3 4B</strong><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Q4_K_M, 100% GPU</span></td><td>Multi-Patient-Segmentierung + 9-Liner/ATMIST/FMC-Feldextraktion. Permanent im VRAM (<code>keep_alive=-1</code>)</td><td>Jetson, 4.3 GB VRAM</td></tr>
+                        <tr><td><strong>Gemma 4 E4B</strong><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Q4_K_M, on-demand</span></td><td>KI-Review: zweite, größere Instanz prüft die Jetson-Extraktion gegen das Original-Transkript (Cross-Check, „Defense in Depth")</td><td>SINA, 9.6 GB</td></tr>
+                        <tr><td><strong>Piper TTS</strong><br><span style="font-size:var(--fs-body-sm);color:var(--text-dim)">Neural, CPU</span></td><td>Deutsche Sprachausgabe für Quittungen („Aufnahme läuft", „Patient gespeichert"), Modell <code>de_DE-thorsten-medium</code></td><td>Jetson</td></tr>
+                    </tbody>
+                </table>
+                <div class="hb-note info" style="margin-top:12px">
+                    <div class="hb-note-title">Warum „on-device"?</div>
+                    Bundeswehr-Einsätze finden in Umgebungen ohne stabile Internetverbindung statt — Funkloch im Gefecht, gestörte Satelliten-Links, EW-Maßnahmen. Die KI muss auch dann funktionieren. Plus: Patientendaten dürfen rechtlich nicht in fremde Cloud-Zonen geroutet werden (DSGVO + VS-NfD).
+                </div>
+
+                <h2>13.3 Backend-Software</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:22%">Layer</th><th>Stack</th></tr></thead>
+                    <tbody>
+                        <tr><td><strong>Sprache</strong></td><td>Python 3.10+ (Jetson) / 3.12 (SINA)</td></tr>
+                        <tr><td><strong>Web-Framework</strong></td><td>FastAPI 0.135 + Starlette &lt;1.0 + Uvicorn — REST-API auf Port 8080, asynchron, mit OpenAPI-Schema</td></tr>
+                        <tr><td><strong>Echtzeit-Sync</strong></td><td>WebSocket (<code>/ws</code>) — bidirektional, Auto-Reconnect mit exponential Backoff (2 s → 30 s)</td></tr>
+                        <tr><td><strong>Templates</strong></td><td>Jinja2 — server-side, einheitliches <code>templates/index.html</code>für beide Geräte</td></tr>
+                        <tr><td><strong>Datenmodell</strong></td><td>Geteilt zwischen den Geräten via <code>shared/models.py</code>(PATIENT_SCHEMA, TRANSFER_SCHEMA, RoleLevel-Enum)</td></tr>
+                        <tr><td><strong>Persistenz</strong></td><td>JSON-Files in <code>backend/data/patients/</code>(eine Datei pro Patient) — kein DB-Server, kein SQL. Zugriff atomar via temp-file + rename</td></tr>
+                        <tr><td><strong>Dokumenten-Export</strong></td><td><code>python-docx</code>(DOCX), <code>reportlab</code>(PDF), Native JSON/XML — pro Patient oder als Batch</td></tr>
+                        <tr><td><strong>Auto-Start</strong></td><td>Jetson: <code>systemd</code>(<code>safir.service</code>, User=root). SINA: Task Scheduler („SAFIR-SINA-Backend", Trigger „at log on") + Win32_Process.Create für Detached-Boot</td></tr>
+                    </tbody>
+                </table>
+
+                <h2>13.4 Frontend — bewusst ohne Build-Pipeline</h2>
+                <ul>
+                    <li><strong>Vanilla HTML + JS</strong>— kein React, kein Vue, kein TypeScript, kein Webpack. Direkter Zugriff auf den Quelltext, im Feld änderbar, kein npm-Risiko</li>
+                    <li><strong>Lucide Icons</strong>(ISC-Lizenz) — als SVG-Sprite inline, monochrom, themed via <code>currentColor</code></li>
+                    <li><strong>Schriftart</strong>— Share Tech Mono (Daten/Codes) + Rajdhani (Labels/Buttons), beide via Google Fonts; Fallback auf System-Mono</li>
+                    <li><strong>Theme-System</strong>— vier Varianten: Dark (Default), Saphir (CGI-Blau), Light (Tageslicht/Drucker), Bundeswehr (sandfarben/oliv)</li>
+                    <li><strong>Design</strong>— Military Tactical HUD: keine border-radius, Bracket-Corners, UPPERCASE-Labels, zurückhaltende Farbgebung (#c8b878 Tan, #5a9e3a Grün, #cc2222 Rot)</li>
+                </ul>
+
+                <h2>13.5 Netzwerk &amp; Verschlüsselung</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:22%">Schicht</th><th>Was</th></tr></thead>
+                    <tbody>
+                        <tr><td><strong>Mesh-VPN</strong></td><td>Tailscale (User-Space-WireGuard) — Peer-to-Peer-Tunnels zwischen Jetson, SINA und allen weiteren Tailnet-Mitgliedern</td></tr>
+                        <tr><td><strong>Crypto</strong></td><td>WireGuard mit <strong>ChaCha20-Poly1305</strong>(symmetrisch, AEAD), <strong>Curve25519</strong>(Schlüsselaustausch, ECDH), <strong>Blake2s</strong>(Hashing). Re-Key alle 2 Min / 60 MB → Perfect Forward Secrecy</td></tr>
+                        <tr><td><strong>HTTPS-Zugang</strong></td><td><code>tailscale serve</code>vor jedem Backend → echte Let's-Encrypt-Zertifikate (grünes Schloss), ausschließlich für Tailnet-Mitglieder erreichbar</td></tr>
+                        <tr><td><strong>Produktions-Pfad</strong></td><td>Statt Tailscale-Cloud: <strong>Headscale</strong>(self-hosted Coordination-Server, kompatibel zu Tailscale-Clients) auf BwNetz-Infrastruktur. Gleiche WireGuard-Protokollebene, Schlüssel-Hoheit vollständig in BW-Hand</td></tr>
+                        <tr><td><strong>Transport-Agnostik</strong></td><td>SAFIR ist auf der Anwendungsschicht transport-agnostisch. In Produktion ersetzbar durch BW-Funknetze: <strong>SVFuA</strong>, <strong>FüInfoSysH</strong>, <strong>SatComBw</strong>, <strong>SitaWare</strong></td></tr>
+                    </tbody>
+                </table>
+                <div class="hb-note info" style="margin-top:12px">
+                    <div class="hb-note-title">Don't roll your own crypto</div>
+                    Wir nutzen bewusst auditierte Industrie-Standards (WireGuard ist Mainline-Linux-Kernel seit 5.6, ChaCha20-Poly1305 ist RFC 8439). Kein selbstgebautes Krypto-Verfahren. Eigene Krypto-Implementierungen sind notorisch fehleranfällig.
+                </div>
+
+                <h2>13.6 Standards &amp; Interoperabilität</h2>
+                <p>SAFIR ist kein Insel-System — alle Datenformate sind NATO/Bundeswehr-konforme Standards.</p>
+                <ul>
+                    <li><strong>NATO 9-Liner MEDEVAC</strong>— Standard-Funkanforderung für medizinische Evakuierung, ATP-3.7.2 / Anhang A</li>
+                    <li><strong>NATO Field Medical Card (FMC)</strong>— gemäß AMedP-8.1 (Sektionen A–G für Übergabe)</li>
+                    <li><strong>ATMIST</strong>— Patient-Übergabe in 6 Buchstaben (Age, Time, Mechanism, Injuries, Signs, Treatment)</li>
+                    <li><strong>TCCC</strong>— Tactical Combat Casualty Care, NATO-Standard für taktische Verwundetenversorgung</li>
+                    <li><strong>Triage T1–T4</strong>— vierstufige Priorisierung nach NATO-Doktrin (rot sofort / gelb dringlich / grün leicht / blau hoffnungslos)</li>
+                    <li><strong>SitaWare-Exports</strong>— CoT (Cursor-on-Target XML), NVG (NATO Vector Graphics, APP-6D), MEDEVAC-XML, FHIR R4 (Healthcare-Standard)</li>
+                </ul>
+
+                <h2>13.7 Versionierung &amp; Deployment</h2>
+                <ul>
+                    <li><strong>Single Source of Truth</strong>— <code>shared/version.py</code>: bei jeder Änderung +0.0.1, manuelle Disziplin. Keine Build-Hashes oder Counter, klare Zahl wie „v0.1.7"</li>
+                    <li><strong>Mesh-Versions-Vergleich</strong>— jeder Heartbeat enthält die Version, der Peers-Dialog markiert ältere Geräte mit gelbem „VERALTET"-Badge plus Tooltip „neueste Version im Netz: vX.Y.Z"</li>
+                    <li><strong>Parallel-Deployment</strong>— <code>scripts/deploy-all.sh</code>bringt Jetson (lokal via systemctl) und SINA (via SSH + Win32_Process) parallel auf den aktuellen <code>origin/main</code>, mit Health-Check und Mesh-Sanity-Check</li>
+                    <li><strong>Quellcode-Hosting</strong>— Git auf GitHub (private Repo), Branch-basiertes Workflow mit Pull Requests, CI-frei (kein automatisches Deployment auf Produktion)</li>
+                </ul>
+
+                <h2>13.8 Häufige Standfragen — Kurzantworten</h2>
+                <table class="hb-vc-table">
+                    <thead><tr><th style="width:35%">Frage</th><th>Antwort</th></tr></thead>
+                    <tbody>
+                        <tr><td><em>„Geht das auch ohne Internet?"</em></td><td><strong>Ja, komplett.</strong>Whisper, Gemma, Vosk und Piper laufen alle lokal auf den Geräten. Internet wird nur zum Bezug von Software-Updates aus dem Repo gebraucht — niemals während des Einsatzes.</td></tr>
+                        <tr><td><em>„Welches LLM verwendet ihr?"</em></td><td>Auf dem Feldgerät <strong>Gemma 3 4B</strong>(Google, Open Source) für Segmentierung und 9-Liner-Extraktion — 4.3 GB im VRAM. In der Leitstelle <strong>Gemma 4 E4B</strong>für KI-Review (Cross-Check der Feld-Extraktion).</td></tr>
+                        <tr><td><em>„Wie sicher ist die Datenübertragung?"</em></td><td>Ende-zu-Ende mit <strong>WireGuard</strong>(ChaCha20-Poly1305, Curve25519, Blake2s) — gleicher Standard wie der Linux-Kernel ihn seit Jahren mitbringt. In Produktion auf <strong>Headscale</strong>(self-hosted) statt Tailscale-Cloud, damit auch der Koordinationsserver in Bundeswehr-Hand ist.</td></tr>
+                        <tr><td><em>„Werden die Patientendaten in der Cloud verarbeitet?"</em></td><td><strong>Nein.</strong>Alle KI-Inferenz läuft on-device. Die Daten verlassen niemals das verschlüsselte Tailnet zwischen Feldgerät und Leitstelle.</td></tr>
+                        <tr><td><em>„Welche Hardware?"</em></td><td>Im Feld: NVIDIA Jetson Orin Nano Super (Embedded-AI-Modul, ~25 W TDP, ~$500 Hardware-Kosten). In der Rettungsstation: SINA Workstation — secunet-Hardware, BSI-zugelassen für Verschlusssache-NfD.</td></tr>
+                        <tr><td><em>„Wie schnell ist die Spracherkennung?"</em></td><td>Whisper transkribiert auf der Jetson-GPU schneller als Echtzeit (~0.3× RT-Faktor bei ~10 s Audio). Voice-Commands (Vosk) reagieren in &lt;15 ms. KI-Extraktion (Gemma) braucht ~15 s pro Patient.</td></tr>
+                        <tr><td><em>„Kann ich mir den Quellcode ansehen?"</em></td><td>Sehr gerne — der Stand auf der Messe ist im Browser komplett einsehbar (Right-Click → „View Page Source"). Reines HTML+JS+Python, kein verschleierter Build-Output. Repo-Zugang via CGI auf Anfrage.</td></tr>
+                        <tr><td><em>„Wie wird das gewartet?"</em></td><td><code>scripts/deploy-all.sh</code>updated beide Geräte parallel in ~45 s aus <code>origin/main</code>, mit automatischem Health-Check. Kein Service-Window nötig — Hot-Reload per System-Restart.</td></tr>
+                        <tr><td><em>„Was passiert wenn ein Gerät ausfällt?"</em></td><td>Jeder Jetson arbeitet autonom — keine Online-Verbindung zur Leitstelle nötig. Die Daten werden lokal gespeichert und beim nächsten Connect synchronisiert. Die Leitstelle akzeptiert Späteinlieferungen via WebSocket-Reconnect ohne Datenverlust.</td></tr>
+                        <tr><td><em>„Welche Lizenzen?"</em></td><td>SAFIR-Code: proprietär (CGI Deutschland). Modelle: Whisper (MIT), Gemma 3/4 (Gemma Terms of Use), Vosk (Apache 2.0), Piper (MIT), Lucide Icons (ISC), Tailscale (BSD-3 Client).</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="hb-note" style="margin-top: 24px;border-color:var(--mil-tan);background:rgba(200,184,120,0.06)">
+                    <div class="hb-note-title">Pitching-Tipp</div>
+                    <strong>Drei Sätze, die immer ziehen:</strong>„SAFIR läuft komplett offline auf einem Jetson Orin Nano im Feld — Whisper transkribiert das Diktat in Echtzeit, ein Gemma-Modell extrahiert die 9-Liner-Felder, alles auf der GPU des Embedded-Moduls. Die Patientendaten gehen verschlüsselt über WireGuard ins Mesh-Netz zur Rettungsstation, wo eine zweite KI als Sicherheitsnetz nochmal gegenprüft. Kein Cloud-Roundtrip, keine Internetabhängigkeit, alles auditierbarer Open-Source-Stack."
                 </div>
             </section>
 
