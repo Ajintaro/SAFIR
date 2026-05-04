@@ -43,7 +43,10 @@ from shared import sitaware  # noqa: E402
 from shared.version import VERSION, get_full_version  # noqa: E402
 TEMPLATES_DIR = ROOT_DIR / "templates"          # Einheitliches Template
 TEMPLATES_DIR_LOCAL = PROJECT_DIR / "templates"  # Fallback
-STATIC_DIR = PROJECT_DIR / "static"
+# Static-Verzeichnis: gemeinsames im Repo-Root (analog zu templates/)
+# bevorzugen — dort liegen z.B. branding/cgi-logo.png. Backend-eigenes
+# als Fallback fuer alte Setups.
+STATIC_DIR = ROOT_DIR / "static" if (ROOT_DIR / "static").exists() else PROJECT_DIR / "static"
 DATA_DIR = PROJECT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 PATIENTS_DIR = DATA_DIR / "patients"

@@ -32,8 +32,8 @@
             background:linear-gradient(135deg, var(--surface) 0%, var(--bg) 100%);
             border-bottom:2px solid var(--accent); flex-shrink:0;
         }
-        .header h1 { font-size:18px; font-weight:700; }
-        .header .cgi { color:var(--accent); }
+        .header h1 { font-size:18px; font-weight:700; display:flex; align-items:center; gap:8px; }
+        .header .cgi-logo { height:18px; width:auto; }
         .header .role-badge {
             padding:3px 10px; border-radius:12px; font-size:10px; font-weight:700;
             background:var(--accent-light); color:var(--accent); letter-spacing:0.5px;
@@ -140,7 +140,7 @@
 </head>
 <body>
     <div class="header">
-        <h1><span class="cgi">CGI</span> SAFIR Leitstelle</h1>
+        <h1><img class="cgi-logo" src="/static/images/branding/cgi-logo.png" alt="CGI"> SAFIR Leitstelle</h1>
         <span class="role-badge">ROLE 1 — RETTUNGSSTATION</span>
         <div class="stats">
             <span><span class="ws-dot off" id="ws-dot"></span> <span id="ws-status">Getrennt</span></span>

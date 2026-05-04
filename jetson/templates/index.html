@@ -73,9 +73,8 @@
         }
         .header-left { display: flex; align-items: center; gap: 12px; }
         .cgi-logo { display: flex; align-items: center; }
-        .cgi-wordmark {
-            font-size: 28px; font-weight: 700; letter-spacing: 4px;
-            color: var(--logo-color);
+        .cgi-wordmark-img {
+            height: 28px; width: auto; display: block;
         }
         .header-divider { width: 1px; height: 28px; background: var(--border-light); }
         .app-title .name { font-size: 18px; font-weight: 700; letter-spacing: 2px; color: var(--cgi-red); }
@@ -350,7 +349,7 @@
 <!-- HEADER -->
 <div class="header">
     <div class="header-left">
-        <div class="cgi-logo"><span class="cgi-wordmark">CGI</span></div>
+        <div class="cgi-logo"><img class="cgi-wordmark-img" src="/static/images/branding/cgi-logo.png" alt="CGI"></div>
         <div class="header-divider"></div>
         <div class="app-title">
             <span class="name">SAFIR</span>

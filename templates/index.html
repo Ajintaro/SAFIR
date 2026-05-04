@@ -383,9 +383,15 @@
         }
         .header-left { display: flex; align-items: center; gap: 12px; }
         .cgi-logo { display: flex; align-items: center; }
-        .cgi-wordmark {
-            font-size: var(--fs-h1); font-weight: var(--fw-bold); letter-spacing: 4px;
-            color: var(--logo-color);
+        /* Original CGI-Wordmark (Marketing-Vorgabe) als PNG. Hoehe an
+           --fs-h1 gekoppelt damit es genauso gross wirkt wie der
+           frueherer Textzug. Aspect-Ratio bleibt erhalten ueber
+           width:auto. Block-display verhindert Inline-Baseline-Spalt.
+           Bleibt bewusst rot in allen Themes (Brand-Konformitaet). */
+        .cgi-wordmark-img {
+            height: var(--fs-h1);
+            width: auto;
+            display: block;
         }
         .header-divider { width: 1px; height: 32px; background: var(--border-light); }
         .app-title .name {
@@ -2423,7 +2429,7 @@
 <!-- HEADER -->
 <div class="header">
     <div class="header-left">
-        <div class="cgi-logo"><span class="cgi-wordmark">CGI</span></div>
+        <div class="cgi-logo"><img class="cgi-wordmark-img" src="/static/images/branding/cgi-logo.png" alt="CGI"></div>
         <div class="header-divider"></div>
         <div class="app-title">
             <span class="name"><svg width="16" height="16" viewBox="0 0 100 100" style="vertical-align:-1px;margin-right:3px;filter:drop-shadow(0 0 4px var(--accent-glow))"><polygon points="50,8 82,32 50,45 18,32" fill="var(--accent)" opacity="0.8"/><polygon points="18,32 50,45 50,92" fill="var(--accent-dark)"/><polygon points="82,32 50,45 50,92" fill="var(--accent)" opacity="0.6"/></svg>SAFIR</span>
