@@ -807,6 +807,59 @@ def _read_ntag_patient(uid_bytes: bytes) -> tuple[dict | None, str]:
     }, uid_hex)
 
 
+def _erase_ntag_card(uid_bytes: bytes) -> tuple[bool, str]:
+    """Loescht SAFIR-Daten von einer NTAG21x / Type-2-Karte.
+
+    Aufgerufen aus rc522_erase_card() wenn SAK == 0x00/0x04 oder 7-Byte-UID.
+    Karte ist bereits selektiert (Phase 1 abgeschlossen). NTAG braucht
+    keine Crypto1-Auth — wir schreiben direkt Null-Bytes in die User-Memory-
+    Pages, analog zum MIFARE-Erase-Layout.
+
+    Mapping (siehe _block_to_ntag_page):
+      Block 4 (Header)     -> Pages 4-7
+      Block 5 (Patient-ID) -> Pages 8-11
+      Block 6 (Vitals)     -> Pages 12-15
+      Block 7 (Trailer)    -> Pages 16-19 (LUECKE, nicht beschrieben)
+      Block 8 (Name 1)     -> Pages 20-23
+      Block 9 (Name 2)     -> Pages 24-27
+      Block 10 (Mechanism) -> Pages 28-31
+
+    Gibt (True, uid_hex) bei Erfolg, (True, "EMPTY:uid_hex") wenn die
+    Karte bereits leer war, oder (False, fehlermeldung) bei Fehler.
+    """
+    uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
+    log.info(f"NTAG-Erase: starte fuer UID {uid_hex}")
+
+    ZERO16 = bytes(16)
+    block_order = [4, 5, 6, 8, 9, 10]
+    already_zero_count = 0
+    total = len(block_order)
+
+    for blk in block_order:
+        page = _block_to_ntag_page(blk)
+        # Pre-Read: ist der Block bereits leer? Spart Schreib-Zyklen
+        # und liefert dem Aufrufer das "EMPTY:"-Signal wenn alle Bloecke
+        # ZERO sind (Karte war schon mal geloescht).
+        existing = _ntag_read_pages(page)
+        if existing == ZERO16:
+            already_zero_count += 1
+            log.info(f"NTAG-Erase: Block {blk} (Pages {page}..{page+3}) bereits leer")
+            continue
+        ok, err = _ntag_write_block16(page, ZERO16)
+        if not ok:
+            log.warning(
+                f"NTAG-Erase: Block {blk} (Pages {page}..{page+3}) fehlgeschlagen: {err}"
+            )
+            return (False, f"NTAG Block {blk}: {err}")
+        log.info(f"NTAG-Erase: Block {blk} (Pages {page}..{page+3}) genullt")
+
+    if already_zero_count >= total:
+        log.info(f"NTAG-Erase: Karte war bereits leer: UID {uid_hex}")
+        return (True, f"EMPTY:{uid_hex}")
+    log.info(f"NTAG-Erase erfolgreich (alle Bloecke genullt): UID {uid_hex}")
+    return (True, uid_hex)
+
+
 def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[bool, str]:
     """
     Komplett-Flow: wartet auf Karte, selektiert, authentifiziert, schreibt
@@ -1061,14 +1114,17 @@ def rc522_write_patient_to_card(patient: dict, timeout: float = 10.0) -> tuple[b
 
 def rc522_erase_card(timeout: float = 10.0) -> tuple[bool, str]:
     """
-    Loescht die SAFIR-Patientendaten von einer MIFARE-Karte. Schreibt
-    Null-Bytes (bytes(16)) in die SAFIR-Nutzblöcke 4-6 und 8-10.
+    Loescht die SAFIR-Patientendaten von einer MIFARE- ODER NTAG-Karte.
+    Schreibt Null-Bytes in die SAFIR-Nutzblöcke 4-6 und 8-10 (MIFARE
+    16-Byte-Blocks) bzw. die entsprechenden NTAG-Pages.
 
     WICHTIG — was NICHT angefasst wird:
       - Block 0 (Manufacturer-Block, read-only) — ohnehin unmoeglich
-      - Block 3, 7, 11, ... (Sektor-Trailer mit Keys A/B + Access Bits)
+      - Block 3, 7, 11, ... (MIFARE Sektor-Trailer mit Keys A/B + Access Bits)
         → wuerden beim Ueberschreiben die Karte fuer uns bricken, weil
           dann unser Default-Key FFFFFFFFFFFF nicht mehr passt.
+      - NTAG Pages 0-3 (UID/Lock/CC, ab Werk read-only)
+      - NTAG Pages 16-19 (Trailer-Luecke, korrespondiert zu MIFARE Block 7)
 
     Die Karte bleibt also mit unseren Standard-Keys weiter beschreibbar
     — rc522_write_patient_to_card kann direkt danach drauf schreiben.
@@ -1076,6 +1132,11 @@ def rc522_erase_card(timeout: float = 10.0) -> tuple[bool, str]:
     Gibt (erfolg, uid_hex_oder_fehlermeldung) zurück. Haelt den globalen
     SPI-Lock waehrend des gesamten Flows — der RfidService-Poll-Loop
     pausiert solange (gleiches Verhalten wie rc522_write_patient_to_card).
+
+    SAK-Branching (2026-05-12):
+    - SAK 0x08/0x18 (MIFARE Classic 1K/4K) -> klassischer Crypto1-Pfad
+    - SAK 0x00/0x04 oder 7-Byte-UID (NTAG21x / MIFARE Ultralight)
+      -> _erase_ntag_card (kein Auth, 4-Byte-Pages statt 16-Byte-Blocks)
     """
     import time as _t
 
@@ -1086,7 +1147,8 @@ def rc522_erase_card(timeout: float = 10.0) -> tuple[bool, str]:
     with _spi_lock:
         log.info("SPI-Lock erhalten, suche Karte …")
         start = _t.time()
-        # Phase 1: Karte finden (identisch zu rc522_write_patient_to_card)
+        # Phase 1: Karte finden (mit voller Anti-Coll — erkennt auch
+        # 7-Byte-UIDs / NTAGs, identisch zu Write/Read).
         uid_bytes = None
         sak = None
         while _t.time() - start < timeout:
@@ -1094,15 +1156,12 @@ def rc522_erase_card(timeout: float = 10.0) -> tuple[bool, str]:
             if not ok:
                 _t.sleep(0.1)
                 continue
-            uid5 = _rc522_anticoll()
-            if uid5 is None:
+            uid_full, sak_full = _rc522_anticoll_full()
+            if uid_full is None or sak_full is None:
                 _t.sleep(0.1)
                 continue
-            sak = _rc522_select(uid5)
-            if sak is None:
-                _t.sleep(0.1)
-                continue
-            uid_bytes = uid5[:4]
+            uid_bytes = uid_full
+            sak = sak_full
             break
 
         if uid_bytes is None:
@@ -1111,6 +1170,33 @@ def rc522_erase_card(timeout: float = 10.0) -> tuple[bool, str]:
 
         uid_hex = "".join(f"{b:02X}" for b in uid_bytes)
         log.info(f"Karte gefunden zum Loeschen: UID {uid_hex}, SAK 0x{sak:02X}")
+
+        # SAK-basiertes Branching: NTAG-Karten werden ohne Crypto1-Auth
+        # geloescht (anderer Code-Pfad). Identisch zu Read/Write.
+        ntag_enabled = True
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            cfg_p = _Path(__file__).parent.parent / "config.json"
+            if cfg_p.exists():
+                _cfg = _json.loads(cfg_p.read_text(encoding="utf-8"))
+                ntag_enabled = bool((_cfg.get("rfid") or {}).get("ntag_enabled", True))
+        except Exception:
+            pass
+
+        # Detection wie im Write/Read-Pfad: 7-Byte-UID = NTAG/Type 2,
+        # final SAK = 0x00.
+        is_ntag_like = (sak == _SAK_NTAG) or (len(uid_bytes) == 7 and sak != _SAK_MIFARE_1K)
+        if ntag_enabled and is_ntag_like:
+            log.info(f"RFID-Erase: NTAG-Karte erkannt (SAK 0x{sak:02X}, "
+                     f"UID-Laenge {len(uid_bytes)}) -> NTAG-Erase-Pfad")
+            try:
+                return _erase_ntag_card(uid_bytes)
+            finally:
+                _rc522_halt()
+
+        # Ab hier: MIFARE-Classic-Pfad (4-Byte-UID, Crypto1-Auth)
+        # uid_bytes ist bei MIFARE Classic schon 4 Byte lang.
 
         # Phase 2: Loesch-Payload (alle SAFIR-Bloecke auf 0x00)
         ZERO = bytes(16)
